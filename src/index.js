@@ -5,6 +5,8 @@ import alertManager from './alerts/alertManager.js';
 import performanceTracker from './monitoring/performanceTracker.js';
 import cacheManager from './data/cacheManager.js';
 import rpcManager from './utils/rpcManager.js';
+import dashboard from './monitoring/dashboard.js';
+import executionManager from './execution/executionManager.js';
 import config from './config.js';
 import log from './utils/logger.js';
 
@@ -22,15 +24,28 @@ class ArbitrageBot {
      */
     async start() {
         try {
-            log.info('🚀 BSC Arbitrage Bot starting...');
+            log.info('🚀 BSC Arbitrage Bot v2.0.0 starting...');
             log.info('Configuration:', {
                 minProfit: `${config.trading.minProfitPercentage}%`,
                 maxPairs: config.monitoring.maxPairsToMonitor,
                 dexes: Object.keys(config.dex).filter(dex => config.dex[dex].enabled),
+                executionEnabled: config.execution?.enabled || false,
+                executionMode: config.execution?.mode || 'detection-only',
+                triangularEnabled: config.triangular?.enabled !== false,
             });
 
             // Set up event handlers
             this.setupEventHandlers();
+
+            // Initialize execution manager if enabled
+            if (config.execution?.enabled) {
+                await executionManager.initialize();
+                log.info('Execution manager initialized', { mode: executionManager.mode });
+            }
+
+            // Start dashboard server
+            dashboard.start(this);
+            log.info(`Dashboard available at http://localhost:${dashboard.port}`);
 
             // Start block monitoring
             await blockMonitor.start();
@@ -81,6 +96,10 @@ class ArbitrageBot {
         const startTime = Date.now();
 
         try {
+            // Update dashboard metrics
+            dashboard.recordBlock();
+            cacheManager.currentBlockNumber = blockNumber;
+
             // Invalidate stale cache entries
             cacheManager.invalidateOlderThan(blockNumber);
 
@@ -95,12 +114,32 @@ class ArbitrageBot {
             // Detect arbitrage opportunities (now async to fetch dynamic gas)
             const opportunities = await arbitrageDetector.detectOpportunities(prices, blockNumber);
 
+            // Update dashboard with opportunities found
+            dashboard.recordOpportunities(opportunities.length);
+
             if (opportunities.length > 0) {
                 log.info(`✅ Found ${opportunities.length} arbitrage opportunities in block ${blockNumber}`);
 
-                // Send alerts for each opportunity
+                // Process each opportunity
                 for (const opportunity of opportunities) {
+                    // Send alert
                     await alertManager.notify(opportunity);
+
+                    // Execute if enabled
+                    if (config.execution?.enabled) {
+                        const result = await executionManager.execute(opportunity);
+
+                        if (result.simulated) {
+                            dashboard.recordSimulation(result.success);
+                        } else if (result.success) {
+                            dashboard.recordExecution(
+                                true,
+                                opportunity.profitCalculation?.netProfitUSD || 0
+                            );
+                        } else {
+                            dashboard.recordExecution(false);
+                        }
+                    }
                 }
             }
 
@@ -113,6 +152,7 @@ class ArbitrageBot {
                 error: error.message,
                 stack: error.stack,
             });
+            dashboard.recordError();
         } finally {
             this.processingBlock = false;
         }
@@ -133,6 +173,9 @@ class ArbitrageBot {
             // Stop block monitor
             await blockMonitor.stop();
 
+            // Stop dashboard server
+            dashboard.stop();
+
             // Cleanup RPC manager
             await rpcManager.cleanup();
 
@@ -141,7 +184,15 @@ class ArbitrageBot {
 
             // Generate final report
             const metrics = performanceTracker.getMetrics();
+            const dashboardMetrics = dashboard.getMetrics();
             log.info('Final performance report:', metrics);
+            log.info('Dashboard metrics:', dashboardMetrics);
+
+            // Log execution stats if enabled
+            if (config.execution?.enabled) {
+                const execStats = executionManager.getStats();
+                log.info('Execution statistics:', execStats);
+            }
 
             log.info('✅ Bot stopped gracefully');
 
@@ -154,14 +205,22 @@ class ArbitrageBot {
      * Get current bot status
      */
     getStatus() {
-        return {
+        const status = {
             isRunning: this.isRunning,
             processingBlock: this.processingBlock,
             blockMonitor: blockMonitor.getStatus(),
             rpc: rpcManager.getStats(),
             cache: cacheManager.getStats(),
             performance: performanceTracker.getMetrics(),
+            dashboard: dashboard.getMetrics(),
         };
+
+        // Include execution stats if enabled
+        if (config.execution?.enabled) {
+            status.execution = executionManager.getStats();
+        }
+
+        return status;
     }
 }
 

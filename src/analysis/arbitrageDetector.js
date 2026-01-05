@@ -1,10 +1,16 @@
 import { ethers, parseUnits, formatUnits } from 'ethers';
 import rpcManager from '../utils/rpcManager.js';
+import triangularDetector from './triangularDetector.js';
+import profitCalculator from './profitCalculator.js';
 import config from '../config.js';
 import log from '../utils/logger.js';
 
 /**
  * Arbitrage Detector - Identifies profitable arbitrage opportunities across DEXs
+ *
+ * Supports two types of arbitrage:
+ * 1. Cross-DEX: Buy on DEX A, sell on DEX B (original functionality)
+ * 2. Triangular: A -> B -> C -> A within single DEX (new)
  */
 class ArbitrageDetector {
     constructor() {
@@ -12,18 +18,23 @@ class ArbitrageDetector {
         this.gasPriceGwei = config.trading.gasPriceGwei;
         this.estimatedGasLimit = config.trading.estimatedGasLimit;
 
+        // Triangular arbitrage enabled by config
+        this.triangularEnabled = config.triangular?.enabled !== false;
+
         log.info('Arbitrage Detector initialized', {
             minProfit: `${this.minProfitPercentage}%`,
             gasPrice: `${this.gasPriceGwei} Gwei`,
+            triangularEnabled: this.triangularEnabled,
         });
     }
 
     /**
-     * Detect arbitrage opportunities from price data
+     * Detect all arbitrage opportunities from price data
+     * Includes both cross-DEX and triangular arbitrage
      */
     async detectOpportunities(prices, blockNumber) {
         const startTime = Date.now();
-        const opportunities = [];
+        let opportunities = [];
 
         // Fetch dynamic gas price if enabled
         let gasPrice = BigInt(parseUnits(config.trading.gasPriceGwei.toString(), 'gwei'));
@@ -41,15 +52,56 @@ class ArbitrageDetector {
             log.info(`🔍 Scanning ${pairs.length} pairs for arbitrage at block ${blockNumber}...`);
         }
 
+        // 1. Cross-DEX arbitrage (original)
         for (const [pairKey, dexPrices] of pairs) {
             const opp = this.checkOpportunity(pairKey, dexPrices, gasPrice);
-            if (opp) opportunities.push(opp);
+            if (opp) {
+                opp.type = 'cross-dex';
+                opp.blockNumber = blockNumber;
+                opportunities.push(opp);
+            }
         }
 
+        // 2. Triangular arbitrage (new)
+        if (this.triangularEnabled) {
+            try {
+                const triangularOpps = triangularDetector.findTriangularOpportunities(prices, blockNumber);
+
+                if (triangularOpps.length > 0) {
+                    log.debug(`Found ${triangularOpps.length} raw triangular opportunities`);
+                }
+
+                opportunities.push(...triangularOpps);
+            } catch (err) {
+                log.error('Triangular detection error', { error: err.message });
+            }
+        }
+
+        // 3. Calculate accurate profit for all opportunities
         if (opportunities.length > 0) {
-            log.info(`Found ${opportunities.length} potential opportunities in ${Date.now() - startTime}ms`);
+            opportunities = profitCalculator.batchCalculate(opportunities, gasPrice);
+        }
+
+        // 4. Sort by net profit descending
+        opportunities.sort((a, b) => {
+            const profitA = a.profitCalculation?.netProfitUSD || a.profitUSD || 0;
+            const profitB = b.profitCalculation?.netProfitUSD || b.profitUSD || 0;
+            return profitB - profitA;
+        });
+
+        // 5. Log results
+        const duration = Date.now() - startTime;
+        if (opportunities.length > 0) {
+            const crossDex = opportunities.filter(o => o.type === 'cross-dex').length;
+            const triangular = opportunities.filter(o => o.type === 'triangular').length;
+
+            log.info(`Found ${opportunities.length} profitable opportunities in ${duration}ms`, {
+                crossDex,
+                triangular,
+                topProfit: `$${opportunities[0]?.profitCalculation?.netProfitUSD?.toFixed(2) || 'N/A'}`,
+            });
         } else if (config.debugMode) {
-            log.debug(`No opportunities found in ${pairs.length} pairs (${Date.now() - startTime}ms)`);
+            log.debug(`No opportunities found in ${pairs.length} pairs (${duration}ms)`);
         }
 
         return opportunities;
