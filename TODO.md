@@ -54,49 +54,49 @@
 
 ## In Progress
 
-### Phase 7: Documentation
+### Phase 7: Documentation ✅
 - [x] Create `CLAUDE_CONTEXT.md` - AI assistant context
 - [x] Create `TODO.md` - Task tracking (this file)
-- [ ] Update `README.md` - Multi-chain overview
-- [ ] Create `docs/ARCHITECTURE.md` - System architecture
-- [ ] Create `docs/CHAINS.md` - Per-chain setup guide
-- [ ] Create `docs/CONFIG.md` - Configuration reference
+- [x] Create `docs/ARCHITECTURE.md` - System architecture
+- [x] Create `docs/CHAINS.md` - Per-chain setup guide
+- [x] Create `docs/CONFIG.md` - Configuration reference
+- [x] Create `docs/PROFIT_AND_GAS.md` - Profit calculation analysis
+- [x] Create `docs/MEMPOOL_ANALYSIS.md` - Mempool monitoring analysis
+- [x] Create `docs/IMPLEMENTATION_ROADMAP.md` - Strategic roadmap
+- [ ] Update `README.md` - Multi-chain overview (optional)
 
 ---
 
-## Future Work (Backlog)
+## Future Work (Prioritized Roadmap)
 
-### Testing
-- [ ] Add integration tests for multi-chain scenarios
-- [ ] Add performance benchmarks for block processing
-- [ ] Add worker crash/restart tests
-- [ ] Enable Hardhat tests in CI (currently requires RUN_HARDHAT_TESTS=true)
+See `docs/IMPLEMENTATION_ROADMAP.md` for detailed analysis and rationale.
 
-### Execution
-- [ ] Implement actual trade execution (currently detection-only)
-- [ ] Flash loan integration for capital-efficient execution
-- [ ] Gas optimization for time-sensitive trades
+### Priority 0: Critical ✅ (Completed 2026-01-06)
+- [x] Dynamic token pricing from price cache (in cacheManager + profitCalculator)
+- [x] L2 gas fee calculation (src/execution/l2GasCalculator.js)
+- [x] Wire execution flow (connect detectors to executionManager in index.js)
 
-### MEV Protection
-- [ ] Flashbots integration for private transactions
-- [ ] Private mempool support
-- [ ] Transaction bundling
+### Priority 1: High (Week 2-3)
+- [ ] Flash arbitrage smart contract (Solidity)
+- [ ] Deploy to BSC testnet
+- [ ] Deploy to BSC mainnet
+- [ ] Live simulation testing with real prices
 
-### Monitoring & Observability
-- [ ] Real-time profit tracking dashboard
-- [ ] Prometheus/Grafana metrics
-- [ ] Alert rate limiting and deduplication
+### Priority 2: Medium (Week 3-4)
+- [ ] EIP-1559 transaction support
+- [ ] Balancer flash loan integration (0% fee)
+- [ ] Expand to Polygon/Arbitrum
 
-### Advanced Features
-- [ ] Machine learning for opportunity prediction
-- [ ] Cross-chain bridge automation
-- [ ] Multi-signature wallet support
-- [ ] Historical opportunity analysis
-
-### Infrastructure
+### Priority 3: Low (Future)
+- [ ] Terminal dashboard (blessed/ink)
 - [ ] Docker containerization
-- [ ] Kubernetes deployment config
-- [ ] CI/CD pipeline setup
+- [ ] Performance benchmarks
+
+### Not Recommended (Skip)
+- ~~Mempool monitoring~~ - Requires paid infrastructure, low ROI
+- ~~MEV protection~~ - Use flash loans instead (atomic = MEV-resistant)
+- ~~ML prediction~~ - High effort, marginal benefit
+- ~~Kubernetes~~ - Overkill for single instance
 
 ---
 
@@ -113,7 +113,7 @@
 
 ## Notes
 
-- All 307 tests passing
+- All 409 tests passing
 - ES Modules throughout (no CommonJS)
 - Winston for logging
 - Joi for config validation

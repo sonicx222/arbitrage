@@ -10,7 +10,7 @@ export default {
     // Chain identification
     name: 'Avalanche C-Chain',
     chainId: 43114,
-    enabled: process.env.AVALANCHE_ENABLED === 'true',
+    enabled: process.env.AVALANCHE_ENABLED !== 'false',
     blockTime: 2000, // ~2 seconds
 
     // Native token

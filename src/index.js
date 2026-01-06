@@ -55,7 +55,7 @@ class ArbitrageBot {
         // Auto-detect based on enabled chains
         try {
             const enabledChains = getEnabledChains();
-            return enabledChains.length > 1;
+            return Object.keys(enabledChains).length > 1;
         } catch (e) {
             // If config/index.js fails, fall back to single-chain
             return false;
@@ -123,9 +123,10 @@ class ArbitrageBot {
      */
     async startMultiChain() {
         const enabledChains = getEnabledChains();
+        const chainList = Object.values(enabledChains);
         log.info('Starting in multi-chain mode', {
-            chains: enabledChains.map(c => c.name),
-            chainCount: enabledChains.length,
+            chains: chainList.map(c => c.name),
+            chainCount: chainList.length,
         });
 
         // Initialize WorkerCoordinator
@@ -148,13 +149,19 @@ class ArbitrageBot {
         });
 
         // Initialize MempoolMonitor (if any chain has it enabled)
-        const mempoolEnabled = enabledChains.some(c => c.mempool?.enabled);
+        const mempoolEnabled = chainList.some(c => c.mempool?.enabled);
         if (mempoolEnabled) {
             this.mempoolMonitor = new MempoolMonitor({
                 enabled: true,
                 minSwapSizeUSD: globalConfig?.mempool?.minSwapSizeUSD || 10000,
             });
             log.info('Mempool monitoring enabled');
+        }
+
+        // Initialize execution manager if enabled (multi-chain mode)
+        if (config.execution?.enabled) {
+            await executionManager.initialize();
+            log.info('Execution manager initialized for multi-chain mode', { mode: executionManager.mode });
         }
 
         // Set up multi-chain event handlers
@@ -167,7 +174,7 @@ class ArbitrageBot {
         // Start all workers
         await this.workerCoordinator.startAll(chainConfigs);
 
-        log.info(`Multi-chain monitoring started for ${enabledChains.length} chains`);
+        log.info(`Multi-chain monitoring started for ${chainList.length} chains`);
     }
 
     /**
@@ -213,6 +220,10 @@ class ArbitrageBot {
 
             // Process opportunities
             for (const opportunity of opportunities) {
+                // Add chain context to opportunity
+                opportunity.chainId = chainId;
+                opportunity.blockNumber = blockNumber;
+
                 // Send alert
                 await alertManager.notify(opportunity);
 
@@ -222,6 +233,22 @@ class ArbitrageBot {
                     profit: opportunity.profitPercent?.toFixed(2) + '%',
                     pair: opportunity.pair || opportunity.path?.join(' -> '),
                 });
+
+                // Execute if enabled (multi-chain execution)
+                if (config.execution?.enabled) {
+                    const result = await executionManager.execute(opportunity);
+
+                    if (result.simulated) {
+                        dashboard.recordSimulation(result.success);
+                    } else if (result.success) {
+                        dashboard.recordExecution(
+                            true,
+                            opportunity.profitCalculation?.netProfitUSD || 0
+                        );
+                    } else {
+                        dashboard.recordExecution(false);
+                    }
+                }
             }
 
             // Record performance
@@ -455,6 +482,12 @@ class ArbitrageBot {
             this.mempoolMonitor.stop();
         }
 
+        // Log execution stats if enabled (multi-chain mode)
+        if (config.execution?.enabled) {
+            const execStats = executionManager.getStats();
+            log.info('Execution statistics:', execStats);
+        }
+
         // Cleanup performance tracker
         performanceTracker.cleanup();
 
@@ -544,7 +577,15 @@ async function main() {
 }
 
 // Run if this is the main module
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Cross-platform check: normalize paths and handle Windows drive letters
+const isMainModule = (() => {
+    if (!process.argv[1]) return false;
+    const moduleUrl = new URL(import.meta.url);
+    const scriptPath = new URL(`file://${process.argv[1].replace(/\\/g, '/')}`);
+    return moduleUrl.pathname.toLowerCase() === scriptPath.pathname.toLowerCase();
+})();
+
+if (isMainModule) {
     main();
 }
 

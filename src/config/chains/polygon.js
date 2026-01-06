@@ -10,7 +10,7 @@ export default {
     // Chain identification
     name: 'Polygon Mainnet',
     chainId: 137,
-    enabled: process.env.POLYGON_ENABLED === 'true',
+    enabled: process.env.POLYGON_ENABLED !== 'false',
     blockTime: 2000, // ~2 seconds average
 
     // Native token

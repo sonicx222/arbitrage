@@ -2,6 +2,8 @@ import { formatUnits } from 'ethers';
 import config from '../config.js';
 import log from '../utils/logger.js';
 import { FLASH_LOAN_FEE } from '../contracts/abis.js';
+import cacheManager from '../data/cacheManager.js';
+import l2GasCalculator from '../execution/l2GasCalculator.js';
 
 // Lazy import to avoid circular dependency
 let triangularDetector = null;
@@ -27,8 +29,21 @@ const getTriangularDetector = async () => {
  */
 class ProfitCalculator {
     constructor() {
-        // BNB price in USD (updated dynamically or from config)
-        this.bnbPriceUSD = 600;
+        // Native token price fallbacks (used when cache is empty)
+        this.defaultNativePrices = {
+            'WBNB': 600,
+            'BNB': 600,
+            'WETH': 3500,
+            'ETH': 3500,
+            'WMATIC': 0.5,
+            'MATIC': 0.5,
+            'WAVAX': 35,
+            'AVAX': 35,
+        };
+
+        // Current native token price (dynamically updated)
+        this.nativeTokenPriceUSD = this.defaultNativePrices['WBNB'];
+        this.nativeTokenSymbol = 'WBNB'; // Default for BSC
 
         // Flash loan fee rate
         this.flashLoanFee = FLASH_LOAN_FEE.PANCAKE_V2; // 0.25%
@@ -47,10 +62,22 @@ class ProfitCalculator {
         this.minProfitUSD = config.execution?.minProfitUSD || 1.0;
         this.minProfitPercent = config.trading.minProfitPercentage || 0.5;
 
+        // Get enabled DEX names for price lookup
+        this.dexNames = Object.entries(config.dex)
+            .filter(([_, dexConfig]) => dexConfig.enabled)
+            .map(([name]) => name);
+
+        // Chain configuration for L2 gas calculation
+        this.chainId = 56; // Default BSC
+        this.chainName = 'bsc';
+        this.provider = null; // Set via setProvider() for L2 chains
+
         log.info('Profit Calculator initialized', {
             flashLoanFee: `${this.flashLoanFee * 100}%`,
             slippageBuffer: `${this.slippageBuffer * 100}%`,
             minProfitUSD: `$${this.minProfitUSD}`,
+            dynamicPricing: true,
+            l2GasSupport: true,
         });
     }
 
@@ -59,18 +86,55 @@ class ProfitCalculator {
      *
      * @param {Object} opportunity - Arbitrage opportunity (cross-dex or triangular)
      * @param {BigInt} gasPrice - Current gas price in wei
-     * @param {number} bnbPrice - Current BNB price in USD (optional)
+     * @param {number} nativePrice - Native token price in USD (optional, fetched dynamically if not provided)
      * @returns {Object} Detailed profit breakdown
      */
-    calculateNetProfit(opportunity, gasPrice, bnbPrice = null) {
-        const currentBnbPrice = bnbPrice || this.bnbPriceUSD;
+    calculateNetProfit(opportunity, gasPrice, nativePrice = null) {
+        // Get dynamic native token price from cache if not provided
+        const currentNativePrice = nativePrice || this._getDynamicNativePrice();
 
         // Determine opportunity type and calculate accordingly
         if (opportunity.type === 'triangular') {
-            return this._calculateTriangularProfit(opportunity, gasPrice, currentBnbPrice);
+            return this._calculateTriangularProfit(opportunity, gasPrice, currentNativePrice);
         } else {
-            return this._calculateCrossDexProfit(opportunity, gasPrice, currentBnbPrice);
+            return this._calculateCrossDexProfit(opportunity, gasPrice, currentNativePrice);
         }
+    }
+
+    /**
+     * Get dynamic native token price from price cache
+     *
+     * @private
+     * @returns {number} Native token price in USD
+     */
+    _getDynamicNativePrice() {
+        const fallback = this.defaultNativePrices[this.nativeTokenSymbol] || 600;
+
+        const dynamicPrice = cacheManager.getNativeTokenPrice(
+            this.nativeTokenSymbol,
+            config.tokens,
+            this.dexNames,
+            fallback
+        );
+
+        // Update cached value for quick access
+        if (dynamicPrice !== this.nativeTokenPriceUSD) {
+            this.nativeTokenPriceUSD = dynamicPrice;
+            log.debug(`Updated ${this.nativeTokenSymbol} price: $${dynamicPrice.toFixed(2)}`);
+        }
+
+        return dynamicPrice;
+    }
+
+    /**
+     * Set the native token symbol for the current chain
+     *
+     * @param {string} symbol - Native token symbol (e.g., 'WBNB', 'WETH')
+     */
+    setNativeTokenSymbol(symbol) {
+        this.nativeTokenSymbol = symbol;
+        this.nativeTokenPriceUSD = this.defaultNativePrices[symbol] || 1;
+        log.info(`Native token set to ${symbol}, fallback price: $${this.nativeTokenPriceUSD}`);
     }
 
     /**
@@ -317,48 +381,189 @@ class ProfitCalculator {
     }
 
     /**
-     * Estimate gas cost in USD
+     * Estimate gas cost in USD (supports L1 and L2 chains)
+     *
+     * For L2 chains (Arbitrum, Base), this includes both L2 execution cost
+     * and L1 data fee for posting calldata to Ethereum.
      *
      * @private
      * @param {BigInt} gasPrice - Gas price in wei
      * @param {number} swapCount - Number of swaps
-     * @param {number} bnbPrice - BNB price in USD
+     * @param {number} nativePrice - Native token price in USD
      * @returns {number} Gas cost in USD
      */
-    _estimateGasCostUSD(gasPrice, swapCount, bnbPrice) {
+    _estimateGasCostUSD(gasPrice, swapCount, nativePrice) {
         const totalGas = this.gasEstimates.flashLoanOverhead +
                         (this.gasEstimates.perSwap * BigInt(swapCount)) +
                         this.gasEstimates.profitValidation;
 
-        const gasCostWei = totalGas * gasPrice;
-        const gasCostBNB = Number(gasCostWei) / 1e18;
-        const gasCostUSD = gasCostBNB * bnbPrice;
+        // L2 execution cost (same calculation for all chains)
+        const l2GasCostWei = totalGas * gasPrice;
+        const l2GasCostNative = Number(l2GasCostWei) / 1e18;
+        let gasCostUSD = l2GasCostNative * nativePrice;
+
+        // Add L1 data fee for L2 chains
+        if (l2GasCalculator.isL2Chain(this.chainId)) {
+            const txType = swapCount === 3 ? 'triangular' : 'crossDex';
+            const l1DataFeeEstimate = this._estimateL1DataFeeUSD(txType, nativePrice);
+            gasCostUSD += l1DataFeeEstimate;
+
+            log.debug(`L2 gas cost breakdown for ${this.chainName}`, {
+                l2CostUSD: (l2GasCostNative * nativePrice).toFixed(4),
+                l1DataFeeUSD: l1DataFeeEstimate.toFixed(4),
+                totalUSD: gasCostUSD.toFixed(4),
+            });
+        }
 
         return gasCostUSD;
     }
 
     /**
-     * Get approximate token price in USD
+     * Estimate L1 data fee for L2 transactions (synchronous fallback)
+     *
+     * For accurate L1 fees, use calculateNetProfitAsync with provider.
+     *
+     * @private
+     * @param {string} txType - Transaction type ('crossDex', 'triangular')
+     * @param {number} nativePrice - Native token price in USD
+     * @returns {number} Estimated L1 data fee in USD
+     */
+    _estimateL1DataFeeUSD(txType, nativePrice) {
+        // Historical average L1 data fees (conservative estimates)
+        // These are based on typical L1 gas prices around 20-30 gwei
+        const l1FeeEstimates = {
+            arbitrum: {
+                crossDex: 0.02,    // ~$0.02 for 2-swap tx
+                triangular: 0.03,  // ~$0.03 for 3-swap tx
+                flashLoan: 0.04,   // ~$0.04 with flash loan overhead
+            },
+            base: {
+                crossDex: 0.002,   // ~$0.002 (very cheap with blob data)
+                triangular: 0.003, // ~$0.003
+                flashLoan: 0.004,  // ~$0.004
+            },
+        };
+
+        const chainEstimates = l1FeeEstimates[this.chainName] || l1FeeEstimates.arbitrum;
+        return chainEstimates[txType] || chainEstimates.flashLoan;
+    }
+
+    /**
+     * Calculate net profit with accurate L2 gas fees (async version)
+     *
+     * Use this when you have a provider available for accurate L1 fee calculation.
+     *
+     * @param {Object} opportunity - Arbitrage opportunity
+     * @param {BigInt} gasPrice - Current gas price in wei
+     * @param {Object} provider - ethers.js provider for L1 fee queries
+     * @returns {Promise<Object>} Detailed profit breakdown
+     */
+    async calculateNetProfitAsync(opportunity, gasPrice, provider = null) {
+        // Use synchronous calculation if no provider or not an L2 chain
+        if (!provider || !l2GasCalculator.isL2Chain(this.chainId)) {
+            return this.calculateNetProfit(opportunity, gasPrice);
+        }
+
+        // Get dynamic native token price
+        const nativePrice = this._getDynamicNativePrice();
+
+        // Calculate L2 gas
+        const swapCount = opportunity.type === 'triangular' ? 3 : 2;
+        const totalGas = this.gasEstimates.flashLoanOverhead +
+                        (this.gasEstimates.perSwap * BigInt(swapCount)) +
+                        this.gasEstimates.profitValidation;
+
+        // Get accurate L2 gas cost with L1 data fee
+        const txType = opportunity.type === 'triangular' ? 'triangular' : 'crossDex';
+        const gasCost = await l2GasCalculator.calculateGasCostUSD(
+            this.chainName,
+            provider,
+            totalGas,
+            gasPrice,
+            nativePrice,
+            txType
+        );
+
+        // Now calculate profit with accurate gas cost
+        const result = this.calculateNetProfit(opportunity, gasPrice, nativePrice);
+
+        // Override gas cost with accurate L2 calculation
+        const gasDiff = gasCost.totalCostUSD - result.gasCostUSD;
+        result.gasCostUSD = gasCost.totalCostUSD;
+        result.netProfitUSD -= gasDiff;
+        result.breakdown.gas = -gasCost.totalCostUSD;
+        result.breakdown.net = result.netProfitUSD;
+
+        // Add L2-specific breakdown
+        result.l2GasBreakdown = {
+            l2CostUSD: gasCost.l2CostUSD,
+            l1DataFeeUSD: gasCost.l1DataFeeUSD,
+            totalCostUSD: gasCost.totalCostUSD,
+        };
+
+        // Recalculate profitability
+        result.netProfitPercent = result.tradeSizeUSD > 0
+            ? (result.netProfitUSD / result.tradeSizeUSD) * 100
+            : 0;
+        result.isProfitable = result.netProfitUSD >= this.minProfitUSD &&
+                              result.netProfitPercent >= this.minProfitPercent;
+
+        return result;
+    }
+
+    /**
+     * Set chain configuration for L2 gas calculation
+     *
+     * @param {number} chainId - Chain ID
+     * @param {string} chainName - Chain name (e.g., 'arbitrum', 'base')
+     * @param {Object} provider - ethers.js provider (optional)
+     */
+    setChain(chainId, chainName, provider = null) {
+        this.chainId = chainId;
+        this.chainName = chainName.toLowerCase();
+        this.provider = provider;
+
+        log.info(`Chain set for profit calculation`, {
+            chainId,
+            chainName: this.chainName,
+            isL2: l2GasCalculator.isL2Chain(chainId),
+        });
+    }
+
+    /**
+     * Get token price in USD - uses dynamic pricing from cache with fallbacks
      *
      * @private
      * @param {string} tokenSymbol - Token symbol
-     * @param {number} bnbPrice - Current BNB price
-     * @returns {number} Approximate USD price
+     * @param {number} nativePrice - Current native token price for conversions
+     * @returns {number} Token price in USD
      */
-    _getTokenPriceUSD(tokenSymbol, bnbPrice) {
-        // Stablecoins
+    _getTokenPriceUSD(tokenSymbol, nativePrice) {
+        // Stablecoins - always $1
         if (['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'FDUSD'].includes(tokenSymbol)) {
             return 1.0;
         }
 
-        // BNB-based
-        if (['WBNB', 'BNB'].includes(tokenSymbol)) {
-            return bnbPrice;
+        // Native tokens - use provided price
+        const nativeSymbols = ['WBNB', 'BNB', 'WETH', 'ETH', 'WMATIC', 'MATIC', 'WAVAX', 'AVAX'];
+        if (nativeSymbols.includes(tokenSymbol)) {
+            return nativePrice;
         }
 
-        // Other major tokens (approximate)
-        const tokenPrices = {
-            'ETH': 3500,
+        // Try to get dynamic price from cache
+        const cachedPrice = cacheManager.getTokenPriceUSD(
+            tokenSymbol,
+            config.tokens,
+            this.dexNames,
+            nativePrice
+        );
+
+        if (cachedPrice !== null && cachedPrice > 0) {
+            return cachedPrice;
+        }
+
+        // Fallback to hardcoded approximate prices for major tokens
+        const fallbackPrices = {
             'BTCB': 95000,
             'WBTC': 95000,
             'CAKE': 2.5,
@@ -368,19 +573,35 @@ class ProfitCalculator {
             'LINK': 20.0,
             'UNI': 12.0,
             'AAVE': 300.0,
+            'ARB': 1.0,
+            'OP': 2.0,
+            'JOE': 0.5,
+            'PNG': 0.1,
+            'SUSHI': 1.5,
         };
 
-        return tokenPrices[tokenSymbol] || 1.0; // Default to $1 for unknown
+        return fallbackPrices[tokenSymbol] || 1.0; // Default to $1 for unknown
     }
 
     /**
-     * Update BNB price
+     * Update native token price manually
      *
-     * @param {number} price - New BNB price in USD
+     * @param {number} price - New native token price in USD
+     * @deprecated Use dynamic pricing from cache instead
      */
     updateBnbPrice(price) {
-        this.bnbPriceUSD = price;
-        log.debug(`BNB price updated to $${price}`);
+        this.nativeTokenPriceUSD = price;
+        log.debug(`${this.nativeTokenSymbol} price manually updated to $${price}`);
+    }
+
+    /**
+     * Update native token price
+     *
+     * @param {number} price - New native token price in USD
+     */
+    updateNativePrice(price) {
+        this.nativeTokenPriceUSD = price;
+        log.debug(`${this.nativeTokenSymbol} price updated to $${price}`);
     }
 
     /**
@@ -436,8 +657,12 @@ class ProfitCalculator {
      * Get calculator statistics
      */
     getStats() {
+        // Get fresh dynamic price for stats
+        const dynamicPrice = this._getDynamicNativePrice();
+
         return {
-            bnbPriceUSD: this.bnbPriceUSD,
+            nativeTokenSymbol: this.nativeTokenSymbol,
+            nativeTokenPriceUSD: dynamicPrice,
             flashLoanFee: this.flashLoanFee,
             slippageBuffer: this.slippageBuffer,
             minProfitUSD: this.minProfitUSD,
@@ -445,6 +670,7 @@ class ProfitCalculator {
                 flashLoanOverhead: this.gasEstimates.flashLoanOverhead.toString(),
                 perSwap: this.gasEstimates.perSwap.toString(),
             },
+            dynamicPricing: true,
         };
     }
 }

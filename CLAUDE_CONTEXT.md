@@ -132,12 +132,27 @@ src/
 
 ### Current Phase
 
-#### Phase 7: Documentation (In Progress)
+#### Phase 7: Documentation (Complete)
 - [x] CLAUDE_CONTEXT.md (this file)
-- [ ] README.md update for multi-chain
-- [ ] docs/ARCHITECTURE.md
-- [ ] docs/CHAINS.md
-- [ ] docs/CONFIG.md
+- [x] TODO.md (task tracking)
+- [x] Chain configuration tests (77 tests)
+- [x] docs/ARCHITECTURE.md - System design and component overview
+- [x] docs/CHAINS.md - Per-chain details and configuration
+- [x] docs/CONFIG.md - Environment variables and settings reference
+- [x] docs/PROFIT_AND_GAS.md - Profit calculation analysis and future extensions
+- [ ] README.md update for multi-chain (optional)
+
+### Recent Fixes (2026-01-06)
+- Fixed `getEnabledChains()` return type bugs in index.js (object vs array)
+- Created all 5 missing chain implementations (Ethereum, Polygon, Arbitrum, Base, Avalanche)
+- Fixed Windows path handling for main module detection
+- Fixed invalid DAI token address in Ethereum config
+- Fixed L2 gas price parsing (parseInt -> parseFloat for sub-1 gwei values)
+
+### Priority 0 Implementation (2026-01-06)
+- **Dynamic Token Pricing**: Added `getNativeTokenPrice()` and `getTokenPriceUSD()` to cacheManager.js. Updated profitCalculator.js to use dynamic pricing from cached DEX pair data instead of hardcoded values.
+- **L2 Gas Fee Calculation**: Created `src/execution/l2GasCalculator.js` supporting Arbitrum (ArbGasInfo precompile) and Base (GasPriceOracle). Integrated into profitCalculator.js with `calculateNetProfitAsync()` method.
+- **Execution Flow Wiring**: Connected opportunity detectors to executionManager in both single-chain and multi-chain modes. Added execution stats logging on shutdown.
 
 ## Supported Chains & DEXes
 
@@ -166,8 +181,8 @@ RUN_HARDHAT_TESTS=true npm test    # Include Hardhat integration tests
 ```
 
 ### Test Status
-- **Total Tests:** 308
-- **Passing:** 307
+- **Total Tests:** 410
+- **Passing:** 409
 - **Skipped:** 1 (Hardhat flash loan test - requires RUN_HARDHAT_TESTS=true)
 
 ### Known Test Behaviors

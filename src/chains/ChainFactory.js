@@ -77,8 +77,14 @@ class ChainFactory {
      */
     async loadChainImplementation(chainName) {
         try {
-            // Capitalize first letter for class name
-            const className = chainName.charAt(0).toUpperCase() + chainName.slice(1) + 'Chain';
+            // Handle special case for "base" chain (file is BaseChainImpl.js to avoid conflict)
+            let className;
+            if (chainName.toLowerCase() === 'base') {
+                className = 'BaseChainImpl';
+            } else {
+                // Capitalize first letter for class name
+                className = chainName.charAt(0).toUpperCase() + chainName.slice(1) + 'Chain';
+            }
             const modulePath = `./implementations/${className}.js`;
 
             const module = await import(modulePath);

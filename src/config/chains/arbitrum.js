@@ -10,7 +10,7 @@ export default {
     // Chain identification
     name: 'Arbitrum One',
     chainId: 42161,
-    enabled: process.env.ARBITRUM_ENABLED === 'true',
+    enabled: process.env.ARBITRUM_ENABLED !== 'false',
     blockTime: 250, // ~0.25 seconds (very fast)
 
     // Native token
@@ -166,7 +166,7 @@ export default {
     trading: {
         minProfitPercentage: parseFloat(process.env.ARBITRUM_MIN_PROFIT || '0.2'),
         maxSlippage: parseFloat(process.env.ARBITRUM_MAX_SLIPPAGE || '0.5'),
-        gasPriceGwei: parseInt(process.env.ARBITRUM_GAS_PRICE || '0.1'),
+        gasPriceGwei: parseFloat(process.env.ARBITRUM_GAS_PRICE || '0.1'),
         estimatedGasLimit: 500000,
     },
 

@@ -2,6 +2,7 @@ import { ethers, parseUnits } from 'ethers';
 import config from '../config.js';
 import log from '../utils/logger.js';
 import { FLASH_ARBITRAGE_ABI, WBNB_ADDRESS } from '../contracts/abis.js';
+import cacheManager from '../data/cacheManager.js';
 
 /**
  * Transaction Builder
@@ -233,24 +234,56 @@ class TransactionBuilder {
     }
 
     /**
-     * Get approximate token price in USD
+     * Get token price in USD - uses dynamic pricing from cache with fallbacks
      *
      * @private
      * @param {string} tokenSymbol - Token symbol
      * @returns {number} Price in USD
      */
     _getTokenPriceUSD(tokenSymbol) {
-        const prices = {
-            'WBNB': 600,
-            'USDT': 1,
-            'USDC': 1,
-            'BUSD': 1,
-            'ETH': 3500,
+        // Stablecoins - always $1
+        if (['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'FDUSD'].includes(tokenSymbol)) {
+            return 1.0;
+        }
+
+        // Get enabled DEX names
+        const dexNames = Object.entries(config.dex)
+            .filter(([_, dexConfig]) => dexConfig.enabled)
+            .map(([name]) => name);
+
+        // For native tokens, get dynamic price
+        const nativeSymbols = ['WBNB', 'BNB', 'WETH', 'ETH', 'WMATIC', 'MATIC', 'WAVAX', 'AVAX'];
+        if (nativeSymbols.includes(tokenSymbol)) {
+            const fallbackPrices = {
+                'WBNB': 600, 'BNB': 600,
+                'WETH': 3500, 'ETH': 3500,
+                'WMATIC': 0.5, 'MATIC': 0.5,
+                'WAVAX': 35, 'AVAX': 35,
+            };
+            return cacheManager.getNativeTokenPrice(
+                tokenSymbol,
+                config.tokens,
+                dexNames,
+                fallbackPrices[tokenSymbol] || 1
+            );
+        }
+
+        // For other tokens, try cache then fallback
+        const nativePrice = cacheManager.getNativeTokenPrice('WBNB', config.tokens, dexNames, 600);
+        const cachedPrice = cacheManager.getTokenPriceUSD(tokenSymbol, config.tokens, dexNames, nativePrice);
+
+        if (cachedPrice !== null && cachedPrice > 0) {
+            return cachedPrice;
+        }
+
+        // Final fallback for known tokens
+        const fallbackPrices = {
             'BTCB': 95000,
+            'WBTC': 95000,
             'CAKE': 2.5,
         };
 
-        return prices[tokenSymbol] || 1;
+        return fallbackPrices[tokenSymbol] || 1;
     }
 
     /**

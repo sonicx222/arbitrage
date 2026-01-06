@@ -245,12 +245,15 @@ describe('ProfitCalculator', () => {
         test('should return calculator statistics', () => {
             const stats = profitCalculator.getStats();
 
-            expect(stats).toHaveProperty('bnbPriceUSD');
+            expect(stats).toHaveProperty('nativeTokenSymbol');
+            expect(stats).toHaveProperty('nativeTokenPriceUSD');
             expect(stats).toHaveProperty('flashLoanFee');
             expect(stats).toHaveProperty('slippageBuffer');
             expect(stats).toHaveProperty('minProfitUSD');
             expect(stats).toHaveProperty('gasEstimates');
+            expect(stats).toHaveProperty('dynamicPricing');
             expect(stats.flashLoanFee).toBe(0.0025);
+            expect(stats.dynamicPricing).toBe(true);
         });
     });
 });

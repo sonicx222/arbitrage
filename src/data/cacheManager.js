@@ -213,6 +213,109 @@ class CacheManager {
     }
 
     /**
+     * Get native token price in USD from cached stable pair data
+     *
+     * Looks for pairs like WBNB/USDT, WETH/USDC to derive native token prices.
+     * Returns fallback price if no cached data available.
+     *
+     * @param {string} nativeSymbol - Native token symbol (e.g., 'WBNB', 'WETH', 'MATIC')
+     * @param {Object} tokensConfig - Token configuration with addresses
+     * @param {Array<string>} dexNames - DEX names to search
+     * @param {number} fallbackPrice - Default price if no cache data
+     * @returns {number} Native token price in USD
+     */
+    getNativeTokenPrice(nativeSymbol, tokensConfig, dexNames, fallbackPrice = 1) {
+        // Stable tokens to pair against (in priority order)
+        const stableSymbols = ['USDT', 'USDC', 'BUSD', 'DAI', 'FDUSD'];
+
+        const nativeToken = tokensConfig[nativeSymbol];
+        if (!nativeToken) {
+            log.debug(`Native token ${nativeSymbol} not in config, using fallback`);
+            return fallbackPrice;
+        }
+
+        // Try each stable token
+        for (const stableSymbol of stableSymbols) {
+            const stableToken = tokensConfig[stableSymbol];
+            if (!stableToken) continue;
+
+            // Try each DEX
+            for (const dexName of dexNames) {
+                const priceKey = this.getPriceKey(nativeToken.address, stableToken.address, dexName);
+                const priceData = this.priceCache.get(priceKey);
+
+                if (priceData && priceData.data) {
+                    // The price in cache is "amount of stableToken per 1 nativeToken"
+                    // This is already the USD price since stables are ~$1
+                    const price = priceData.data.price;
+
+                    if (price > 0) {
+                        log.debug(`Got ${nativeSymbol} price from ${dexName} ${nativeSymbol}/${stableSymbol}: $${price.toFixed(2)}`);
+                        return price;
+                    }
+                }
+            }
+        }
+
+        log.debug(`No cached ${nativeSymbol}/stable pair found, using fallback: $${fallbackPrice}`);
+        return fallbackPrice;
+    }
+
+    /**
+     * Get token price in USD from cached pair data
+     *
+     * @param {string} tokenSymbol - Token symbol
+     * @param {Object} tokensConfig - Token configuration with addresses
+     * @param {Array<string>} dexNames - DEX names to search
+     * @param {number} nativeTokenPriceUSD - Native token price for indirect pricing
+     * @returns {number|null} Token price in USD or null if not found
+     */
+    getTokenPriceUSD(tokenSymbol, tokensConfig, dexNames, nativeTokenPriceUSD) {
+        // Stablecoins are always $1
+        const stableSymbols = ['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'FDUSD'];
+        if (stableSymbols.includes(tokenSymbol)) {
+            return 1.0;
+        }
+
+        const token = tokensConfig[tokenSymbol];
+        if (!token) return null;
+
+        // First try direct stable pair
+        for (const stableSymbol of stableSymbols) {
+            const stableToken = tokensConfig[stableSymbol];
+            if (!stableToken) continue;
+
+            for (const dexName of dexNames) {
+                const priceKey = this.getPriceKey(token.address, stableToken.address, dexName);
+                const priceData = this.priceCache.get(priceKey);
+
+                if (priceData && priceData.data && priceData.data.price > 0) {
+                    return priceData.data.price;
+                }
+            }
+        }
+
+        // Try native token pair and convert
+        const nativeSymbols = ['WBNB', 'WETH', 'WMATIC', 'WAVAX', 'WFTM'];
+        for (const nativeSymbol of nativeSymbols) {
+            const nativeToken = tokensConfig[nativeSymbol];
+            if (!nativeToken) continue;
+
+            for (const dexName of dexNames) {
+                const priceKey = this.getPriceKey(token.address, nativeToken.address, dexName);
+                const priceData = this.priceCache.get(priceKey);
+
+                if (priceData && priceData.data && priceData.data.price > 0) {
+                    // Price is in native tokens, convert to USD
+                    return priceData.data.price * nativeTokenPriceUSD;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Get cache statistics
      */
     getStats() {

@@ -10,7 +10,7 @@ export default {
     // Chain identification
     name: 'Ethereum Mainnet',
     chainId: 1,
-    enabled: process.env.ETH_ENABLED === 'true',
+    enabled: process.env.ETH_ENABLED !== 'false',
     blockTime: 12000, // 12 seconds average
 
     // Native token
@@ -112,7 +112,7 @@ export default {
         },
         DAI: {
             symbol: 'DAI',
-            address: '0x6B175474E89094C44Da98b954EescdeCB5BAeF36',
+            address: '0x6B175474E89094C44Da98b954EedeAC8b5bAef36',
             decimals: 18,
         },
         WBTC: {

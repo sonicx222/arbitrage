@@ -1,5 +1,8 @@
 import { jest } from '@jest/globals';
 
+// Force single-chain mode for this test
+process.env.MULTI_CHAIN_MODE = 'false';
+
 // Define mocks BEFORE any imports
 jest.unstable_mockModule('ethers', () => {
     const mockEthers = {

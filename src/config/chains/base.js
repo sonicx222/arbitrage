@@ -10,7 +10,7 @@ export default {
     // Chain identification
     name: 'Base Mainnet',
     chainId: 8453,
-    enabled: process.env.BASE_ENABLED === 'true',
+    enabled: process.env.BASE_ENABLED !== 'false',
     blockTime: 2000, // ~2 seconds
 
     // Native token
@@ -156,7 +156,7 @@ export default {
     trading: {
         minProfitPercentage: parseFloat(process.env.BASE_MIN_PROFIT || '0.2'),
         maxSlippage: parseFloat(process.env.BASE_MAX_SLIPPAGE || '0.5'),
-        gasPriceGwei: parseInt(process.env.BASE_GAS_PRICE || '0.01'),
+        gasPriceGwei: parseFloat(process.env.BASE_GAS_PRICE || '0.01'),
         estimatedGasLimit: 400000,
     },
 

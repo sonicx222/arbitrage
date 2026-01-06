@@ -119,4 +119,69 @@ describe('CacheManager', () => {
             expect(key1).toBe(key2);
         });
     });
+
+    describe('Dynamic Token Pricing', () => {
+        const mockTokensConfig = {
+            'WBNB': { symbol: 'WBNB', address: '0xWBNB', decimals: 18 },
+            'USDT': { symbol: 'USDT', address: '0xUSDT', decimals: 18 },
+            'USDC': { symbol: 'USDC', address: '0xUSDC', decimals: 6 },
+            'CAKE': { symbol: 'CAKE', address: '0xCAKE', decimals: 18 },
+        };
+        const mockDexNames = ['pancakeswap', 'biswap'];
+
+        beforeEach(() => {
+            cacheManager.clearAll();
+        });
+
+        test('should return fallback price when no cache data exists', () => {
+            const price = cacheManager.getNativeTokenPrice('WBNB', mockTokensConfig, mockDexNames, 600);
+            expect(price).toBe(600);
+        });
+
+        test('should return cached native token price from stable pair', () => {
+            // Set up cached price for WBNB/USDT pair
+            const priceKey = cacheManager.getPriceKey('0xWBNB', '0xUSDT', 'pancakeswap');
+            cacheManager.setPrice(priceKey, { price: 580.5 }, 1000);
+
+            const price = cacheManager.getNativeTokenPrice('WBNB', mockTokensConfig, mockDexNames, 600);
+            expect(price).toBeCloseTo(580.5, 1);
+        });
+
+        test('should try multiple stables in order', () => {
+            // Only USDC pair exists
+            const priceKey = cacheManager.getPriceKey('0xWBNB', '0xUSDC', 'pancakeswap');
+            cacheManager.setPrice(priceKey, { price: 575 }, 1000);
+
+            const price = cacheManager.getNativeTokenPrice('WBNB', mockTokensConfig, mockDexNames, 600);
+            expect(price).toBeCloseTo(575, 1);
+        });
+
+        test('should return 1.0 for stablecoins', () => {
+            const price = cacheManager.getTokenPriceUSD('USDT', mockTokensConfig, mockDexNames, 600);
+            expect(price).toBe(1.0);
+        });
+
+        test('should return null for unknown token with no cache', () => {
+            const price = cacheManager.getTokenPriceUSD('UNKNOWN', mockTokensConfig, mockDexNames, 600);
+            expect(price).toBeNull();
+        });
+
+        test('should return cached price for token via stable pair', () => {
+            // Set up cached price for CAKE/USDT pair
+            const priceKey = cacheManager.getPriceKey('0xCAKE', '0xUSDT', 'pancakeswap');
+            cacheManager.setPrice(priceKey, { price: 2.5 }, 1000);
+
+            const price = cacheManager.getTokenPriceUSD('CAKE', mockTokensConfig, mockDexNames, 600);
+            expect(price).toBeCloseTo(2.5, 1);
+        });
+
+        test('should return cached price for token via native pair', () => {
+            // Set up cached price for CAKE/WBNB pair (no CAKE/USDT)
+            const priceKey = cacheManager.getPriceKey('0xCAKE', '0xWBNB', 'pancakeswap');
+            cacheManager.setPrice(priceKey, { price: 0.004 }, 1000); // 0.004 BNB = $2.4 at $600 BNB
+
+            const price = cacheManager.getTokenPriceUSD('CAKE', mockTokensConfig, mockDexNames, 600);
+            expect(price).toBeCloseTo(2.4, 1);
+        });
+    });
 });

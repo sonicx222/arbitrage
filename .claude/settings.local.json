@@ -4,7 +4,14 @@
       "Bash(npm test:*)",
       "Bash(npm install:*)",
       "Bash(node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(timeout 5 node:*)",
+      "Bash(MULTI_CHAIN_MODE=true ETH_ENABLED=true timeout 5 node:*)",
+      "Bash(node -e \"\nconst configs = [''bsc'', ''ethereum'', ''polygon'', ''arbitrum'', ''base'', ''avalanche''];\nconst validHex = /^0x[a-fA-F0-9]{40}$/;\n\nfor \\(const chain of configs\\) {\n    const config = await import\\(''./src/config/chains/'' + chain + ''.js''\\);\n    const tokens = config.default.tokens;\n    for \\(const [symbol, token] of Object.entries\\(tokens\\)\\) {\n        if \\(!validHex.test\\(token.address\\)\\) {\n            console.log\\(chain + ''.'' + symbol + '': INVALID - '' + token.address\\);\n        }\n    }\n}\nconsole.log\\(''Done checking addresses''\\);\n\")",
+      "Bash(node -e:*)",
+      "Bash(timeout 8 node:*)",
+      "Bash(timeout 12 node:*)",
+      "Bash(timeout 15 node:*)"
     ]
   }
 }
