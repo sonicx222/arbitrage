@@ -378,6 +378,8 @@ export default class WorkerCoordinator extends EventEmitter {
                 }
             }
         }, this.heartbeatInterval);
+        // Unref to not block process exit
+        this.heartbeatTimer.unref();
     }
 
     /**

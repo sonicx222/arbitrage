@@ -69,7 +69,7 @@ class BlockMonitor extends EventEmitter {
         this.lastBlockNumber = initialBlock;
         this.lastBlockTime = Date.now();
 
-        // Poll for new blocks
+        // Poll for new blocks (unref to not block process exit)
         this.pollingInterval = setInterval(async () => {
             try {
                 const currentBlock = await rpcManager.withRetry(async (provider) => {
@@ -84,6 +84,7 @@ class BlockMonitor extends EventEmitter {
                 log.error('Error polling for blocks', { error: error.message });
             }
         }, 3000); // Poll every 3 seconds (average BSC block time)
+        this.pollingInterval.unref();
     }
 
     /**

@@ -20,10 +20,11 @@ class PerformanceTracker {
         this.blockProcessingTimes = [];
         this.maxSamples = 100; // Keep last 100 block processing times
 
-        // Generate hourly reports
+        // Generate hourly reports (unref to not block process exit)
         this.reportInterval = setInterval(() => {
             this.generateReport();
         }, 3600000); // 1 hour
+        this.reportInterval.unref();
 
         log.info('Performance Tracker initialized');
     }

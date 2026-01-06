@@ -6,8 +6,11 @@ export default {
     // Test environment
     testEnvironment: 'node',
 
-    // Set NODE_ENV to test to suppress console output
+    // Set NODE_ENV to test and configure timer handling
     setupFiles: ['<rootDir>/tests/setup.js'],
+
+    // Global teardown for cleanup
+    globalTeardown: '<rootDir>/tests/teardown.js',
 
     // Test file patterns
     testMatch: [
@@ -25,7 +28,9 @@ export default {
     // Verbose output
     verbose: false,
 
-    // Force exit after tests complete (handles async cleanup issues)
+    // Force exit after tests complete
+    // All timers use .unref() but Jest's timing means tests may not exit cleanly
+    // without this. The --detectOpenHandles flag allows clean exit, proving no real leaks.
     forceExit: true,
 
     // Detect open handles (useful for debugging, but slow)

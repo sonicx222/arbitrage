@@ -143,6 +143,8 @@ class ChainWorker {
                 });
             }
         }, 5000);
+        // Unref to not block process exit
+        this.heartbeatTimer.unref();
     }
 
     /**
