@@ -28,9 +28,18 @@ describe('BlockMonitor', () => {
         blockMonitor.provider = null;
         blockMonitor.pollingInterval = null;
         blockMonitor.reconnectAttempts = 0;
+        // Remove all event listeners to prevent leaks
+        blockMonitor.removeAllListeners();
     });
 
     afterEach(async () => {
+        // Ensure all timers are cleared
+        if (blockMonitor.pollingInterval) {
+            clearInterval(blockMonitor.pollingInterval);
+            blockMonitor.pollingInterval = null;
+        }
+        blockMonitor.isRunning = false;
+        blockMonitor.removeAllListeners();
         await blockMonitor.stop();
     });
 

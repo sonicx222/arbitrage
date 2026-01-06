@@ -77,9 +77,14 @@ describe('ArbitrageBot Integration Flow', () => {
     });
 
     afterEach(async () => {
+        // Restore console mocks if they were mocked
+        if (console.log.mockRestore) console.log.mockRestore();
+        if (console.error.mockRestore) console.error.mockRestore();
+
         if (bot) {
             await bot.stop();
         }
+        blockHandler = null;
     });
 
     test('should start and subscribe to block events', async () => {

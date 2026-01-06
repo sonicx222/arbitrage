@@ -53,15 +53,17 @@ const fileFormat = winston.format.combine(
 );
 
 // Create transports array
-const transports = [
-    // Console transport (always enabled)
-    new winston.transports.Console({
-        format: consoleFormat,
-        level: process.env.NODE_ENV === 'test'
-            ? 'error'
-            : (config.debugMode ? 'debug' : config.logging.level),
-    }),
-];
+const transports = [];
+
+// Only add console transport if not in test mode, or if explicitly enabled
+if (process.env.NODE_ENV !== 'test' || process.env.LOG_IN_TESTS === 'true') {
+    transports.push(
+        new winston.transports.Console({
+            format: consoleFormat,
+            level: config.debugMode ? 'debug' : config.logging.level,
+        })
+    );
+}
 
 // Add file transports if enabled
 if (config.logging.toFile) {
@@ -90,6 +92,15 @@ if (config.logging.toFile) {
             format: fileFormat,
             maxsize: 5242880, // 5MB
             maxFiles: 10,
+        })
+    );
+}
+
+// Add a silent transport if no transports are configured (prevents Winston warnings in tests)
+if (transports.length === 0) {
+    transports.push(
+        new winston.transports.Console({
+            silent: true,
         })
     );
 }

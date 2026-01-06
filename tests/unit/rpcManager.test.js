@@ -45,6 +45,12 @@ describe('RPCManager', () => {
         });
     });
 
+    afterAll(async () => {
+        // Cleanup to prevent open handles
+        await rpcManager.cleanup();
+        rpcManager.removeAllListeners();
+    });
+
     describe('Provider Selection', () => {
         test('should prioritize Alchemy when available and healthy', () => {
             const alchemyEndpoint = rpcManager.httpProviders[0].endpoint;
