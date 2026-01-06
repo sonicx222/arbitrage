@@ -164,8 +164,6 @@ export default class BscChain extends BaseChain {
                     opportunities: enrichedOpportunities,
                     processingTime: Date.now() - startTime,
                 });
-
-                this.log('info', `Found ${enrichedOpportunities.length} opportunities in block ${blockNumber}`);
             }
 
             return enrichedOpportunities;

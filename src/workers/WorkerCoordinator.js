@@ -181,8 +181,6 @@ export default class WorkerCoordinator extends EventEmitter {
             opportunities,
             processingTime,
         });
-
-        log.info(`Received ${opportunities.length} opportunities from chain ${chainId}`);
     }
 
     /**

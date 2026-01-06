@@ -126,9 +126,9 @@ class PriceFetcher {
                 });
                 allResults.push(...results);
 
-                // Progress heartbeat for debug mode
+                // Progress heartbeat for debug mode only
                 if (config.debugMode && (i + BATCH_SIZE) % 400 === 0) {
-                    log.info(`⏳ Progress: Fetched ${i + batch.length}/${pairs.length} pair reserves...`);
+                    log.debug(`Price fetch progress: ${i + batch.length}/${pairs.length} pairs`);
                 }
             } catch (err) {
                 // Return failed results so indices stay aligned

@@ -171,8 +171,6 @@ export default class BaseChain extends EventEmitter {
                     opportunities: enrichedOpportunities,
                     processingTime: Date.now() - startTime,
                 });
-
-                this.log('info', `Found ${enrichedOpportunities.length} opportunities in block ${blockNumber}`);
             }
 
             return enrichedOpportunities;

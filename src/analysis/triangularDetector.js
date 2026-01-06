@@ -33,12 +33,7 @@ class TriangularDetector {
         // Cache for discovered paths (to avoid recalculating)
         this.pathCache = new Map();
 
-        log.info('Triangular Detector initialized', {
-            baseTokens: this.baseTokens.length,
-            totalTokens: this.allTokens.length,
-            minProfit: `${this.minProfitPercentage}%`,
-            minLiquidity: `$${this.minLiquidityUSD}`,
-        });
+        log.debug('Triangular Detector ready');
     }
 
     /**
@@ -65,7 +60,7 @@ class TriangularDetector {
         opportunities.sort((a, b) => b.estimatedProfitPercent - a.estimatedProfitPercent);
 
         if (opportunities.length > 0) {
-            log.info(`Found ${opportunities.length} triangular opportunities in ${Date.now() - startTime}ms`);
+            log.debug(`Triangular scan: ${opportunities.length} single-DEX paths in ${Date.now() - startTime}ms`);
         }
 
         return opportunities;
@@ -484,7 +479,7 @@ class TriangularDetector {
         opportunities.sort((a, b) => b.estimatedProfitPercent - a.estimatedProfitPercent);
 
         if (opportunities.length > 0) {
-            log.info(`Found ${opportunities.length} cross-DEX triangular opportunities in ${Date.now() - startTime}ms`);
+            log.debug(`Triangular scan: ${opportunities.length} cross-DEX paths in ${Date.now() - startTime}ms`);
         }
 
         return opportunities;

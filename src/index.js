@@ -9,6 +9,7 @@ import dashboard from './monitoring/dashboard.js';
 import executionManager from './execution/executionManager.js';
 import config from './config.js';
 import log from './utils/logger.js';
+import { formatChain, formatUSD, formatPercent } from './utils/logFormatter.js';
 
 // Multi-chain imports
 import WorkerCoordinator from './workers/WorkerCoordinator.js';
@@ -218,7 +219,7 @@ class ArbitrageBot {
                 this.crossChainDetector.updateChainPrices(chainId, prices, blockNumber);
             }
 
-            // Process opportunities
+            // Process opportunities (details already logged by per-chain arbitrageDetector)
             for (const opportunity of opportunities) {
                 // Add chain context to opportunity
                 opportunity.chainId = chainId;
@@ -226,13 +227,6 @@ class ArbitrageBot {
 
                 // Send alert
                 await alertManager.notify(opportunity);
-
-                // Log opportunity
-                log.info(`Opportunity on chain ${chainId}:`, {
-                    type: opportunity.type,
-                    profit: opportunity.profitPercent?.toFixed(2) + '%',
-                    pair: opportunity.pair || opportunity.path?.join(' -> '),
-                });
 
                 // Execute if enabled (multi-chain execution)
                 if (config.execution?.enabled) {
@@ -258,13 +252,7 @@ class ArbitrageBot {
         // Handle cross-chain opportunities
         if (this.crossChainDetector) {
             this.crossChainDetector.on('crossChainOpportunity', async (opportunity) => {
-                log.info('Cross-chain opportunity detected!', {
-                    token: opportunity.token,
-                    buyChain: opportunity.buyChain,
-                    sellChain: opportunity.sellChain,
-                    spread: opportunity.spreadPercent?.toFixed(2) + '%',
-                    netProfit: opportunity.netProfitPercent?.toFixed(2) + '%',
-                });
+                log.info(`🌐 Cross-chain: ${opportunity.token} | ${formatChain(opportunity.buyChain)}→${formatChain(opportunity.sellChain)} | Spread: ${formatPercent(opportunity.spreadPercent)} | Net: ${formatPercent(opportunity.netProfitPercent)}`);
 
                 // Send alert for cross-chain opportunity
                 await alertManager.notify({
@@ -276,32 +264,26 @@ class ArbitrageBot {
             });
         }
 
-        // Handle mempool events
+        // Handle mempool events (debug level - can be noisy)
         if (this.mempoolMonitor) {
             this.mempoolMonitor.on('largeSwap', (swapInfo) => {
-                log.info('Large swap detected in mempool', {
-                    txHash: swapInfo.txHash?.slice(0, 10) + '...',
-                    method: swapInfo.method,
-                    value: swapInfo.value,
-                });
-
-                // Could trigger frontrunning logic here if enabled
+                log.debug(`🔮 Mempool: ${swapInfo.method} | ${swapInfo.txHash?.slice(0, 14)}... | ${swapInfo.value}`);
             });
         }
 
         // Handle worker errors
         this.workerCoordinator.on('workerError', ({ chainId, error }) => {
-            log.error(`Worker error on chain ${chainId}`, { error });
+            log.error(`Worker ${formatChain(chainId)} error: ${error?.message || error}`);
             dashboard.recordError();
         });
 
-        // Handle worker lifecycle events
+        // Handle worker lifecycle events (debug level - not critical for users)
         this.workerCoordinator.on('workerStarted', ({ chainId }) => {
-            log.info(`Worker started for chain ${chainId}`);
+            log.debug(`Worker ${formatChain(chainId)} started`);
         });
 
         this.workerCoordinator.on('workerStopped', ({ chainId }) => {
-            log.info(`Worker stopped for chain ${chainId}`);
+            log.debug(`Worker ${formatChain(chainId)} stopped`);
         });
     }
 
@@ -374,9 +356,8 @@ class ArbitrageBot {
             dashboard.recordOpportunities(allOpportunities.length);
 
             if (allOpportunities.length > 0) {
-                log.info(`Found ${allOpportunities.length} arbitrage opportunities in block ${blockNumber}`);
-
-                // Process each opportunity
+                // Note: Opportunity details are already logged by arbitrageDetector
+                // Process each opportunity for alerts and execution
                 for (const opportunity of allOpportunities) {
                     // Send alert
                     await alertManager.notify(opportunity);

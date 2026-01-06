@@ -5,6 +5,7 @@ import profitCalculator from './profitCalculator.js';
 import cacheManager from '../data/cacheManager.js';
 import config from '../config.js';
 import log from '../utils/logger.js';
+import { formatOpportunity, formatOpportunitySummary, formatDuration } from '../utils/logFormatter.js';
 
 /**
  * Arbitrage Detector - Identifies profitable arbitrage opportunities across DEXs
@@ -23,11 +24,7 @@ class ArbitrageDetector {
         // Triangular arbitrage enabled by config
         this.triangularEnabled = config.triangular?.enabled !== false;
 
-        log.info('Arbitrage Detector initialized', {
-            minProfit: `${this.minProfitPercentage}%`,
-            gasPrice: `${this.gasPriceGwei} Gwei`,
-            triangularEnabled: this.triangularEnabled,
-        });
+        log.debug('Arbitrage Detector ready');
     }
 
     /**
@@ -82,20 +79,21 @@ class ArbitrageDetector {
             return profitB - profitA;
         });
 
-        // 5. Log results
+        // 5. Log results - single consolidated log entry
         const duration = Date.now() - startTime;
         if (opportunities.length > 0) {
-            const crossDex = opportunities.filter(o => o.type === 'cross-dex').length;
-            const triangular = opportunities.filter(o => o.type === 'triangular').length;
+            // Summary line with counts and top profit
+            const summary = formatOpportunitySummary(opportunities, duration);
+            log.info(`💰 ${summary}`);
 
-            log.info(`Found ${opportunities.length} profitable opportunities in ${duration}ms`, {
-                crossDex,
-                triangular,
-                topProfit: `$${opportunities[0]?.profitCalculation?.netProfitUSD?.toFixed(2) || 'N/A'}`,
-            });
-        } else if (config.debugMode) {
-            log.debug(`No opportunities found in ${pairs.length} pairs (${duration}ms)`);
+            // Log top 3 opportunities with consistent formatting
+            const topOpps = opportunities.slice(0, 3);
+            for (const opp of topOpps) {
+                const { icon, text } = formatOpportunity(opp);
+                log.info(`   ${icon} ${text}`);
+            }
         }
+        // Note: Removed "no opportunities" log - it's noise when running continuously
 
         return opportunities;
     }
@@ -138,8 +136,6 @@ class ArbitrageDetector {
 
         if (netProfitUSD <= 1.0) return null; // Min $1 profit after gas
 
-        log.info(`API: Opportunity ${pairKey}: Profit $${netProfitUSD.toFixed(2)} (${roiPercent.toFixed(2)}%) | Size: $${tradeSizeUSD.toFixed(2)}`);
-
         return {
             pairKey, tokenA, tokenB,
             buyDex, sellDex,
@@ -173,9 +169,7 @@ class ArbitrageDetector {
             const crossDexOpps = triangularDetector.findCrossDexTriangularOpportunities(prices, blockNumber);
             opportunities.push(...crossDexOpps);
 
-            if (triangularOpps.length > 0 || crossDexOpps.length > 0) {
-                log.debug(`Found ${triangularOpps.length} single-DEX + ${crossDexOpps.length} cross-DEX triangular`);
-            }
+            // Note: Summary logging is handled by detectOpportunities, not here
         } catch (err) {
             log.error('Triangular detection error', { error: err.message });
         }
