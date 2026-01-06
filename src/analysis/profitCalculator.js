@@ -3,6 +3,16 @@ import config from '../config.js';
 import log from '../utils/logger.js';
 import { FLASH_LOAN_FEE } from '../contracts/abis.js';
 
+// Lazy import to avoid circular dependency
+let triangularDetector = null;
+const getTriangularDetector = async () => {
+    if (!triangularDetector) {
+        const module = await import('./triangularDetector.js');
+        triangularDetector = module.default;
+    }
+    return triangularDetector;
+};
+
 /**
  * Profit Calculator
  *
@@ -116,43 +126,55 @@ class ProfitCalculator {
     }
 
     /**
-     * Calculate profit for triangular arbitrage
+     * Calculate profit for triangular arbitrage using accurate AMM formula
+     *
+     * Uses the Uniswap V2 getAmountOut formula with actual reserves to calculate
+     * price impact at each hop, providing much more accurate profit estimates
+     * than simple price ratio multiplication.
      *
      * @private
      */
     _calculateTriangularProfit(opportunity, gasPrice, bnbPrice) {
         const {
-            estimatedProfitPercent,
+            reserves,
             minLiquidityUSD,
             dexName,
             path,
         } = opportunity;
 
-        // Get base token price (first token in path)
+        // Get base token info
         const baseToken = path[0];
         const baseTokenPriceUSD = this._getTokenPriceUSD(baseToken, bnbPrice);
+        const tokenDecimals = config.tokens[baseToken]?.decimals || 18;
 
-        // Determine optimal trade size (limited by liquidity)
-        const maxTradeUSD = Math.min(5000, minLiquidityUSD * 0.1); // Max 10% of pool
-        const tradeSizeUSD = maxTradeUSD;
+        // Determine max trade size (limited by liquidity - max 10% of smallest pool)
+        const maxTradeUSD = Math.min(
+            config.triangular?.maxTradeSizeUSD || 5000,
+            minLiquidityUSD * 0.1
+        );
 
-        // Gross profit from cycle rate
-        const grossProfitUSD = tradeSizeUSD * (estimatedProfitPercent / 100);
+        // Convert trade size to token amount
+        const tradeSizeTokens = maxTradeUSD / baseTokenPriceUSD;
+        const inputAmount = BigInt(Math.floor(tradeSizeTokens * Math.pow(10, tokenDecimals)));
 
-        // Flash loan fee
-        const flashFeeUSD = tradeSizeUSD * this.flashLoanFee;
+        // Calculate exact output using AMM formula with reserves
+        const { grossProfitUSD, optimalInputAmount, tradeSizeUSD: actualTradeSizeUSD } =
+            this._calculateExactTriangularProfit(opportunity, inputAmount, tokenDecimals, baseTokenPriceUSD);
+
+        // Flash loan fee (on the actual trade size)
+        const flashFeeUSD = actualTradeSizeUSD * this.flashLoanFee;
 
         // Gas cost (3 swaps for triangular)
         const swapCount = 3;
         const gasCostUSD = this._estimateGasCostUSD(gasPrice, swapCount, bnbPrice);
 
-        // Slippage buffer
+        // Slippage buffer (reduced since we're using accurate AMM math)
         const slippageUSD = grossProfitUSD * this.slippageBuffer;
 
         // Net profit
         const netProfitUSD = grossProfitUSD - flashFeeUSD - gasCostUSD - slippageUSD;
-        const netProfitPercent = tradeSizeUSD > 0
-            ? (netProfitUSD / tradeSizeUSD) * 100
+        const netProfitPercent = actualTradeSizeUSD > 0
+            ? (netProfitUSD / actualTradeSizeUSD) * 100
             : 0;
 
         // Is it profitable?
@@ -167,7 +189,8 @@ class ProfitCalculator {
             slippageUSD,
             netProfitUSD,
             netProfitPercent,
-            tradeSizeUSD,
+            tradeSizeUSD: actualTradeSizeUSD,
+            optimalInputAmount: optimalInputAmount.toString(),
             isProfitable,
             breakdown: {
                 gross: grossProfitUSD,
@@ -179,6 +202,118 @@ class ProfitCalculator {
             dexName,
             path: path.join(' -> '),
         };
+    }
+
+    /**
+     * Calculate exact triangular profit using AMM getAmountOut formula
+     *
+     * This uses the actual reserves to simulate each swap, accounting for
+     * price impact at every hop.
+     *
+     * @private
+     * @param {Object} opportunity - Triangular opportunity with reserves
+     * @param {BigInt} maxInputAmount - Maximum input amount to consider
+     * @param {number} tokenDecimals - Decimals of base token
+     * @param {number} baseTokenPriceUSD - USD price of base token
+     * @returns {Object} { grossProfitUSD, optimalInputAmount, tradeSizeUSD }
+     */
+    _calculateExactTriangularProfit(opportunity, maxInputAmount, tokenDecimals, baseTokenPriceUSD) {
+        const { reserves, dexName } = opportunity;
+        const fee = config.dex[dexName]?.fee || 0.003;
+
+        // If no reserves data, fall back to simple calculation
+        if (!reserves || reserves.length !== 3) {
+            const simpleProfitPercent = opportunity.estimatedProfitPercent || 0;
+            const tradeSizeUSD = Number(maxInputAmount) / Math.pow(10, tokenDecimals) * baseTokenPriceUSD;
+            return {
+                grossProfitUSD: tradeSizeUSD * (simpleProfitPercent / 100),
+                optimalInputAmount: maxInputAmount,
+                tradeSizeUSD,
+            };
+        }
+
+        // Binary search for optimal input amount (10 check points)
+        const minAmount = maxInputAmount / 50n; // Start at 2% of max
+        const checkPoints = 10;
+        const increment = (maxInputAmount - minAmount) / BigInt(checkPoints);
+
+        let bestProfit = 0n;
+        let bestAmount = minAmount;
+
+        for (let i = 0; i <= checkPoints; i++) {
+            const testAmount = minAmount + (increment * BigInt(i));
+            if (testAmount <= 0n) continue;
+
+            const outputAmount = this._simulateTriangularSwaps(testAmount, reserves, fee);
+            const profit = outputAmount - testAmount;
+
+            if (profit > bestProfit) {
+                bestProfit = profit;
+                bestAmount = testAmount;
+            } else if (profit < bestProfit && bestProfit > 0n) {
+                // Passed the peak, stop searching
+                break;
+            }
+        }
+
+        // Convert to USD
+        const profitFloat = Number(bestProfit) / Math.pow(10, tokenDecimals);
+        const grossProfitUSD = profitFloat * baseTokenPriceUSD;
+        const tradeSizeUSD = (Number(bestAmount) / Math.pow(10, tokenDecimals)) * baseTokenPriceUSD;
+
+        return {
+            grossProfitUSD,
+            optimalInputAmount: bestAmount,
+            tradeSizeUSD,
+        };
+    }
+
+    /**
+     * Simulate triangular swaps using Uniswap V2 AMM formula
+     *
+     * @private
+     * @param {BigInt} inputAmount - Amount to swap
+     * @param {Array} reserves - Array of {in, out} reserves for each hop
+     * @param {number} fee - DEX fee as decimal (e.g., 0.003)
+     * @returns {BigInt} Final output amount
+     */
+    _simulateTriangularSwaps(inputAmount, reserves, fee) {
+        let currentAmount = inputAmount;
+
+        for (let i = 0; i < reserves.length; i++) {
+            const { in: reserveIn, out: reserveOut } = reserves[i];
+            currentAmount = this._getAmountOut(
+                currentAmount,
+                BigInt(reserveIn),
+                BigInt(reserveOut),
+                fee
+            );
+        }
+
+        return currentAmount;
+    }
+
+    /**
+     * Calculate output amount using Uniswap V2 formula
+     *
+     * amountOut = (amountIn * (1-fee) * reserveOut) / (reserveIn + amountIn * (1-fee))
+     *
+     * @private
+     * @param {BigInt} amountIn - Input amount
+     * @param {BigInt} reserveIn - Reserve of input token
+     * @param {BigInt} reserveOut - Reserve of output token
+     * @param {number} fee - Fee as decimal
+     * @returns {BigInt} Output amount
+     */
+    _getAmountOut(amountIn, reserveIn, reserveOut, fee) {
+        if (reserveIn === 0n || reserveOut === 0n || amountIn === 0n) return 0n;
+
+        const feeNumerator = BigInt(Math.floor((1 - fee) * 10000));
+        const amountInWithFee = amountIn * feeNumerator;
+        const numerator = amountInWithFee * reserveOut;
+        const denominator = (reserveIn * 10000n) + amountInWithFee;
+
+        return denominator > 0n ? numerator / denominator : 0n;
     }
 
     /**
