@@ -10,13 +10,56 @@ import executionManager from './execution/executionManager.js';
 import config from './config.js';
 import log from './utils/logger.js';
 
+// Multi-chain imports
+import WorkerCoordinator from './workers/WorkerCoordinator.js';
+import CrossChainDetector from './analysis/CrossChainDetector.js';
+import MultiHopDetector from './analysis/MultiHopDetector.js';
+import MempoolMonitor from './analysis/MempoolMonitor.js';
+import { chainConfigs, getEnabledChains, globalConfig } from './config/index.js';
+
 /**
- * Main application orchestrator for BSC Arbitrage Bot
+ * Main application orchestrator for Arbitrage Bot
+ *
+ * Supports two modes:
+ * - Single-chain mode: Original BSC-only operation (backward compatible)
+ * - Multi-chain mode: Parallel worker threads for multiple chains
+ *
+ * Mode is determined by:
+ * 1. MULTI_CHAIN_MODE env var (explicit)
+ * 2. Number of enabled chains in config (auto-detect)
  */
 class ArbitrageBot {
     constructor() {
         this.isRunning = false;
         this.processingBlock = false;
+
+        // Multi-chain components (initialized if multi-chain mode)
+        this.workerCoordinator = null;
+        this.crossChainDetector = null;
+        this.multiHopDetector = null;
+        this.mempoolMonitor = null;
+
+        // Determine operating mode
+        this.multiChainMode = this.determineMode();
+    }
+
+    /**
+     * Determine whether to run in single-chain or multi-chain mode
+     */
+    determineMode() {
+        // Explicit environment variable takes precedence
+        if (process.env.MULTI_CHAIN_MODE !== undefined) {
+            return process.env.MULTI_CHAIN_MODE === 'true';
+        }
+
+        // Auto-detect based on enabled chains
+        try {
+            const enabledChains = getEnabledChains();
+            return enabledChains.length > 1;
+        } catch (e) {
+            // If config/index.js fails, fall back to single-chain
+            return false;
+        }
     }
 
     /**
@@ -24,35 +67,17 @@ class ArbitrageBot {
      */
     async start() {
         try {
-            log.info('🚀 BSC Arbitrage Bot v2.0.0 starting...');
-            log.info('Configuration:', {
-                minProfit: `${config.trading.minProfitPercentage}%`,
-                maxPairs: config.monitoring.maxPairsToMonitor,
-                dexes: Object.keys(config.dex).filter(dex => config.dex[dex].enabled),
-                executionEnabled: config.execution?.enabled || false,
-                executionMode: config.execution?.mode || 'detection-only',
-                triangularEnabled: config.triangular?.enabled !== false,
-            });
+            const version = this.multiChainMode ? 'v3.0.0 (Multi-Chain)' : 'v2.0.0';
+            log.info(`Arbitrage Bot ${version} starting...`);
 
-            // Set up event handlers
-            this.setupEventHandlers();
-
-            // Initialize execution manager if enabled
-            if (config.execution?.enabled) {
-                await executionManager.initialize();
-                log.info('Execution manager initialized', { mode: executionManager.mode });
+            if (this.multiChainMode) {
+                await this.startMultiChain();
+            } else {
+                await this.startSingleChain();
             }
 
-            // Start dashboard server
-            dashboard.start(this);
-            log.info(`Dashboard available at http://localhost:${dashboard.port}`);
-
-            // Start block monitoring
-            await blockMonitor.start();
-
             this.isRunning = true;
-            log.info('✅ Bot is now running and monitoring for arbitrage opportunities');
-            log.info(`📊 Monitoring ${Object.keys(config.tokens).length} tokens across ${Object.keys(config.dex).filter(d => config.dex[d].enabled).length} DEXs`);
+            log.info('Bot is now running and monitoring for arbitrage opportunities');
 
         } catch (error) {
             log.error('Failed to start bot', { error: error.message, stack: error.stack });
@@ -61,9 +86,94 @@ class ArbitrageBot {
     }
 
     /**
-     * Set up event handlers for block monitoring
+     * Start in single-chain mode (original BSC operation)
      */
-    setupEventHandlers() {
+    async startSingleChain() {
+        log.info('Starting in single-chain mode (BSC)');
+        log.info('Configuration:', {
+            minProfit: `${config.trading.minProfitPercentage}%`,
+            maxPairs: config.monitoring.maxPairsToMonitor,
+            dexes: Object.keys(config.dex).filter(dex => config.dex[dex].enabled),
+            executionEnabled: config.execution?.enabled || false,
+            executionMode: config.execution?.mode || 'detection-only',
+            triangularEnabled: config.triangular?.enabled !== false,
+        });
+
+        // Set up event handlers
+        this.setupSingleChainEventHandlers();
+
+        // Initialize execution manager if enabled
+        if (config.execution?.enabled) {
+            await executionManager.initialize();
+            log.info('Execution manager initialized', { mode: executionManager.mode });
+        }
+
+        // Start dashboard server
+        dashboard.start(this);
+        log.info(`Dashboard available at http://localhost:${dashboard.port}`);
+
+        // Start block monitoring
+        await blockMonitor.start();
+
+        log.info(`Monitoring ${Object.keys(config.tokens).length} tokens across ${Object.keys(config.dex).filter(d => config.dex[d].enabled).length} DEXs`);
+    }
+
+    /**
+     * Start in multi-chain mode with worker threads
+     */
+    async startMultiChain() {
+        const enabledChains = getEnabledChains();
+        log.info('Starting in multi-chain mode', {
+            chains: enabledChains.map(c => c.name),
+            chainCount: enabledChains.length,
+        });
+
+        // Initialize WorkerCoordinator
+        this.workerCoordinator = new WorkerCoordinator({
+            maxWorkers: globalConfig?.maxWorkers || 6,
+            workerTimeout: globalConfig?.workerTimeout || 30000,
+            restartDelay: globalConfig?.restartDelay || 5000,
+        });
+
+        // Initialize CrossChainDetector
+        this.crossChainDetector = new CrossChainDetector({
+            minProfitPercent: globalConfig?.crossChain?.minProfitPercent || 0.5,
+            maxPriceAge: globalConfig?.crossChain?.maxPriceAge || 10000,
+        });
+
+        // Initialize MultiHopDetector for each chain (used in workers)
+        this.multiHopDetector = new MultiHopDetector({
+            maxHops: globalConfig?.multiHop?.maxHops || 5,
+            minProfitPercent: globalConfig?.multiHop?.minProfitPercent || 0.3,
+        });
+
+        // Initialize MempoolMonitor (if any chain has it enabled)
+        const mempoolEnabled = enabledChains.some(c => c.mempool?.enabled);
+        if (mempoolEnabled) {
+            this.mempoolMonitor = new MempoolMonitor({
+                enabled: true,
+                minSwapSizeUSD: globalConfig?.mempool?.minSwapSizeUSD || 10000,
+            });
+            log.info('Mempool monitoring enabled');
+        }
+
+        // Set up multi-chain event handlers
+        this.setupMultiChainEventHandlers();
+
+        // Start dashboard server
+        dashboard.start(this);
+        log.info(`Dashboard available at http://localhost:${dashboard.port}`);
+
+        // Start all workers
+        await this.workerCoordinator.startAll(chainConfigs);
+
+        log.info(`Multi-chain monitoring started for ${enabledChains.length} chains`);
+    }
+
+    /**
+     * Set up event handlers for single-chain mode
+     */
+    setupSingleChainEventHandlers() {
         // Handle new blocks
         blockMonitor.on('newBlock', async (blockData) => {
             await this.handleNewBlock(blockData);
@@ -81,7 +191,113 @@ class ArbitrageBot {
     }
 
     /**
-     * Handle new block event
+     * Set up event handlers for multi-chain mode
+     */
+    setupMultiChainEventHandlers() {
+        if (!this.workerCoordinator) return;
+
+        // Handle opportunities from workers
+        this.workerCoordinator.on('opportunities', async (data) => {
+            const { chainId, blockNumber, opportunities, processingTime } = data;
+
+            // Update dashboard metrics
+            dashboard.recordBlock();
+            dashboard.recordOpportunities(opportunities.length);
+
+            // Update cross-chain detector with latest prices
+            if (this.crossChainDetector && opportunities.length > 0) {
+                // Extract prices from opportunities for cross-chain comparison
+                const prices = this.extractPricesFromOpportunities(opportunities);
+                this.crossChainDetector.updateChainPrices(chainId, prices, blockNumber);
+            }
+
+            // Process opportunities
+            for (const opportunity of opportunities) {
+                // Send alert
+                await alertManager.notify(opportunity);
+
+                // Log opportunity
+                log.info(`Opportunity on chain ${chainId}:`, {
+                    type: opportunity.type,
+                    profit: opportunity.profitPercent?.toFixed(2) + '%',
+                    pair: opportunity.pair || opportunity.path?.join(' -> '),
+                });
+            }
+
+            // Record performance
+            performanceTracker.recordBlockProcessing(blockNumber, processingTime, opportunities.length);
+        });
+
+        // Handle cross-chain opportunities
+        if (this.crossChainDetector) {
+            this.crossChainDetector.on('crossChainOpportunity', async (opportunity) => {
+                log.info('Cross-chain opportunity detected!', {
+                    token: opportunity.token,
+                    buyChain: opportunity.buyChain,
+                    sellChain: opportunity.sellChain,
+                    spread: opportunity.spreadPercent?.toFixed(2) + '%',
+                    netProfit: opportunity.netProfitPercent?.toFixed(2) + '%',
+                });
+
+                // Send alert for cross-chain opportunity
+                await alertManager.notify({
+                    ...opportunity,
+                    type: 'cross-chain',
+                });
+
+                dashboard.recordOpportunities(1);
+            });
+        }
+
+        // Handle mempool events
+        if (this.mempoolMonitor) {
+            this.mempoolMonitor.on('largeSwap', (swapInfo) => {
+                log.info('Large swap detected in mempool', {
+                    txHash: swapInfo.txHash?.slice(0, 10) + '...',
+                    method: swapInfo.method,
+                    value: swapInfo.value,
+                });
+
+                // Could trigger frontrunning logic here if enabled
+            });
+        }
+
+        // Handle worker errors
+        this.workerCoordinator.on('workerError', ({ chainId, error }) => {
+            log.error(`Worker error on chain ${chainId}`, { error });
+            dashboard.recordError();
+        });
+
+        // Handle worker lifecycle events
+        this.workerCoordinator.on('workerStarted', ({ chainId }) => {
+            log.info(`Worker started for chain ${chainId}`);
+        });
+
+        this.workerCoordinator.on('workerStopped', ({ chainId }) => {
+            log.info(`Worker stopped for chain ${chainId}`);
+        });
+    }
+
+    /**
+     * Extract price data from opportunities for cross-chain comparison
+     */
+    extractPricesFromOpportunities(opportunities) {
+        const prices = {};
+
+        for (const opp of opportunities) {
+            if (opp.token0 && opp.price0) {
+                prices[opp.token0] = opp.price0;
+            }
+            if (opp.token1 && opp.price1) {
+                prices[opp.token1] = opp.price1;
+            }
+        }
+
+        return prices;
+    }
+
+    /**
+     * Handle new block event (single-chain mode)
      */
     async handleNewBlock(blockData) {
         const { blockNumber } = blockData;
@@ -114,14 +330,27 @@ class ArbitrageBot {
             // Detect arbitrage opportunities (now async to fetch dynamic gas)
             const opportunities = await arbitrageDetector.detectOpportunities(prices, blockNumber);
 
-            // Update dashboard with opportunities found
-            dashboard.recordOpportunities(opportunities.length);
+            // Also run multi-hop detection if available (single-chain mode)
+            let multiHopOpportunities = [];
+            if (this.multiHopDetector) {
+                multiHopOpportunities = this.multiHopDetector.findOpportunities(
+                    prices,
+                    config.dex,
+                    config.baseTokens,
+                    blockNumber
+                );
+            }
 
-            if (opportunities.length > 0) {
-                log.info(`✅ Found ${opportunities.length} arbitrage opportunities in block ${blockNumber}`);
+            const allOpportunities = [...opportunities, ...multiHopOpportunities];
+
+            // Update dashboard with opportunities found
+            dashboard.recordOpportunities(allOpportunities.length);
+
+            if (allOpportunities.length > 0) {
+                log.info(`Found ${allOpportunities.length} arbitrage opportunities in block ${blockNumber}`);
 
                 // Process each opportunity
-                for (const opportunity of opportunities) {
+                for (const opportunity of allOpportunities) {
                     // Send alert
                     await alertManager.notify(opportunity);
 
@@ -145,7 +374,7 @@ class ArbitrageBot {
 
             // Record performance metrics
             const duration = Date.now() - startTime;
-            performanceTracker.recordBlockProcessing(blockNumber, duration, opportunities.length);
+            performanceTracker.recordBlockProcessing(blockNumber, duration, allOpportunities.length);
 
         } catch (error) {
             log.error(`Error processing block ${blockNumber}`, {
@@ -166,21 +395,18 @@ class ArbitrageBot {
             return;
         }
 
-        log.info('Stopping BSC Arbitrage Bot...');
+        log.info('Stopping Arbitrage Bot...');
         this.isRunning = false;
 
         try {
-            // Stop block monitor
-            await blockMonitor.stop();
+            if (this.multiChainMode) {
+                await this.stopMultiChain();
+            } else {
+                await this.stopSingleChain();
+            }
 
             // Stop dashboard server
             dashboard.stop();
-
-            // Cleanup RPC manager
-            await rpcManager.cleanup();
-
-            // Cleanup performance tracker
-            performanceTracker.cleanup();
 
             // Generate final report
             const metrics = performanceTracker.getMetrics();
@@ -188,13 +414,7 @@ class ArbitrageBot {
             log.info('Final performance report:', metrics);
             log.info('Dashboard metrics:', dashboardMetrics);
 
-            // Log execution stats if enabled
-            if (config.execution?.enabled) {
-                const execStats = executionManager.getStats();
-                log.info('Execution statistics:', execStats);
-            }
-
-            log.info('✅ Bot stopped gracefully');
+            log.info('Bot stopped gracefully');
 
         } catch (error) {
             log.error('Error stopping bot', { error: error.message });
@@ -202,25 +422,83 @@ class ArbitrageBot {
     }
 
     /**
+     * Stop single-chain mode components
+     */
+    async stopSingleChain() {
+        // Stop block monitor
+        await blockMonitor.stop();
+
+        // Cleanup RPC manager
+        await rpcManager.cleanup();
+
+        // Cleanup performance tracker
+        performanceTracker.cleanup();
+
+        // Log execution stats if enabled
+        if (config.execution?.enabled) {
+            const execStats = executionManager.getStats();
+            log.info('Execution statistics:', execStats);
+        }
+    }
+
+    /**
+     * Stop multi-chain mode components
+     */
+    async stopMultiChain() {
+        // Stop worker coordinator
+        if (this.workerCoordinator) {
+            await this.workerCoordinator.stopAll();
+        }
+
+        // Stop mempool monitor
+        if (this.mempoolMonitor) {
+            this.mempoolMonitor.stop();
+        }
+
+        // Cleanup performance tracker
+        performanceTracker.cleanup();
+
+        // Log worker stats
+        if (this.workerCoordinator) {
+            const stats = this.workerCoordinator.getStats();
+            log.info('Worker coordinator statistics:', stats);
+        }
+    }
+
+    /**
      * Get current bot status
      */
     getStatus() {
-        const status = {
+        const baseStatus = {
             isRunning: this.isRunning,
+            mode: this.multiChainMode ? 'multi-chain' : 'single-chain',
             processingBlock: this.processingBlock,
-            blockMonitor: blockMonitor.getStatus(),
-            rpc: rpcManager.getStats(),
-            cache: cacheManager.getStats(),
             performance: performanceTracker.getMetrics(),
             dashboard: dashboard.getMetrics(),
         };
 
-        // Include execution stats if enabled
-        if (config.execution?.enabled) {
-            status.execution = executionManager.getStats();
-        }
+        if (this.multiChainMode) {
+            return {
+                ...baseStatus,
+                workers: this.workerCoordinator?.getStatus() || {},
+                crossChain: this.crossChainDetector?.getStats() || {},
+                mempool: this.mempoolMonitor?.getStats() || {},
+            };
+        } else {
+            const status = {
+                ...baseStatus,
+                blockMonitor: blockMonitor.getStatus(),
+                rpc: rpcManager.getStats(),
+                cache: cacheManager.getStats(),
+            };
 
-        return status;
+            // Include execution stats if enabled
+            if (config.execution?.enabled) {
+                status.execution = executionManager.getStats();
+            }
+
+            return status;
+        }
     }
 }
 
@@ -228,7 +506,6 @@ class ArbitrageBot {
 async function main() {
     const bot = new ArbitrageBot();
 
-    // Handle graceful shutdown
     // Handle graceful shutdown
     const gracefulShutdown = async (signal, exitCode = 0) => {
         log.info(`\nReceived shutdown signal: ${signal}`);

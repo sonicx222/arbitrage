@@ -1,15 +1,30 @@
-# BSC Arbitrage Bot (Node.js)
+# Multi-Chain Arbitrage Bot
 
-A rate-limit-resistant arbitrage monitoring bot for BNB Chain (BSC) DEXs. Monitors price differences across PancakeSwap and Biswap without using paid services.
+A professional-grade, multi-chain arbitrage monitoring and detection system supporting BSC, Ethereum, Polygon, Arbitrum, Base, and Avalanche. Features parallel worker threads, cross-chain arbitrage detection, and flash loan execution.
 
 ## Features
 
-- 🚀 **Event-driven WebSocket architecture** - Real-time block monitoring
-- 💰 **Smart arbitrage detection** - Identifies profitable opportunities across DEXs
-- 🔄 **Rate limit optimization** - Operates within free RPC tier limits
-- 📊 **Multi-channel alerts** - Console, Discord, Telegram notifications
-- 🎯 **Direct smart contract interaction** - No reliance on centralized APIs
-- 🌐 **Free 24/7 hosting** - Deploy on Fly.io, Railway, or Oracle Cloud
+- **Multi-Chain Support**: Monitor 6 chains simultaneously (BSC, Ethereum, Polygon, Arbitrum, Base, Avalanche)
+- **Worker Thread Architecture**: Parallel processing with isolated workers per chain
+- **Cross-DEX Arbitrage**: Detect price differences across DEXes within each chain
+- **Triangular Arbitrage**: Find A → B → C → A opportunities within single DEXes
+- **Cross-Chain Detection**: Identify same-asset price discrepancies across chains
+- **Multi-Hop Paths**: Detect 4+ token arbitrage routes
+- **Mempool Monitoring**: Track pending transactions for frontrunning opportunities
+- **Flash Loan Execution**: Execute profitable trades using flash loans
+- **Rate Limit Optimization**: Intelligent RPC management with failover
+- **Multi-Channel Alerts**: Console, Discord, Telegram notifications
+
+## Supported Chains & DEXes
+
+| Chain | DEXes | Block Time |
+|-------|-------|------------|
+| BSC | PancakeSwap, Biswap, ApeSwap, BabySwap, MDEX | 3s |
+| Ethereum | Uniswap V2/V3, SushiSwap, Curve | 12s |
+| Polygon | QuickSwap, SushiSwap, Uniswap V3, ApeSwap | 2s |
+| Arbitrum | Uniswap V3, SushiSwap, Camelot, TraderJoe | 0.25s |
+| Base | Uniswap V3, Aerodrome, BaseSwap, SushiSwap | 2s |
+| Avalanche | TraderJoe, Pangolin, SushiSwap, Uniswap V3 | 2s |
 
 ## Quick Start
 
@@ -17,14 +32,14 @@ A rate-limit-resistant arbitrage monitoring bot for BNB Chain (BSC) DEXs. Monito
 
 - Node.js 18+ LTS
 - npm or yarn
-- Git
+- RPC endpoints for desired chains (Alchemy, Infura, or public endpoints)
 
 ### Installation
 
 ```bash
 # Clone repository
 git clone <repo-url>
-cd Arbitrage_Bot_V2
+cd arbitrage
 
 # Install dependencies
 npm install
@@ -38,13 +53,34 @@ nano .env
 
 ### Configuration
 
-Edit `.env` file with your preferences:
+Edit `.env` file with your RPC endpoints and preferences:
 
-- `MIN_PROFIT_PERCENTAGE`: Minimum profit threshold (default: 0.5%)
-- `RPC_ENDPOINTS`: Add more free BSC RPC endpoints for redundancy
-- `DISCORD_WEBHOOK_URL`: Discord webhook for alerts (optional)
+```env
+# BSC Configuration (enabled by default)
+ALCHEMY_RPC_URL=https://bsc-mainnet.g.alchemy.com/v2/YOUR_KEY
+ALCHEMY_WS_URL=wss://bsc-mainnet.g.alchemy.com/v2/YOUR_KEY
 
-### Running Locally
+# Enable additional chains
+ETH_ENABLED=true
+ETH_ALCHEMY_HTTP=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
+
+POLYGON_ENABLED=true
+POLYGON_ALCHEMY_HTTP=https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY
+
+ARBITRUM_ENABLED=true
+ARBITRUM_ALCHEMY_HTTP=https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY
+
+# Trading parameters
+MIN_PROFIT_PERCENTAGE=0.5
+MAX_SLIPPAGE=1.0
+
+# Alerts
+DISCORD_WEBHOOK_URL=your_webhook_url
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+```
+
+### Running
 
 ```bash
 # Development mode (auto-reload)
@@ -52,59 +88,148 @@ npm run dev
 
 # Production mode
 npm start
+
+# Run tests
+npm test
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Main Orchestrator                    │
-└───────────────┬─────────────────────────────────────────┘
-                │
-    ┌───────────┴───────────┬──────────────┬──────────────┐
-    │                       │              │              │
-┌───▼────────┐   ┌─────────▼──────┐  ┌───▼──────┐  ┌────▼─────────┐
-│  Block     │   │  Price Cache   │  │ Arbitrage│  │  Alerting    │
-│  Monitor   │   │  Manager       │  │ Detector │  │  System      │
-│ (WebSocket)│   │ (Smart Contract│  │          │  │              │
-└────────────┘   │   Direct Read) │  └──────────┘  └──────────────┘
-                 └────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     Main Thread (Coordinator)                    │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │   Worker    │  │   Cross-    │  │       Dashboard        │  │
+│  │ Coordinator │  │   Chain     │  │       & Alerts         │  │
+│  └──────┬──────┘  │  Detector   │  └─────────────────────────┘  │
+│         │         └──────┬──────┘                                │
+└─────────┼────────────────┼───────────────────────────────────────┘
+          │                │
+    ┌─────┴─────┬──────────┼─────────┬─────────┬─────────┐
+    │           │          │         │         │         │
+┌───▼───┐  ┌───▼───┐  ┌───▼───┐ ┌───▼───┐ ┌───▼───┐ ┌───▼───┐
+│  BSC  │  │  ETH  │  │Polygon│ │ Arb   │ │ Base  │ │ AVAX  │
+│Worker │  │Worker │  │Worker │ │Worker │ │Worker │ │Worker │
+└───────┘  └───────┘  └───────┘ └───────┘ └───────┘ └───────┘
+    │           │          │         │         │         │
+    └───────────┴──────────┴─────────┴─────────┴─────────┘
+                              │
+                    ┌─────────▼─────────┐
+                    │   Opportunities   │
+                    │   & Execution     │
+                    └───────────────────┘
 ```
 
-## Rate Limit Strategy
+### Worker Thread Design
 
-The bot uses multiple strategies to stay within free RPC limits:
+Each chain runs in its own worker thread with:
+- **Isolated RPC connections**: One chain's RPC issues don't affect others
+- **Independent block monitoring**: Each chain processes at its native block time
+- **Automatic restart**: Crashed workers restart automatically
+- **Error isolation**: Failures are contained within worker boundaries
 
-1. **WebSocket subscription** - Only ~20 updates/min aligned with BSC block time
-2. **Batch operations** - Multicall pattern reduces individual calls
-3. **Intelligent caching** - Block-based cache invalidation
-4. **Endpoint rotation** - Distributes load across 5+ free providers
-5. **Client-side throttling** - Pre-emptive rate limiting
+## Detection Methods
 
-**Expected usage**: ~40-60 requests/min (vs 120,000/hour free tier limit)
+### 1. Cross-DEX Arbitrage
+Buy on one DEX, sell on another within the same chain.
+- Monitors price differences across all enabled DEXes
+- Calculates optimal trade size using AMM formula
+- Factors in DEX fees and gas costs
 
-## Deployment
+### 2. Triangular Arbitrage
+A → B → C → A path within a single DEX.
+- Builds token graphs for each DEX
+- Finds profitable cycles using modified Bellman-Ford
+- Supports paths up to 4 tokens
 
-### Option 1: Fly.io (Recommended)
+### 3. Cross-Chain Arbitrage
+Same asset priced differently across chains.
+- Tracks token prices across all chains
+- Accounts for bridge fees and times
+- Identifies opportunities when spread exceeds bridge costs
 
-```bash
-# Install Fly CLI
-curl -L https://fly.io/install.sh | sh
+### 4. Multi-Hop Detection
+4+ token arbitrage paths.
+- Iterative deepening search for profitable cycles
+- Prunes unprofitable paths early
+- Returns top opportunities by profit
 
-# Login and deploy
-fly auth login
-fly launch
-fly deploy
+### 5. Mempool Monitoring (MEV)
+Large swap frontrunning opportunities.
+- Monitors pending transactions via WebSocket
+- Decodes Uniswap V2/V3 swap methods
+- Identifies large swaps that will move prices
+- Requires archive/MEV-enabled RPC (Flashbots, Blocknative, etc.)
+
+## Project Structure
+
+```
+arbitrage/
+├── src/
+│   ├── index.js                 # Main entry point
+│   ├── config/
+│   │   ├── index.js             # Configuration aggregator
+│   │   └── chains/              # Per-chain configurations
+│   │       ├── bsc.js
+│   │       ├── ethereum.js
+│   │       ├── polygon.js
+│   │       ├── arbitrum.js
+│   │       ├── base.js
+│   │       └── avalanche.js
+│   ├── chains/
+│   │   ├── BaseChain.js         # Abstract chain class
+│   │   ├── ChainFactory.js      # Chain instantiation
+│   │   └── implementations/     # Chain-specific implementations
+│   ├── workers/
+│   │   ├── WorkerCoordinator.js # Manages all workers
+│   │   ├── ChainWorker.js       # Worker thread entry
+│   │   └── workerMessages.js    # IPC message types
+│   ├── analysis/
+│   │   ├── arbitrageDetector.js # Cross-DEX detection
+│   │   ├── triangularDetector.js# Triangular arbitrage
+│   │   ├── profitCalculator.js  # Profit calculations
+│   │   ├── CrossChainDetector.js# Cross-chain detection
+│   │   ├── MultiHopDetector.js  # Multi-hop paths
+│   │   └── MempoolMonitor.js    # Mempool monitoring
+│   ├── data/
+│   │   ├── priceFetcher.js      # Price fetching
+│   │   ├── cacheManager.js      # Price caching
+│   │   └── tokenList.js         # Token definitions
+│   ├── monitoring/
+│   │   ├── blockMonitor.js      # Block subscription
+│   │   ├── dashboard.js         # Status dashboard
+│   │   └── performanceTracker.js
+│   ├── execution/
+│   │   ├── executionManager.js  # Trade execution
+│   │   ├── transactionBuilder.js
+│   │   └── gasOptimizer.js
+│   └── utils/
+│       ├── rpcManager.js        # RPC failover
+│       └── logger.js            # Logging
+├── tests/                       # Jest tests
+├── contracts/                   # Flash loan contracts
+└── docs/                        # Documentation
 ```
 
-### Option 2: Railway
+## Configuration Reference
 
-1. Connect GitHub repository
-2. Deploy automatically on push
+### Environment Variables
 
-### Option 3: Oracle Cloud
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DEBUG_MODE` | Enable debug logging | `false` |
+| `MIN_PROFIT_PERCENTAGE` | Minimum profit threshold | `0.5` |
+| `MAX_SLIPPAGE` | Maximum slippage tolerance | `1.0` |
+| `WORKERS_ENABLED` | Use worker threads | `true` |
+| `CROSS_CHAIN_ENABLED` | Enable cross-chain detection | `false` |
+| `MEMPOOL_ENABLED` | Enable mempool monitoring | `false` |
 
-See `deployment/oracle/setup.sh` for automated setup script.
+### Per-Chain Environment Variables
+
+Each chain supports its own configuration via `{CHAIN}_` prefix:
+- `ETH_ENABLED`, `POLYGON_ENABLED`, etc.
+- `ETH_ALCHEMY_HTTP`, `POLYGON_ALCHEMY_HTTP`, etc.
+- `ETH_MIN_PROFIT`, `POLYGON_MIN_PROFIT`, etc.
 
 ## Testing
 
@@ -112,113 +237,66 @@ See `deployment/oracle/setup.sh` for automated setup script.
 # Run all tests
 npm test
 
-# Test RPC connectivity
-node scripts/test-connection.js
+# Run with coverage
+npm run test:coverage
 
-# Validate price accuracy
-node scripts/validate-prices.js --pair WBNB/BUSD
+# Run specific test file
+npm test -- tests/unit/arbitrageDetector.test.js
+
+# Run integration tests
+npm run test:integration
 ```
 
-## Monitoring
+## Deployment
 
-View real-time logs:
+### Docker
 
 ```bash
-# Local
-npm start
-
-# Fly.io
-fly logs
-
-# Railway
-railway logs
-
-# Oracle Cloud
-ssh ubuntu@<server-ip>
-sudo journalctl -u arbitrage-bot -f
+docker build -t arbitrage-bot .
+docker run -d --env-file .env arbitrage-bot
 ```
 
-## Project Structure
+### Fly.io
 
-```
-Arbitrage_Bot_V2/
-├── src/
-│   ├── index.js                 # Main entry point
-│   ├── config.js                # Configuration
-│   ├── contracts/
-│   │   └── abis.js              # Smart contract ABIs
-│   ├── utils/
-│   │   ├── rpcManager.js        # RPC connection manager
-│   │   └── logger.js            # Winston logger
-│   ├── monitoring/
-│   │   ├── blockMonitor.js      # WebSocket block monitor
-│   │   └── performanceTracker.js
-│   ├── data/
-│   │   ├── priceFetcher.js      # Smart contract price fetcher
-│   │   └── cacheManager.js      # Price caching
-│   ├── analysis/
-│   │   ├── arbitrageDetector.js # Opportunity detection
-│   │   └── opportunityScorer.js # Opportunity ranking
-│   └── alerts/
-│       └── alertManager.js      # Multi-channel alerts
-├── tests/                       # Jest tests
-├── scripts/                     # Utility scripts
-├── deployment/                  # Deployment configs
-├── logs/                        # Log files
-├── package.json
-├── .env.example
-└── README.md
+```bash
+fly auth login
+fly launch
+fly deploy
 ```
 
-## Configuration Reference
+### Railway
 
-### DEXs Monitored
-
-- **PancakeSwap V2** (0.25% fee)
-- **Biswap** (0.1% fee)
-
-### Tokens Supported
-
-- WBNB (Wrapped BNB)
-- BUSD (Binance USD)
-- USDT (Tether USD)
-- USDC (USD Coin)
-- CAKE (PancakeSwap)
-- BSW (Biswap)
-
-Add more tokens in `src/config.js`.
-
-## Troubleshooting
-
-### Rate Limit Errors
-
-If you see HTTP 429 errors:
-1. Add more RPC endpoints to `.env`
-2. Reduce `MAX_PAIRS_TO_MONITOR`
-3. Check endpoint health with `node scripts/test-connection.js`
-
-### WebSocket Disconnections
-
-The bot automatically reconnects with exponential backoff. If issues persist:
-1. Try different WS endpoints in `.env`
-2. Check firewall/network settings
-
-### No Opportunities Found
-
-This is normal during low volatility periods. Consider:
-1. Lowering `MIN_PROFIT_PERCENTAGE` (but watch for false positives)
-2. Adding more token pairs
-3. Monitoring during high-volume times
+1. Connect GitHub repository
+2. Add environment variables in Railway dashboard
+3. Deploy automatically on push
 
 ## Performance
 
-- **Memory**: 80-150 MB
-- **CPU**: < 5% (idle), < 20% (processing)
-- **Network**: ~1-2 MB/hour
+- **Memory**: 150-300 MB (depends on chains enabled)
+- **CPU**: < 10% per chain worker
+- **Network**: ~5-10 MB/hour per chain
+- **RPC Calls**: ~100-200 RPM per chain (well under free tier limits)
+
+## Troubleshooting
+
+### No Opportunities Found
+- Check RPC connectivity: `node scripts/test-connection.js`
+- Lower `MIN_PROFIT_PERCENTAGE` temporarily
+- Ensure DEXes are enabled in chain config
+- Check token liquidity
+
+### Worker Crashes
+- Check logs for specific errors
+- Verify RPC endpoint health
+- Increase `WORKER_TIMEOUT` if processing is slow
+
+### Rate Limit Errors
+- Add more RPC endpoints
+- Reduce `MAX_PAIRS_TO_MONITOR`
+- Use paid RPC tier for high-volume monitoring
 
 ## Contributing
 
-Contributions welcome! Please:
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new features
@@ -230,11 +308,4 @@ MIT License - see LICENSE file for details
 
 ## Disclaimer
 
-This bot is for educational and monitoring purposes only. Trading cryptocurrencies involves risk. Always do your own research and never invest more than you can afford to lose.
-
-## Support
-
-For issues and questions:
-- Open a GitHub issue
-- Check documentation in `deployment/` folder
-- Review implementation plan in brain artifacts
+This software is for educational and research purposes. Cryptocurrency trading involves significant risk. Always do your own research and never trade with more than you can afford to lose.
