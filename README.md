@@ -4,6 +4,7 @@ A professional-grade, multi-chain arbitrage monitoring and detection system supp
 
 ## Features
 
+### Core Features
 - **Multi-Chain Support**: Monitor 6 chains simultaneously (BSC, Ethereum, Polygon, Arbitrum, Base, Avalanche)
 - **Worker Thread Architecture**: Parallel processing with isolated workers per chain
 - **Cross-DEX Arbitrage**: Detect price differences across DEXes within each chain
@@ -14,6 +15,13 @@ A professional-grade, multi-chain arbitrage monitoring and detection system supp
 - **Flash Loan Execution**: Execute profitable trades using flash loans
 - **Rate Limit Optimization**: Intelligent RPC management with failover
 - **Multi-Channel Alerts**: Console, Discord, Telegram notifications
+
+### Infrastructure Features (New)
+- **Self-Healing RPC Pool**: Automatically re-tests unhealthy RPC endpoints every 5 minutes and recovers them when they become available again
+- **EIP-1559 Gas Pricing**: Native support for EIP-1559 gas pricing on Ethereum, Polygon, Arbitrum, Base, and Avalanche chains with automatic fallback to legacy pricing on BSC
+- **Dynamic Slippage Adjustment**: Token-specific slippage rates based on volatility and liquidity
+- **Stale Block Detection**: Automatically reconnects WebSocket connections when no blocks are received for 30+ seconds
+- **Dynamic Native Token Pricing**: Real-time native token price updates from DEX reserves for accurate gas cost calculations
 
 ## Supported Chains & DEXes
 
@@ -211,6 +219,22 @@ arbitrage/
 └── docs/                        # Documentation
 ```
 
+## Gas Pricing
+
+The bot supports both legacy (type 0) and EIP-1559 (type 2) gas pricing:
+
+### EIP-1559 Chains
+- **Ethereum** (chainId: 1): 1.5 Gwei priority fee, 2x base fee headroom
+- **Polygon** (chainId: 137): 30 Gwei priority fee, 1.5x base fee headroom
+- **Arbitrum** (chainId: 42161): 0.01 Gwei priority fee, 1.5x headroom
+- **Base** (chainId: 8453): 0.001 Gwei priority fee, 1.5x headroom
+- **Avalanche** (chainId: 43114): 1 Gwei priority fee, 1.5x headroom
+
+### Legacy Chains
+- **BSC** (chainId: 56): Uses traditional `gasPrice` parameter
+
+The `gasPriceManager` module automatically selects the appropriate gas pricing strategy based on chain ID, with caching to minimize RPC calls.
+
 ## Configuration Reference
 
 ### Environment Variables
@@ -218,6 +242,7 @@ arbitrage/
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DEBUG_MODE` | Enable debug logging | `false` |
+| `DYNAMIC_GAS` | Use dynamic gas pricing | `false` |
 | `MIN_PROFIT_PERCENTAGE` | Minimum profit threshold | `0.5` |
 | `MAX_SLIPPAGE` | Maximum slippage tolerance | `1.0` |
 | `WORKERS_ENABLED` | Use worker threads | `true` |
@@ -294,6 +319,12 @@ fly deploy
 - Add more RPC endpoints
 - Reduce `MAX_PAIRS_TO_MONITOR`
 - Use paid RPC tier for high-volume monitoring
+- RPC endpoints will automatically recover via self-healing (check logs for "Self-healing: Endpoint recovered")
+
+### WebSocket Connection Issues
+- The bot now includes stale block detection - if no blocks are received for 30 seconds, it will automatically reconnect
+- WebSocket errors and close events trigger automatic reconnection with exponential backoff
+- Check logs for "WebSocket error detected, triggering reconnection" messages
 
 ## Contributing
 
