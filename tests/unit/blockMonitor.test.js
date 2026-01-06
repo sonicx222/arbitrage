@@ -38,6 +38,10 @@ describe('BlockMonitor', () => {
             clearInterval(blockMonitor.pollingInterval);
             blockMonitor.pollingInterval = null;
         }
+        if (blockMonitor.staleCheckInterval) {
+            clearInterval(blockMonitor.staleCheckInterval);
+            blockMonitor.staleCheckInterval = null;
+        }
         blockMonitor.isRunning = false;
         blockMonitor.removeAllListeners();
         await blockMonitor.stop();
@@ -119,6 +123,54 @@ describe('BlockMonitor', () => {
 
             await blockMonitor.handleReconnect();
             await errorPromise;
+        });
+    });
+
+    describe('Stale Block Detection (Bug Fix Regression)', () => {
+        test('should have staleCheckInterval property initialized', () => {
+            expect(blockMonitor).toHaveProperty('staleCheckInterval');
+        });
+
+        test('should set up stale block detection when connecting', async () => {
+            // Restore WS provider
+            mockRPCManager.getWsProvider.mockReturnValue({ provider: mockProvider });
+
+            await blockMonitor.start();
+
+            // After connecting, stale check interval should be set
+            expect(blockMonitor.staleCheckInterval).not.toBeNull();
+        });
+
+        test('should clear stale check interval on stop', async () => {
+            // Restore WS provider
+            mockRPCManager.getWsProvider.mockReturnValue({ provider: mockProvider });
+
+            await blockMonitor.start();
+            expect(blockMonitor.staleCheckInterval).not.toBeNull();
+
+            await blockMonitor.stop();
+            expect(blockMonitor.staleCheckInterval).toBeNull();
+        });
+
+        test('should trigger reconnect on WebSocket error event', async () => {
+            // Restore WS provider
+            mockRPCManager.getWsProvider.mockReturnValue({ provider: mockProvider });
+
+            const reconnectSpy = jest.spyOn(blockMonitor, 'handleReconnect').mockResolvedValue();
+
+            await blockMonitor.start();
+
+            // Find the error handler that was registered
+            const errorHandler = mockProvider.on.mock.calls.find(call => call[0] === 'error');
+            expect(errorHandler).toBeDefined();
+
+            // Simulate an error event
+            if (errorHandler) {
+                errorHandler[1](new Error('WebSocket disconnected'));
+            }
+
+            expect(reconnectSpy).toHaveBeenCalled();
+            reconnectSpy.mockRestore();
         });
     });
 });

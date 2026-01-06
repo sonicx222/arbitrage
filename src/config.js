@@ -5,7 +5,7 @@ dotenv.config();
 
 export default {
   // Global Settings
-  debugMode: process.env.DEBUG_MODE === 'false',
+  debugMode: process.env.DEBUG_MODE === 'true',
   dynamicGas: process.env.DYNAMIC_GAS === 'true',
   // Network Configuration
   network: {

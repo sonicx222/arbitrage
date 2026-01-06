@@ -241,14 +241,55 @@ export default {
             address: '0xEC70Dcb4A1EFa46b8F2D97C310C9c4790ba5ffA8',
             decimals: 18,
         },
+        // Additional high-volume Arbitrum native tokens
+        VELA: {
+            symbol: 'VELA',
+            address: '0x088cd8f5eF3652623c22D48b1605DCfE860Cd704',
+            decimals: 18,
+        },
+        GNS: {
+            symbol: 'GNS',
+            address: '0x18c11FD286C5EC11c3b683Caa813B77f5163A122',
+            decimals: 18,
+        },
+        LODE: {
+            symbol: 'LODE',
+            address: '0xF19547f9ED24aA66b03c3a552D181Ae334FBb8DB',
+            decimals: 18,
+        },
+        WINR: {
+            symbol: 'WINR',
+            address: '0xD77B108d4f6cefaa0Cae9506A934e825BEccA46e',
+            decimals: 18,
+        },
+        PREMIA: {
+            symbol: 'PREMIA',
+            address: '0x51fC0f6660482Ea73330E414eFd7808811a57Fa2',
+            decimals: 18,
+        },
+        VSTA: {
+            symbol: 'VSTA',
+            address: '0xa684cd057951541187f288294a1e1C2646aA2d24',
+            decimals: 18,
+        },
+        SPELL: {
+            symbol: 'SPELL',
+            address: '0x3E6648C5a70A150A88bCE65F4aD4d506Fe15d2AF',
+            decimals: 18,
+        },
+        MIM: {
+            symbol: 'MIM',
+            address: '0xFEa7a6a0B346362BF88A9e4A88416B77a57D6c2A',
+            decimals: 18,
+        },
     },
 
-    // Base tokens
-    baseTokens: ['WETH', 'USDT', 'USDC', 'USDC.e', 'DAI', 'FRAX'],
+    // Base tokens - Expanded for more triangular paths
+    baseTokens: ['WETH', 'USDT', 'USDC', 'USDC.e', 'DAI', 'FRAX', 'MIM'],
 
-    // Trading parameters
+    // Trading parameters - Optimized for L2 low gas costs
     trading: {
-        minProfitPercentage: parseFloat(process.env.ARBITRUM_MIN_PROFIT || '0.2'),
+        minProfitPercentage: parseFloat(process.env.ARBITRUM_MIN_PROFIT || '0.08'), // Lowered for L2
         maxSlippage: parseFloat(process.env.ARBITRUM_MAX_SLIPPAGE || '0.5'),
         gasPriceGwei: parseFloat(process.env.ARBITRUM_GAS_PRICE || '0.1'),
         estimatedGasLimit: 500000,
@@ -269,13 +310,13 @@ export default {
         maxTradeSizeUSD: parseInt(process.env.ARBITRUM_TRIANGULAR_MAX_TRADE || '10000'),
     },
 
-    // Execution
+    // Execution - Optimized for L2 low gas costs
     execution: {
         enabled: process.env.ARBITRUM_EXECUTION_ENABLED === 'true',
         mode: process.env.ARBITRUM_EXECUTION_MODE || 'simulation',
         contractAddress: process.env.ARBITRUM_FLASH_CONTRACT || null,
         privateKey: process.env.ARBITRUM_PRIVATE_KEY || null,
-        minProfitUSD: parseFloat(process.env.ARBITRUM_MIN_PROFIT_USD || '2.0'),
+        minProfitUSD: parseFloat(process.env.ARBITRUM_MIN_PROFIT_USD || '0.50'), // Lowered for L2
         maxGasPriceGwei: parseInt(process.env.ARBITRUM_MAX_GAS_PRICE || '1'),
         slippageTolerance: parseFloat(process.env.ARBITRUM_SLIPPAGE_TOLERANCE || '0.5'),
     },

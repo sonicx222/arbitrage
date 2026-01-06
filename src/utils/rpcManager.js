@@ -4,7 +4,8 @@ import config from '../config.js';
 import log from './logger.js';
 
 /**
- * Smart RPC Manager with automatic failover, rate limiting, and health checking
+ * Smart RPC Manager with automatic failover, rate limiting, health checking,
+ * and self-healing recovery for temporarily failed endpoints.
  */
 class RPCManager extends EventEmitter {
     constructor() {
@@ -26,12 +27,23 @@ class RPCManager extends EventEmitter {
         this.maxRequestsPerMinute = config.rpc.maxRequestsPerMinute;
 
         // Health tracking
-        this.endpointHealth = new Map(); // endpoint -> { healthy, lastCheck, failures }
+        this.endpointHealth = new Map(); // endpoint -> { healthy, lastCheck, failures, unhealthySince }
+
+        // Self-healing configuration
+        this.healingInterval = null;
+        this.healingIntervalMs = 5 * 60 * 1000; // 5 minutes
+        this.minRecoveryTimeMs = 60 * 1000; // Minimum 1 minute before retry
 
         // Initialize providers
         this.initializeProviders();
 
-        log.info(`RPC Manager initialized with ${this.httpProviders.length} HTTP and ${this.wsProviders.length} WebSocket endpoints`);
+        // Start self-healing background task
+        this.startSelfHealing();
+
+        log.info(`RPC Manager initialized with ${this.httpProviders.length} HTTP and ${this.wsProviders.length} WebSocket endpoints`, {
+            selfHealing: true,
+            healingInterval: '5 minutes',
+        });
     }
 
     /**
@@ -234,18 +246,172 @@ class RPCManager extends EventEmitter {
         const health = this.endpointHealth.get(endpoint);
         if (health) {
             health.failures++;
-            if (health.failures >= 3) {
+            if (health.failures >= 3 && health.healthy) {
                 health.healthy = false;
-                log.warn(`Endpoint marked unhealthy: ${endpoint}`);
+                health.unhealthySince = Date.now();
+                log.warn(`Endpoint marked unhealthy: ${endpoint}`, {
+                    failures: health.failures,
+                    willRetryIn: `${this.healingIntervalMs / 60000} minutes`,
+                });
                 this.emit('endpointUnhealthy', endpoint);
             }
         }
     }
 
     /**
+     * Start the self-healing background task
+     * Periodically re-tests unhealthy endpoints to check if they've recovered
+     */
+    startSelfHealing() {
+        if (this.healingInterval) {
+            clearInterval(this.healingInterval);
+        }
+
+        this.healingInterval = setInterval(() => {
+            this.healUnhealthyEndpoints();
+        }, this.healingIntervalMs);
+
+        // Don't prevent process exit
+        this.healingInterval.unref();
+
+        log.debug('Self-healing background task started');
+    }
+
+    /**
+     * Stop the self-healing background task
+     */
+    stopSelfHealing() {
+        if (this.healingInterval) {
+            clearInterval(this.healingInterval);
+            this.healingInterval = null;
+            log.debug('Self-healing background task stopped');
+        }
+    }
+
+    /**
+     * Attempt to heal unhealthy endpoints by re-testing them
+     */
+    async healUnhealthyEndpoints() {
+        const now = Date.now();
+        const unhealthyEndpoints = [];
+
+        // Find endpoints that have been unhealthy long enough to retry
+        this.endpointHealth.forEach((health, endpoint) => {
+            if (!health.healthy && health.unhealthySince) {
+                const timeSinceUnhealthy = now - health.unhealthySince;
+                if (timeSinceUnhealthy >= this.minRecoveryTimeMs) {
+                    unhealthyEndpoints.push(endpoint);
+                }
+            }
+        });
+
+        if (unhealthyEndpoints.length === 0) {
+            return;
+        }
+
+        log.debug(`Self-healing: Testing ${unhealthyEndpoints.length} unhealthy endpoints`);
+
+        for (const endpoint of unhealthyEndpoints) {
+            await this.testEndpointHealth(endpoint);
+        }
+    }
+
+    /**
+     * Test if an endpoint has recovered by making a simple RPC call
+     */
+    async testEndpointHealth(endpoint) {
+        const providerData = this.httpProviders.find(p => p.endpoint === endpoint) ||
+                            this.wsProviders.find(p => p.endpoint === endpoint);
+
+        if (!providerData) {
+            return false;
+        }
+
+        try {
+            // Simple health check: get block number
+            const blockNumber = await Promise.race([
+                providerData.provider.getBlockNumber(),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Health check timeout')), 5000)
+                ),
+            ]);
+
+            if (blockNumber > 0) {
+                // Endpoint recovered!
+                const health = this.endpointHealth.get(endpoint);
+                if (health) {
+                    health.healthy = true;
+                    health.failures = 0;
+                    health.lastCheck = Date.now();
+                    delete health.unhealthySince;
+                }
+
+                log.info(`Self-healing: Endpoint recovered: ${this._maskEndpoint(endpoint)}`, {
+                    blockNumber,
+                });
+                this.emit('endpointRecovered', endpoint);
+                return true;
+            }
+        } catch (error) {
+            // Still unhealthy, update last check time
+            const health = this.endpointHealth.get(endpoint);
+            if (health) {
+                health.lastCheck = Date.now();
+            }
+
+            log.debug(`Self-healing: Endpoint still unhealthy: ${this._maskEndpoint(endpoint)}`, {
+                error: error.message,
+            });
+        }
+
+        return false;
+    }
+
+    /**
+     * Mask endpoint URL for logging (hide API keys)
+     * @private
+     */
+    _maskEndpoint(endpoint) {
+        try {
+            const url = new URL(endpoint);
+            // Mask API key if present in path or query
+            if (url.pathname.length > 20) {
+                url.pathname = url.pathname.substring(0, 20) + '...';
+            }
+            return `${url.protocol}//${url.host}${url.pathname.substring(0, 15)}...`;
+        } catch {
+            return endpoint.substring(0, 30) + '...';
+        }
+    }
+
+    /**
+     * Force re-test all unhealthy endpoints immediately
+     */
+    async forceHealAll() {
+        log.info('Force healing all unhealthy endpoints');
+        await this.healUnhealthyEndpoints();
+    }
+
+    /**
      * Get current RPC statistics
      */
     getStats() {
+        const now = Date.now();
+        const unhealthyEndpoints = [];
+
+        // Collect unhealthy endpoint info
+        this.endpointHealth.forEach((health, endpoint) => {
+            if (!health.healthy) {
+                unhealthyEndpoints.push({
+                    endpoint: this._maskEndpoint(endpoint),
+                    failures: health.failures,
+                    unhealthyFor: health.unhealthySince
+                        ? Math.round((now - health.unhealthySince) / 1000) + 's'
+                        : 'unknown',
+                });
+            }
+        });
+
         const stats = {
             http: {
                 total: this.httpProviders.length,
@@ -255,12 +421,22 @@ class RPCManager extends EventEmitter {
                 total: this.wsProviders.length,
                 healthy: this.wsProviders.filter(p => this.endpointHealth.get(p.endpoint)?.healthy !== false).length,
             },
+            selfHealing: {
+                enabled: this.healingInterval !== null,
+                intervalMs: this.healingIntervalMs,
+                unhealthyEndpoints: unhealthyEndpoints.length,
+            },
             rateLimits: {},
         };
 
+        // Add unhealthy endpoint details if any
+        if (unhealthyEndpoints.length > 0) {
+            stats.selfHealing.endpoints = unhealthyEndpoints;
+        }
+
         // Add rate limit info
         this.requestCounts.forEach((data, endpoint) => {
-            stats.rateLimits[endpoint] = {
+            stats.rateLimits[this._maskEndpoint(endpoint)] = {
                 count: data.count,
                 remaining: this.maxRequestsPerMinute - data.count,
                 resetIn: Math.max(0, data.resetTime - Date.now()),
@@ -311,6 +487,9 @@ class RPCManager extends EventEmitter {
      */
     async cleanup() {
         log.info('Cleaning up RPC Manager...');
+
+        // Stop self-healing
+        this.stopSelfHealing();
 
         // Close WebSocket connections
         for (const { provider } of this.wsProviders) {

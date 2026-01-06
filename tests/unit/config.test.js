@@ -61,5 +61,29 @@ describe('Configuration Validation', () => {
             expect(config.trading.minProfitPercentage).toBeDefined();
             expect(config.trading.gasPriceGwei).toBeGreaterThan(0);
         });
+
+        test('debugMode should be false by default when DEBUG_MODE env is not set (Bug Fix Regression)', () => {
+            // The fix changed: `debugMode: process.env.DEBUG_MODE === 'false'` (wrong)
+            // To: `debugMode: process.env.DEBUG_MODE === 'true'` (correct)
+            // Without DEBUG_MODE env set, debugMode should be false (not true)
+            // This test ensures the logic isn't inverted
+            expect(typeof config.debugMode).toBe('boolean');
+
+            // If DEBUG_MODE is not explicitly 'true', debugMode should be false
+            if (process.env.DEBUG_MODE !== 'true') {
+                expect(config.debugMode).toBe(false);
+            }
+        });
+
+        test('dynamicGas should be boolean', () => {
+            expect(typeof config.dynamicGas).toBe('boolean');
+        });
+    });
+
+    describe('Execution Configuration', () => {
+        test('should have flash loan fee configured', () => {
+            expect(config.execution).toHaveProperty('flashLoanFee');
+            expect(config.execution.flashLoanFee).toBe(0.0025); // 0.25%
+        });
     });
 });

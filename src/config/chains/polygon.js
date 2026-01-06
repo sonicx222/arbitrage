@@ -234,14 +234,65 @@ export default {
             address: '0x45c32fA6DF82ead1e2EF74d17b76547EDdFaFF89',
             decimals: 18,
         },
+        // Additional high-volume Polygon tokens
+        EURS: {
+            symbol: 'EURS',
+            address: '0xE111178A87A3BFf0c8d18DECBa5798827539Ae99',
+            decimals: 2,
+        },
+        AGEUR: {
+            symbol: 'AGEUR',
+            address: '0xE0B52e49357Fd4DAf2c15e02058DCE6BC0057db4',
+            decimals: 18,
+        },
+        VOXEL: {
+            symbol: 'VOXEL',
+            address: '0xd0258a3fD00f38aa8090dfee343f10A9D4d30D3F',
+            decimals: 18,
+        },
+        KLIMA: {
+            symbol: 'KLIMA',
+            address: '0x4e78011Ce80ee02d2c3e649Fb657E45898257815',
+            decimals: 9,
+        },
+        BIFI: {
+            symbol: 'BIFI',
+            address: '0xFbdd194376de19a88118e84E279b977f165d01b8',
+            decimals: 18,
+        },
+        QI: {
+            symbol: 'QI',
+            address: '0x580A84C73811E1839F75d86d75d88cCa0c241fF4',
+            decimals: 18,
+        },
+        ICE: {
+            symbol: 'ICE',
+            address: '0x4e1581f01046eFDd7a1a2CDB0F82cDD7F71F2E59',
+            decimals: 18,
+        },
+        SPHERE: {
+            symbol: 'SPHERE',
+            address: '0x62F594339830b90AE4C084aE7D223fFAFd9658A7',
+            decimals: 18,
+        },
+        TETU: {
+            symbol: 'TETU',
+            address: '0x255707B70BF90aa112006E1b07B9AeA6De021424',
+            decimals: 18,
+        },
+        ORBS: {
+            symbol: 'ORBS',
+            address: '0x614389EaAE0A6821DC49062D56BDA3d9d45Fa2ff',
+            decimals: 18,
+        },
     },
 
-    // Base tokens (including stables for triangular arbitrage)
-    baseTokens: ['WMATIC', 'USDT', 'USDC', 'DAI', 'WETH', 'miMATIC', 'FRAX'],
+    // Base tokens (including stables for triangular arbitrage) - Expanded
+    baseTokens: ['WMATIC', 'USDT', 'USDC', 'DAI', 'WETH', 'miMATIC', 'FRAX', 'AGEUR'],
 
-    // Trading parameters
+    // Trading parameters - Optimized for low gas costs
     trading: {
-        minProfitPercentage: parseFloat(process.env.POLYGON_MIN_PROFIT || '0.3'),
+        minProfitPercentage: parseFloat(process.env.POLYGON_MIN_PROFIT || '0.15'), // Lowered for low gas
         maxSlippage: parseFloat(process.env.POLYGON_MAX_SLIPPAGE || '1.0'),
         gasPriceGwei: parseInt(process.env.POLYGON_GAS_PRICE || '50'),
         estimatedGasLimit: 350000,
@@ -262,13 +313,13 @@ export default {
         maxTradeSizeUSD: parseInt(process.env.POLYGON_TRIANGULAR_MAX_TRADE || '5000'),
     },
 
-    // Execution
+    // Execution - Optimized for low gas costs
     execution: {
         enabled: process.env.POLYGON_EXECUTION_ENABLED === 'true',
         mode: process.env.POLYGON_EXECUTION_MODE || 'simulation',
         contractAddress: process.env.POLYGON_FLASH_CONTRACT || null,
         privateKey: process.env.POLYGON_PRIVATE_KEY || null,
-        minProfitUSD: parseFloat(process.env.POLYGON_MIN_PROFIT_USD || '1.0'),
+        minProfitUSD: parseFloat(process.env.POLYGON_MIN_PROFIT_USD || '0.50'), // Lowered for low gas
         maxGasPriceGwei: parseInt(process.env.POLYGON_MAX_GAS_PRICE || '200'),
         slippageTolerance: parseFloat(process.env.POLYGON_SLIPPAGE_TOLERANCE || '1.0'),
     },

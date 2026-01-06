@@ -4,6 +4,7 @@ import log from '../utils/logger.js';
 import { FLASH_LOAN_FEE } from '../contracts/abis.js';
 import cacheManager from '../data/cacheManager.js';
 import l2GasCalculator from '../execution/l2GasCalculator.js';
+import slippageManager from './slippageManager.js';
 
 // Lazy import to avoid circular dependency
 let triangularDetector = null;
@@ -48,8 +49,12 @@ class ProfitCalculator {
         // Flash loan fee rate
         this.flashLoanFee = FLASH_LOAN_FEE.PANCAKE_V2; // 0.25%
 
-        // Slippage buffer (additional safety margin)
+        // Dynamic slippage - now uses SlippageManager
+        // Legacy fallback slippage buffer (used when tokens are unknown)
         this.slippageBuffer = 0.01; // 1%
+
+        // Enable dynamic slippage calculation
+        this.useDynamicSlippage = true;
 
         // Gas estimates for different operation types
         this.gasEstimates = {
@@ -77,6 +82,7 @@ class ProfitCalculator {
             slippageBuffer: `${this.slippageBuffer * 100}%`,
             minProfitUSD: `$${this.minProfitUSD}`,
             dynamicPricing: true,
+            dynamicSlippage: this.useDynamicSlippage,
             l2GasSupport: true,
         });
     }
@@ -147,6 +153,9 @@ class ProfitCalculator {
             profitUSD: grossProfitUSD,
             optimalTradeSizeUSD,
             gasCostUSD: existingGasCost,
+            tokenA,
+            tokenB,
+            minLiquidityUSD,
         } = opportunity;
 
         // Calculate flash loan fee
@@ -156,8 +165,22 @@ class ProfitCalculator {
         const swapCount = 2; // Buy + Sell
         const gasCostUSD = this._estimateGasCostUSD(gasPrice, swapCount, bnbPrice);
 
-        // Calculate slippage buffer
-        const slippageUSD = grossProfitUSD * this.slippageBuffer;
+        // Calculate dynamic slippage based on token types and liquidity
+        let slippageRate = this.slippageBuffer;
+        let slippageInfo = null;
+
+        if (this.useDynamicSlippage && tokenA && tokenB) {
+            const poolLiquidity = minLiquidityUSD || optimalTradeSizeUSD * 10;
+            slippageInfo = slippageManager.calculateSlippage(
+                tokenA,
+                tokenB,
+                optimalTradeSizeUSD,
+                poolLiquidity
+            );
+            slippageRate = slippageInfo.slippage;
+        }
+
+        const slippageUSD = grossProfitUSD * slippageRate;
 
         // Net profit
         const netProfitUSD = grossProfitUSD - flashFeeUSD - gasCostUSD - slippageUSD;
@@ -175,6 +198,8 @@ class ProfitCalculator {
             flashFeeUSD,
             gasCostUSD,
             slippageUSD,
+            slippageRate,
+            slippageInfo,
             netProfitUSD,
             netProfitPercent,
             tradeSizeUSD: optimalTradeSizeUSD,
@@ -204,6 +229,7 @@ class ProfitCalculator {
             minLiquidityUSD,
             dexName,
             path,
+            liquidities,
         } = opportunity;
 
         // Get base token info
@@ -232,8 +258,22 @@ class ProfitCalculator {
         const swapCount = 3;
         const gasCostUSD = this._estimateGasCostUSD(gasPrice, swapCount, bnbPrice);
 
-        // Slippage buffer (reduced since we're using accurate AMM math)
-        const slippageUSD = grossProfitUSD * this.slippageBuffer;
+        // Calculate dynamic slippage based on path tokens and liquidity
+        let slippageRate = this.slippageBuffer;
+        let slippageInfo = null;
+
+        if (this.useDynamicSlippage && path && path.length >= 2) {
+            // Extract liquidities for each hop if available
+            const hopLiquidities = liquidities || reserves?.map(() => minLiquidityUSD) || [];
+            slippageInfo = slippageManager.calculatePathSlippage(
+                path,
+                hopLiquidities,
+                actualTradeSizeUSD
+            );
+            slippageRate = slippageInfo.slippage;
+        }
+
+        const slippageUSD = grossProfitUSD * slippageRate;
 
         // Net profit
         const netProfitUSD = grossProfitUSD - flashFeeUSD - gasCostUSD - slippageUSD;
@@ -251,6 +291,8 @@ class ProfitCalculator {
             flashFeeUSD,
             gasCostUSD,
             slippageUSD,
+            slippageRate,
+            slippageInfo,
             netProfitUSD,
             netProfitPercent,
             tradeSizeUSD: actualTradeSizeUSD,
@@ -702,7 +744,28 @@ class ProfitCalculator {
                 perSwap: this.gasEstimates.perSwap.toString(),
             },
             dynamicPricing: true,
+            dynamicSlippage: this.useDynamicSlippage,
+            slippageStats: slippageManager.getStats(),
         };
+    }
+
+    /**
+     * Enable or disable dynamic slippage calculation
+     *
+     * @param {boolean} enabled - Whether to use dynamic slippage
+     */
+    setDynamicSlippage(enabled) {
+        this.useDynamicSlippage = enabled;
+        log.info(`Dynamic slippage ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    /**
+     * Get slippage manager reference for direct access
+     *
+     * @returns {Object} SlippageManager instance
+     */
+    getSlippageManager() {
+        return slippageManager;
     }
 }
 

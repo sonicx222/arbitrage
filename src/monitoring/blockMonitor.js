@@ -18,6 +18,7 @@ class BlockMonitor extends EventEmitter {
         this.lastBlockNumber = 0;
         this.lastBlockTime = Date.now();
         this.pollingInterval = null; // For HTTP polling fallback
+        this.staleCheckInterval = null; // For stale block detection
 
         log.info('Block Monitor initialized');
     }
@@ -96,9 +97,26 @@ class BlockMonitor extends EventEmitter {
 
         this.provider = wsData.provider;
 
-        // Set up listeners
+        // Set up listeners with automatic reconnection
         this.provider.on('block', (n) => this.handleNewBlock(n));
-        this.provider.on('error', (e) => log.debug('WS error', { error: e.message }));
+
+        // Handle WebSocket errors - trigger reconnection
+        this.provider.on('error', (e) => {
+            log.warn('WebSocket error detected, triggering reconnection', { error: e.message });
+            this.handleReconnect();
+        });
+
+        // Handle WebSocket close events - trigger reconnection
+        // Access underlying websocket if available (ethers v6)
+        if (this.provider.websocket) {
+            this.provider.websocket.on('close', () => {
+                log.warn('WebSocket connection closed, triggering reconnection');
+                this.handleReconnect();
+            });
+        }
+
+        // Set up stale block detection - if no new blocks for 30 seconds, reconnect
+        this._setupStaleBlockDetection();
 
         // Initialize last block with 5s timeout
         let timeoutId;
@@ -113,6 +131,37 @@ class BlockMonitor extends EventEmitter {
         } finally {
             if (timeoutId) clearTimeout(timeoutId);
         }
+    }
+
+    /**
+     * Set up detection for stale blocks (no updates in 30+ seconds)
+     * This catches silent connection failures
+     * @private
+     */
+    _setupStaleBlockDetection() {
+        // Clear any existing stale check interval
+        if (this.staleCheckInterval) {
+            clearInterval(this.staleCheckInterval);
+        }
+
+        // Check every 10 seconds if we've received blocks recently
+        this.staleCheckInterval = setInterval(() => {
+            if (!this.isRunning) return;
+
+            const timeSinceLastBlock = Date.now() - this.lastBlockTime;
+            const staleThreshold = 30000; // 30 seconds (BSC blocks are ~3s)
+
+            if (timeSinceLastBlock > staleThreshold) {
+                log.warn(`No new blocks for ${Math.round(timeSinceLastBlock / 1000)}s, connection may be stale`, {
+                    lastBlock: this.lastBlockNumber,
+                    lastBlockTime: new Date(this.lastBlockTime).toISOString(),
+                });
+                this.handleReconnect();
+            }
+        }, 10000);
+
+        // Don't prevent process exit
+        this.staleCheckInterval.unref();
     }
 
     /**
@@ -190,6 +239,12 @@ class BlockMonitor extends EventEmitter {
         this.isRunning = false;
 
         try {
+            // Stop stale block detection
+            if (this.staleCheckInterval) {
+                clearInterval(this.staleCheckInterval);
+                this.staleCheckInterval = null;
+            }
+
             // Stop polling if active
             if (this.pollingInterval) {
                 clearInterval(this.pollingInterval);

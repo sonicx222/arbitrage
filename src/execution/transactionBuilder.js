@@ -3,17 +3,23 @@ import config from '../config.js';
 import log from '../utils/logger.js';
 import { FLASH_ARBITRAGE_ABI, WBNB_ADDRESS } from '../contracts/abis.js';
 import cacheManager from '../data/cacheManager.js';
+import gasPriceManager from '../utils/gasPriceManager.js';
 
 /**
  * Transaction Builder
  *
  * Builds and encodes transactions for the FlashArbitrage smart contract.
  * Handles both cross-DEX and triangular arbitrage transaction construction.
+ * Supports both legacy (BSC) and EIP-1559 (Ethereum, Polygon, Arbitrum, Base, Avalanche) gas pricing.
  */
 class TransactionBuilder {
     constructor() {
         this.contractAddress = config.execution?.contractAddress || null;
         this.contractInterface = new ethers.Interface(FLASH_ARBITRAGE_ABI);
+
+        // Chain configuration
+        this.chainId = 56; // Default BSC
+        this.provider = null;
 
         // Gas limit estimates
         this.gasLimits = {
@@ -24,6 +30,21 @@ class TransactionBuilder {
 
         log.info('Transaction Builder initialized', {
             contractAddress: this.contractAddress || 'not configured',
+            eip1559Support: true,
+        });
+    }
+
+    /**
+     * Set chain configuration for proper gas pricing
+     *
+     * @param {number} chainId - Chain ID
+     * @param {Object} provider - ethers.js provider
+     */
+    setChain(chainId, provider) {
+        this.chainId = chainId;
+        this.provider = provider;
+        log.info(`Transaction Builder configured for chain ${chainId}`, {
+            isEIP1559: gasPriceManager.isEIP1559Chain(chainId),
         });
     }
 
@@ -41,10 +62,10 @@ class TransactionBuilder {
      * Build a cross-DEX arbitrage transaction
      *
      * @param {Object} opportunity - Cross-DEX opportunity
-     * @param {BigInt} gasPrice - Gas price to use
+     * @param {BigInt|Object} gasParams - Gas price (legacy) or gas params object (EIP-1559)
      * @returns {Object} Transaction object ready for signing
      */
-    buildCrossDexTx(opportunity, gasPrice) {
+    buildCrossDexTx(opportunity, gasParams) {
         if (!this.contractAddress) {
             throw new Error('Contract address not configured');
         }
@@ -99,14 +120,16 @@ class TransactionBuilder {
             [flashPair, borrowAmount, tokenBorrow, path, routers, minProfit]
         );
 
-        // Build transaction
-        const tx = {
+        // Build base transaction
+        const baseTx = {
             to: this.contractAddress,
             data,
             gasLimit: this.gasLimits.crossDex + this.gasLimits.buffer,
-            gasPrice,
             value: 0n,
         };
+
+        // Apply gas parameters (supports both legacy and EIP-1559)
+        const tx = this._applyGasParams(baseTx, gasParams);
 
         log.debug('Built cross-DEX transaction', {
             pair: `${tokenA}/${tokenB}`,
@@ -114,6 +137,7 @@ class TransactionBuilder {
             buyDex,
             sellDex,
             minProfit: ethers.formatUnits(minProfit, tokenBDecimals),
+            isEIP1559: tx.type === 2,
         });
 
         return tx;
@@ -123,10 +147,10 @@ class TransactionBuilder {
      * Build a triangular arbitrage transaction
      *
      * @param {Object} opportunity - Triangular opportunity
-     * @param {BigInt} gasPrice - Gas price to use
+     * @param {BigInt|Object} gasParams - Gas price (legacy) or gas params object (EIP-1559)
      * @returns {Object} Transaction object ready for signing
      */
-    buildTriangularTx(opportunity, gasPrice) {
+    buildTriangularTx(opportunity, gasParams) {
         if (!this.contractAddress) {
             throw new Error('Contract address not configured');
         }
@@ -194,14 +218,16 @@ class TransactionBuilder {
             [flashPair, borrowAmount, tokenBorrow, pathAddresses, routers[0], minProfit]
         );
 
-        // Build transaction
-        const tx = {
+        // Build base transaction
+        const baseTx = {
             to: this.contractAddress,
             data,
             gasLimit: this.gasLimits.triangular + this.gasLimits.buffer,
-            gasPrice,
             value: 0n,
         };
+
+        // Apply gas parameters (supports both legacy and EIP-1559)
+        const tx = this._applyGasParams(baseTx, gasParams);
 
         log.debug('Built triangular transaction', {
             path: tokenPath.join(' -> '),
@@ -209,6 +235,7 @@ class TransactionBuilder {
             dex: type === 'cross-dex-triangular' ? dexPath?.join(' -> ') : dexName,
             borrowAmount: ethers.formatUnits(borrowAmount, tokenDecimals),
             minProfit: ethers.formatUnits(minProfit, tokenDecimals),
+            isEIP1559: tx.type === 2,
         });
 
         return tx;
@@ -218,15 +245,70 @@ class TransactionBuilder {
      * Build transaction based on opportunity type
      *
      * @param {Object} opportunity - Arbitrage opportunity
-     * @param {BigInt} gasPrice - Gas price
+     * @param {BigInt|Object} gasParams - Gas price (legacy) or gas params object (EIP-1559)
      * @returns {Object} Transaction object
      */
-    build(opportunity, gasPrice) {
+    build(opportunity, gasParams) {
         if (opportunity.type === 'triangular' || opportunity.type === 'cross-dex-triangular') {
-            return this.buildTriangularTx(opportunity, gasPrice);
+            return this.buildTriangularTx(opportunity, gasParams);
         } else {
-            return this.buildCrossDexTx(opportunity, gasPrice);
+            return this.buildCrossDexTx(opportunity, gasParams);
         }
+    }
+
+    /**
+     * Build transaction with automatic gas parameter detection
+     * Fetches optimal gas params based on chain type (legacy vs EIP-1559)
+     *
+     * @param {Object} opportunity - Arbitrage opportunity
+     * @param {Object} options - Optional gas options (speed, maxGasPriceGwei)
+     * @returns {Promise<Object>} Transaction object
+     */
+    async buildWithOptimalGas(opportunity, options = {}) {
+        if (!this.provider) {
+            throw new Error('Provider not set. Call setChain() first.');
+        }
+
+        const gasParams = await gasPriceManager.getGasParams(
+            this.provider,
+            this.chainId,
+            options
+        );
+
+        return this.build(opportunity, gasParams);
+    }
+
+    /**
+     * Apply gas parameters to a base transaction
+     * Handles both legacy gasPrice and EIP-1559 params
+     *
+     * @private
+     * @param {Object} baseTx - Base transaction without gas params
+     * @param {BigInt|Object} gasParams - Gas price or gas params object
+     * @returns {Object} Transaction with gas parameters
+     */
+    _applyGasParams(baseTx, gasParams) {
+        const tx = { ...baseTx };
+
+        // Check if gasParams is an EIP-1559 object or legacy BigInt
+        if (typeof gasParams === 'object' && gasParams !== null) {
+            // EIP-1559 gas params object
+            if (gasParams.type === 2 || gasParams.maxFeePerGas) {
+                tx.type = 2;
+                tx.maxFeePerGas = gasParams.maxFeePerGas;
+                tx.maxPriorityFeePerGas = gasParams.maxPriorityFeePerGas;
+            } else {
+                // Legacy params in object form
+                tx.type = 0;
+                tx.gasPrice = gasParams.gasPrice;
+            }
+        } else {
+            // Legacy BigInt gasPrice
+            tx.type = 0;
+            tx.gasPrice = gasParams;
+        }
+
+        return tx;
     }
 
     /**

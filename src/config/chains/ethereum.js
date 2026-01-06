@@ -93,8 +93,9 @@ export default {
         },
     },
 
-    // Token configuration
+    // Token configuration - Expanded for better arbitrage coverage
     tokens: {
+        // Core tokens
         WETH: {
             symbol: 'WETH',
             address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
@@ -120,6 +121,7 @@ export default {
             address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
             decimals: 8,
         },
+        // DeFi blue chips
         UNI: {
             symbol: 'UNI',
             address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984',
@@ -145,6 +147,69 @@ export default {
             address: '0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2',
             decimals: 18,
         },
+        // High volume tokens added
+        SUSHI: {
+            symbol: 'SUSHI',
+            address: '0x6B3595068778DD592e39A122f4f5a5cF09C90fE2',
+            decimals: 18,
+        },
+        LDO: {
+            symbol: 'LDO',
+            address: '0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32',
+            decimals: 18,
+        },
+        RPL: {
+            symbol: 'RPL',
+            address: '0xD33526068D116cE69F19A9ee46F0bd304F21A51f',
+            decimals: 18,
+        },
+        ENS: {
+            symbol: 'ENS',
+            address: '0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72',
+            decimals: 18,
+        },
+        COMP: {
+            symbol: 'COMP',
+            address: '0xc00e94Cb662C3520282E6f5717214004A7f26888',
+            decimals: 18,
+        },
+        SNX: {
+            symbol: 'SNX',
+            address: '0xC011a73ee8576Fb46F5E1c5751cA3B9Fe0af2a6F',
+            decimals: 18,
+        },
+        APE: {
+            symbol: 'APE',
+            address: '0x4d224452801ACEd8B2F0aebE155379bb5D594381',
+            decimals: 18,
+        },
+        FXS: {
+            symbol: 'FXS',
+            address: '0x3432B6A60D23Ca0dFCa7761B7ab56459D9C964D0',
+            decimals: 18,
+        },
+        FRAX: {
+            symbol: 'FRAX',
+            address: '0x853d955aCEf822Db058eb8505911ED77F175b99e',
+            decimals: 18,
+        },
+        // Liquid staking tokens
+        wstETH: {
+            symbol: 'wstETH',
+            address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0',
+            decimals: 18,
+        },
+        rETH: {
+            symbol: 'rETH',
+            address: '0xae78736Cd615f374D3085123A210448E74Fc6393',
+            decimals: 18,
+        },
+        cbETH: {
+            symbol: 'cbETH',
+            address: '0xBe9895146f7AF43049ca1c1AE358B0541Ea49704',
+            decimals: 18,
+        },
+        // Meme tokens (high volatility = more opportunities)
         SHIB: {
             symbol: 'SHIB',
             address: '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE',
@@ -157,8 +222,8 @@ export default {
         },
     },
 
-    // Base tokens
-    baseTokens: ['WETH', 'USDT', 'USDC', 'DAI', 'WBTC'],
+    // Base tokens - Expanded for more triangular paths
+    baseTokens: ['WETH', 'USDT', 'USDC', 'DAI', 'WBTC', 'FRAX', 'wstETH'],
 
     // Trading parameters
     trading: {

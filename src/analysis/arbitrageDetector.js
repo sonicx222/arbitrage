@@ -92,8 +92,12 @@ class ArbitrageDetector {
                 const { icon, text } = formatOpportunity(opp);
                 log.info(`   ${icon} ${text}`);
             }
+        } else {
+            // Log every 10th block with no opportunities to show the bot is alive
+            if (blockNumber % 10 === 0) {
+                log.info(`📡 Block ${blockNumber} scanned | ${pairs.length} pairs | ${formatDuration(duration)} | No opportunities`);
+            }
         }
-        // Note: Removed "no opportunities" log - it's noise when running continuously
 
         return opportunities;
     }
@@ -285,6 +289,8 @@ class ArbitrageDetector {
     /**
      * Find the optimal input amount that maximizes profit in USD
      * Uses Binary Search approach
+     *
+     * IMPORTANT: Accounts for flash loan fee (0.25%) which is deducted from the borrowed amount
      */
     optimizeTradeAmount(buyDexData, sellDexData, tokenADecimals, tokenBDecimals) {
         // We know we want to flow: Buy Low -> Sell High
@@ -300,6 +306,9 @@ class ArbitrageDetector {
 
         const buyFee = config.dex[buyDexData.dexName].fee;
         const sellFee = config.dex[sellDexData.dexName].fee;
+
+        // Flash loan fee (0.25% = 0.0025)
+        const flashLoanFee = config.execution?.flashLoanFee || 0.0025;
 
         // Search range: 1 USD worth of B to 50% of pool (safety) or $5k
         const liquidityUSD = buyDexData.liquidityUSD;
@@ -317,6 +326,7 @@ class ArbitrageDetector {
         if (maxAmount <= minAmount) return { profitUSD: 0, optimalAmount: 0n, priceUSD: priceB_USD };
 
         // Function to calculate profit for a given input amount of B
+        // This accounts for the flash loan fee that must be repaid
         const calcProfit = (amountInB) => {
             // 1. Buy A on LowDex (Input B -> Output A)
             const amountOutA = this.getAmountOut(amountInB, buyInRes, buyOutRes, buyFee);
@@ -324,8 +334,13 @@ class ArbitrageDetector {
             // 2. Sell A on HighDex (Input A -> Output B)
             const amountOutB = this.getAmountOut(amountOutA, sellInRes, sellOutRes, sellFee);
 
-            // 3. Profit = Final B - Initial B
-            return amountOutB - amountInB;
+            // 3. Calculate flash loan repayment amount (borrowed + 0.25% fee)
+            // Flash loan fee is calculated on the borrowed amount
+            const flashFeeAmount = (amountInB * BigInt(Math.floor(flashLoanFee * 10000))) / 10000n;
+            const totalRepayment = amountInB + flashFeeAmount;
+
+            // 4. Net Profit = Final B - Total Repayment (borrowed + flash fee)
+            return amountOutB - totalRepayment;
         };
 
         let maxProfit = 0n;
@@ -351,7 +366,7 @@ class ArbitrageDetector {
             }
         }
 
-        // Convert profit to USD
+        // Convert profit to USD (this is already net of flash loan fee)
         const profitFloat = Number(maxProfit) / Math.pow(10, tokenBDecimals);
         const profitUSD = profitFloat * priceB_USD;
 

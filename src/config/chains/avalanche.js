@@ -157,10 +157,71 @@ export default {
             address: '0x62edc0692BD897D2295872a9FFCac5425011c661',
             decimals: 18,
         },
+        // Additional high-volume Avalanche tokens
+        LINK: {
+            symbol: 'LINK',
+            address: '0x5947BB275c521040051D82396192181b413227A3',
+            decimals: 18,
+        },
+        AAVE: {
+            symbol: 'AAVE',
+            address: '0x63a72806098Bd3D9520cC43356dD78afe5D386D9',
+            decimals: 18,
+        },
+        SUSHI: {
+            symbol: 'SUSHI',
+            address: '0x37B608519F91f70F2EeB0e5Ed9AF4061722e4F76',
+            decimals: 18,
+        },
+        CRV: {
+            symbol: 'CRV',
+            address: '0x47536F17F4fF30e64A96a7555826b8f9e66ec468',
+            decimals: 18,
+        },
+        STG: {
+            symbol: 'STG',
+            address: '0x2F6F07CDcf3588944Bf4C42aC74ff24bF56e7590',
+            decimals: 18,
+        },
+        MIM: {
+            symbol: 'MIM',
+            address: '0x130966628846BFd36ff31a822705796e8cb8C18D',
+            decimals: 18,
+        },
+        SPELL: {
+            symbol: 'SPELL',
+            address: '0xCE1bFFBD5374Dac86a2893119683F4911a2F7814',
+            decimals: 18,
+        },
+        TIME: {
+            symbol: 'TIME',
+            address: '0xb54f16fB19478766A268F172C9480f8da1a7c9C3',
+            decimals: 9,
+        },
+        FRAX: {
+            symbol: 'FRAX',
+            address: '0xD24C2Ad096400B6FBcd2ad8B24E7acBc21A1da64',
+            decimals: 18,
+        },
+        FXS: {
+            symbol: 'FXS',
+            address: '0x214DB107654fF987AD859F34125307783fC8e387',
+            decimals: 18,
+        },
+        YAK: {
+            symbol: 'YAK',
+            address: '0x59414b3089ce2AF0010e7523Dea7E2b35d776ec7',
+            decimals: 18,
+        },
+        XAVA: {
+            symbol: 'XAVA',
+            address: '0xd1c3f94DE7e5B45fa4eDBBA472491a9f4B166FC4',
+            decimals: 18,
+        },
     },
 
-    // Base tokens
-    baseTokens: ['WAVAX', 'USDT', 'USDC', 'USDC.e', 'DAI', 'WETH.e'],
+    // Base tokens - Expanded for more triangular paths
+    baseTokens: ['WAVAX', 'USDT', 'USDC', 'USDC.e', 'DAI', 'WETH.e', 'MIM', 'FRAX'],
 
     // Trading parameters
     trading: {

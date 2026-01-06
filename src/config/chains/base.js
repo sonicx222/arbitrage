@@ -235,14 +235,60 @@ export default {
             address: '0xB6fe221Fe9EeF5aBa221c348bA20A1Bf5e73624c',
             decimals: 18,
         },
+        // Additional Base ecosystem tokens
+        BALD: {
+            symbol: 'BALD',
+            address: '0x27D2DECb4bFC9C76F0309b8E88dec3a601Fe25a8',
+            decimals: 18,
+        },
+        MOCHI: {
+            symbol: 'MOCHI',
+            address: '0xF6e932Ca12afa26665dC4dDE7e27be02A7c02e50',
+            decimals: 18,
+        },
+        COIN: {
+            symbol: 'COIN',
+            address: '0xE3086852A4B125803C815a158249ae468A3254Ca',
+            decimals: 18,
+        },
+        NORMIE: {
+            symbol: 'NORMIE',
+            address: '0x7F12d13B34F5F4f0a9449c16Bcd42f0da47AF200',
+            decimals: 9,
+        },
+        DOGINME: {
+            symbol: 'DOGINME',
+            address: '0x6921B130D297cc43754afba22e5EAc0FBf8Db75b',
+            decimals: 18,
+        },
+        HIGHER: {
+            symbol: 'HIGHER',
+            address: '0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe',
+            decimals: 18,
+        },
+        VIRTUAL: {
+            symbol: 'VIRTUAL',
+            address: '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b',
+            decimals: 18,
+        },
+        PRIME: {
+            symbol: 'PRIME',
+            address: '0xfA980cEd6895AC314E7dE34Ef1bFAE90a5AdD21b',
+            decimals: 18,
+        },
+        EURC: {
+            symbol: 'EURC',
+            address: '0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42',
+            decimals: 6,
+        },
     },
 
     // Base tokens (including stables for better triangular arbitrage)
-    baseTokens: ['WETH', 'USDC', 'USDbC', 'DAI', 'axlUSDC'],
+    baseTokens: ['WETH', 'USDC', 'USDbC', 'DAI', 'axlUSDC', 'EURC'],
 
-    // Trading parameters
+    // Trading parameters - Optimized for L2 ultra-low gas costs
     trading: {
-        minProfitPercentage: parseFloat(process.env.BASE_MIN_PROFIT || '0.2'),
+        minProfitPercentage: parseFloat(process.env.BASE_MIN_PROFIT || '0.05'), // Lowered for L2
         maxSlippage: parseFloat(process.env.BASE_MAX_SLIPPAGE || '0.5'),
         gasPriceGwei: parseFloat(process.env.BASE_GAS_PRICE || '0.01'),
         estimatedGasLimit: 400000,
@@ -263,13 +309,13 @@ export default {
         maxTradeSizeUSD: parseInt(process.env.BASE_TRIANGULAR_MAX_TRADE || '5000'),
     },
 
-    // Execution
+    // Execution - Optimized for L2 ultra-low gas costs
     execution: {
         enabled: process.env.BASE_EXECUTION_ENABLED === 'true',
         mode: process.env.BASE_EXECUTION_MODE || 'simulation',
         contractAddress: process.env.BASE_FLASH_CONTRACT || null,
         privateKey: process.env.BASE_PRIVATE_KEY || null,
-        minProfitUSD: parseFloat(process.env.BASE_MIN_PROFIT_USD || '1.0'),
+        minProfitUSD: parseFloat(process.env.BASE_MIN_PROFIT_USD || '0.20'), // Lowered for L2
         maxGasPriceGwei: parseInt(process.env.BASE_MAX_GAS_PRICE || '1'),
         slippageTolerance: parseFloat(process.env.BASE_SLIPPAGE_TOLERANCE || '0.5'),
     },

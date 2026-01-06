@@ -11,7 +11,10 @@
       "Bash(node -e:*)",
       "Bash(timeout 8 node:*)",
       "Bash(timeout 12 node:*)",
-      "Bash(timeout 15 node:*)"
+      "Bash(timeout 15 node:*)",
+      "Bash(timeout 30 node:*)",
+      "Bash(timeout 25 node:*)",
+      "Bash(node --check:*)"
     ]
   }
 }

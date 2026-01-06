@@ -52,12 +52,19 @@ describe('ProfitCalculator', () => {
             expect(result.flashFeeUSD).toBeCloseTo(expectedFlashFee, 2);
         });
 
-        test('should include slippage buffer', () => {
+        test('should include dynamic slippage based on token types', () => {
             const result = profitCalculator.calculateNetProfit(crossDexOpportunity, gasPrice, bnbPrice);
 
-            // Slippage buffer should be 1% of gross profit
-            const expectedSlippage = 10 * 0.01; // $0.10
-            expect(result.slippageUSD).toBeCloseTo(expectedSlippage, 2);
+            // With dynamic slippage: WBNB (native: 0.3%) + USDT (stablecoin: 0.1%) = 0.3%
+            // Slippage is calculated on gross profit, but with liquidity adjustments
+            // Just verify slippage is calculated and reasonable
+            expect(result.slippageUSD).toBeGreaterThan(0);
+            expect(result.slippageUSD).toBeLessThan(result.grossProfitUSD);
+
+            // Verify slippage info is included
+            expect(result).toHaveProperty('slippageRate');
+            expect(result).toHaveProperty('slippageInfo');
+            expect(result.slippageRate).toBeGreaterThan(0);
         });
 
         test('should mark unprofitable opportunities correctly', () => {
@@ -252,8 +259,11 @@ describe('ProfitCalculator', () => {
             expect(stats).toHaveProperty('minProfitUSD');
             expect(stats).toHaveProperty('gasEstimates');
             expect(stats).toHaveProperty('dynamicPricing');
+            expect(stats).toHaveProperty('dynamicSlippage');
+            expect(stats).toHaveProperty('slippageStats');
             expect(stats.flashLoanFee).toBe(0.0025);
             expect(stats.dynamicPricing).toBe(true);
+            expect(stats.dynamicSlippage).toBe(true);
         });
     });
 });

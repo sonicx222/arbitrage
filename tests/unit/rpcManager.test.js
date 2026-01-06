@@ -176,4 +176,91 @@ describe('RPCManager', () => {
             expect(mockProvider.getFeeData).toHaveBeenCalledTimes(1);
         });
     });
+
+    describe('Self-Healing', () => {
+        test('should track unhealthySince when marking endpoint unhealthy', () => {
+            const endpoint = 'http://unhealthy.com';
+            rpcManager.endpointHealth.set(endpoint, { healthy: true, failures: 0 });
+
+            // Mark unhealthy 3 times to trigger unhealthy status
+            rpcManager.markEndpointUnhealthy(endpoint);
+            rpcManager.markEndpointUnhealthy(endpoint);
+            rpcManager.markEndpointUnhealthy(endpoint);
+
+            const health = rpcManager.endpointHealth.get(endpoint);
+            expect(health.healthy).toBe(false);
+            expect(health.unhealthySince).toBeDefined();
+            expect(health.unhealthySince).toBeLessThanOrEqual(Date.now());
+        });
+
+        test('should emit endpointUnhealthy event when endpoint becomes unhealthy', () => {
+            const endpoint = 'http://failing.com';
+            rpcManager.endpointHealth.set(endpoint, { healthy: true, failures: 0 });
+
+            const eventHandler = jest.fn();
+            rpcManager.on('endpointUnhealthy', eventHandler);
+
+            // Trigger unhealthy status
+            rpcManager.markEndpointUnhealthy(endpoint);
+            rpcManager.markEndpointUnhealthy(endpoint);
+            rpcManager.markEndpointUnhealthy(endpoint);
+
+            expect(eventHandler).toHaveBeenCalledWith(endpoint);
+            rpcManager.removeListener('endpointUnhealthy', eventHandler);
+        });
+
+        test('should start and stop self-healing interval', () => {
+            // Stop any existing interval first
+            rpcManager.stopSelfHealing();
+            expect(rpcManager.healingInterval).toBeNull();
+
+            // Start self-healing
+            rpcManager.startSelfHealing();
+            expect(rpcManager.healingInterval).not.toBeNull();
+
+            // Stop self-healing
+            rpcManager.stopSelfHealing();
+            expect(rpcManager.healingInterval).toBeNull();
+        });
+
+        test('should have self-healing stats in getStats', () => {
+            const stats = rpcManager.getStats();
+
+            expect(stats).toHaveProperty('selfHealing');
+            expect(stats.selfHealing).toHaveProperty('enabled');
+            expect(stats.selfHealing).toHaveProperty('intervalMs');
+            expect(stats.selfHealing).toHaveProperty('unhealthyEndpoints');
+        });
+
+        test('should identify unhealthy endpoints for healing', async () => {
+            const endpoint = 'http://heal-test.com';
+            const now = Date.now();
+
+            // Set up an unhealthy endpoint that's ready for retry
+            rpcManager.endpointHealth.set(endpoint, {
+                healthy: false,
+                failures: 5,
+                unhealthySince: now - (rpcManager.minRecoveryTimeMs + 1000), // Past recovery time
+            });
+
+            // The healUnhealthyEndpoints method should find this endpoint
+            const stats = rpcManager.getStats();
+            expect(stats.selfHealing.unhealthyEndpoints).toBeGreaterThanOrEqual(1);
+        });
+
+        test('should mask endpoint URLs in logs for security', () => {
+            const endpoint = 'https://eth-mainnet.g.alchemy.com/v2/abc123secretkey456';
+            const masked = rpcManager._maskEndpoint(endpoint);
+
+            // Should not expose the full API key
+            expect(masked).not.toContain('abc123secretkey456');
+            expect(masked).toContain('...');
+            expect(masked).toContain('alchemy.com');
+        });
+
+        test('forceHealAll should trigger healing check', async () => {
+            // Just verify it doesn't throw
+            await expect(rpcManager.forceHealAll()).resolves.not.toThrow();
+        });
+    });
 });
