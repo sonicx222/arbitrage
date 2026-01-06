@@ -93,6 +93,42 @@ export default {
             type: 'uniswapV2',
             tvlRank: 3,
         },
+        // High-volume DEXes for better arbitrage detection
+        balancer: {
+            name: 'Balancer',
+            router: '0xBA12222222228d8Ba445958a75a0704d566BF2C8', // Vault acts as router
+            vault: '0xBA12222222228d8Ba445958a75a0704d566BF2C8',
+            enabled: false, // Disabled until Balancer integration is complete
+            type: 'balancer',
+            tvlRank: 2,
+        },
+        dystopia: {
+            name: 'Dystopia',
+            router: '0xbE75Dd16D029c6B32B7aD57A0FD9C1c20Dd2862e',
+            factory: '0x1d21Db6cde1b18c7E47B0F7F42f4b3F68b9beeC9',
+            fee: 0.003,
+            enabled: true,
+            type: 'solidly',
+            tvlRank: 4,
+        },
+        meshswap: {
+            name: 'MeshSwap',
+            router: '0x10f4A785F458Bc144e3706575924889954946639',
+            factory: '0x9F3044f7F9FC8bC9eD615d54845b4577B833282d',
+            fee: 0.003,
+            enabled: true,
+            type: 'uniswapV2',
+            tvlRank: 5,
+        },
+        jetswap: {
+            name: 'JetSwap',
+            router: '0x5C6EC38fb0e2609672BDf628B1fD605A523E5923',
+            factory: '0x668ad0ed2622C62E24f0d5ab6B6Ac1b9D2cD4AC7',
+            fee: 0.003,
+            enabled: true,
+            type: 'uniswapV2',
+            tvlRank: 6,
+        },
     },
 
     // Token configuration
@@ -147,10 +183,61 @@ export default {
             address: '0xb33EaAd8d922B1083446DC23f610c2567fB5180f',
             decimals: 18,
         },
+        // High-volume tokens for better arbitrage detection
+        CRV: {
+            symbol: 'CRV',
+            address: '0x172370d5Cd63279eFa6d502DAB29171933a610AF',
+            decimals: 18,
+        },
+        BAL: {
+            symbol: 'BAL',
+            address: '0x9a71012B13CA4d3D0Cdc72A177DF3ef03b0E76A3',
+            decimals: 18,
+        },
+        SUSHI: {
+            symbol: 'SUSHI',
+            address: '0x0b3F868E0BE5597D5DB7fEB59E1CADBb0fdDa50a',
+            decimals: 18,
+        },
+        GHST: {
+            symbol: 'GHST',
+            address: '0x385Eeac5cB85A38A9a07A70c73e0a3271CfB54A7',
+            decimals: 18,
+        },
+        SAND: {
+            symbol: 'SAND',
+            address: '0xBbba073C31bF03b8ACf7c28EF0738DeCF3695683',
+            decimals: 18,
+        },
+        MANA: {
+            symbol: 'MANA',
+            address: '0xA1c57f48F0Deb89f569dFbE6E2B7f46D33606fD4',
+            decimals: 18,
+        },
+        stMATIC: {
+            symbol: 'stMATIC',
+            address: '0x3A58a54C066FdC0f2D55FC9C89F0415C92eBf3C4',
+            decimals: 18,
+        },
+        MaticX: {
+            symbol: 'MaticX',
+            address: '0xfa68FB4628DFF1028CFEc22b4162FCcd0d45efb6',
+            decimals: 18,
+        },
+        miMATIC: {
+            symbol: 'miMATIC',
+            address: '0xa3Fa99A148fA48D14Ed51d610c367C61876997F1',
+            decimals: 18,
+        },
+        FRAX: {
+            symbol: 'FRAX',
+            address: '0x45c32fA6DF82ead1e2EF74d17b76547EDdFaFF89',
+            decimals: 18,
+        },
     },
 
-    // Base tokens
-    baseTokens: ['WMATIC', 'USDT', 'USDC', 'DAI', 'WETH'],
+    // Base tokens (including stables for triangular arbitrage)
+    baseTokens: ['WMATIC', 'USDT', 'USDC', 'DAI', 'WETH', 'miMATIC', 'FRAX'],
 
     // Trading parameters
     trading: {

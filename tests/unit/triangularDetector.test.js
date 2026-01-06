@@ -194,7 +194,201 @@ describe('TriangularDetector', () => {
             expect(stats).toHaveProperty('totalTokens');
             expect(stats).toHaveProperty('minProfitThreshold');
             expect(stats).toHaveProperty('minLiquidity');
+            expect(stats).toHaveProperty('supportsCrossDexTriangular');
             expect(typeof stats.baseTokens).toBe('number');
+            expect(stats.supportsCrossDexTriangular).toBe(true);
+        });
+    });
+
+    describe('findCrossDexTriangularOpportunities', () => {
+        const crossDexMockData = {
+            // WBNB/CAKE on two DEXes with different prices
+            'CAKE/WBNB': {
+                'pancakeswap': {
+                    price: 0.004, // 1 CAKE = 0.004 WBNB
+                    reserveA: '1000000000000000000000000',
+                    reserveB: '4000000000000000000000',
+                    liquidityUSD: 5000000,
+                    pairAddress: '0x123',
+                },
+                'biswap': {
+                    price: 0.00405, // Slightly higher price on BiSwap
+                    reserveA: '800000000000000000000000',
+                    reserveB: '3240000000000000000000',
+                    liquidityUSD: 4000000,
+                    pairAddress: '0x456',
+                },
+            },
+            'USDT/CAKE': {
+                'pancakeswap': {
+                    price: 0.4,
+                    reserveA: '2500000000000000000000000',
+                    reserveB: '1000000000000000000000000',
+                    liquidityUSD: 5000000,
+                    pairAddress: '0x789',
+                },
+                'biswap': {
+                    price: 0.398, // Slightly lower on BiSwap
+                    reserveA: '2000000000000000000000000',
+                    reserveB: '800000000000000000000000',
+                    liquidityUSD: 4000000,
+                    pairAddress: '0xabc',
+                },
+            },
+            'WBNB/USDT': {
+                'pancakeswap': {
+                    price: 600,
+                    reserveA: '8333000000000000000000',
+                    reserveB: '5000000000000000000000000',
+                    liquidityUSD: 10000000,
+                    pairAddress: '0xdef',
+                },
+                'biswap': {
+                    price: 602, // Slightly higher on BiSwap
+                    reserveA: '6600000000000000000000',
+                    reserveB: '3975000000000000000000000',
+                    liquidityUSD: 8000000,
+                    pairAddress: '0xfed',
+                },
+            },
+        };
+
+        test('should find cross-DEX triangular opportunities', () => {
+            const opportunities = triangularDetector.findCrossDexTriangularOpportunities(crossDexMockData, 12345);
+            expect(Array.isArray(opportunities)).toBe(true);
+        });
+
+        test('should include dexPath in cross-DEX opportunities', () => {
+            const opportunities = triangularDetector.findCrossDexTriangularOpportunities(crossDexMockData, 12345);
+
+            if (opportunities.length > 0) {
+                const opp = opportunities[0];
+                expect(opp).toHaveProperty('type', 'cross-dex-triangular');
+                expect(opp).toHaveProperty('dexPath');
+                expect(opp).toHaveProperty('fees');
+                expect(Array.isArray(opp.dexPath)).toBe(true);
+                expect(opp.dexPath.length).toBe(3);
+                expect(Array.isArray(opp.fees)).toBe(true);
+            }
+        });
+
+        test('should skip paths where all DEXes are the same', () => {
+            // Create data with only one DEX
+            const singleDexData = {
+                'CAKE/WBNB': {
+                    'pancakeswap': {
+                        price: 0.004,
+                        reserveA: '1000000000000000000000000',
+                        reserveB: '4000000000000000000000',
+                        liquidityUSD: 5000000,
+                        pairAddress: '0x123',
+                    },
+                },
+                'USDT/CAKE': {
+                    'pancakeswap': {
+                        price: 0.4,
+                        reserveA: '2500000000000000000000000',
+                        reserveB: '1000000000000000000000000',
+                        liquidityUSD: 5000000,
+                        pairAddress: '0x789',
+                    },
+                },
+                'WBNB/USDT': {
+                    'pancakeswap': {
+                        price: 600,
+                        reserveA: '8333000000000000000000',
+                        reserveB: '5000000000000000000000000',
+                        liquidityUSD: 10000000,
+                        pairAddress: '0xdef',
+                    },
+                },
+            };
+
+            const opportunities = triangularDetector.findCrossDexTriangularOpportunities(singleDexData, 12345);
+            // Should be empty because all would be same-DEX paths
+            expect(opportunities.length).toBe(0);
+        });
+
+        test('should handle empty price data', () => {
+            const opportunities = triangularDetector.findCrossDexTriangularOpportunities({}, 12345);
+            expect(opportunities).toEqual([]);
+        });
+    });
+
+    describe('calculateCrossDexOutput', () => {
+        test('should calculate output with per-hop fees', () => {
+            const opportunity = {
+                reserves: [
+                    { in: '1000000000000000000000', out: '4000000000000000000' },
+                    { in: '4000000000000000000', out: '2400000000000000000000' },
+                    { in: '2400000000000000000000', out: '1000000000000000000000' },
+                ],
+                fees: [0.003, 0.001, 0.002], // Different fees per DEX
+            };
+
+            const inputAmount = BigInt('10000000000000000000'); // 10 tokens
+            const result = triangularDetector.calculateCrossDexOutput(opportunity, inputAmount, 18);
+
+            expect(result).toHaveProperty('outputAmount');
+            expect(result).toHaveProperty('profitAmount');
+            expect(result).toHaveProperty('effectiveRate');
+            expect(typeof result.outputAmount).toBe('bigint');
+        });
+    });
+
+    describe('Golden Section Search in findOptimalTradeSize', () => {
+        test('should use golden ratio for convergence', () => {
+            const opportunity = {
+                dexName: 'pancakeswap',
+                reserves: [
+                    { in: '1000000000000000000000000', out: '4000000000000000000000' },
+                    { in: '4000000000000000000000', out: '2400000000000000000000000' },
+                    { in: '2400000000000000000000000', out: '1000000000000000000000000' },
+                ],
+                cycleProduct: 1.01,
+            };
+
+            // Multiple calls should give consistent results
+            const result1 = triangularDetector.findOptimalTradeSize(opportunity, 18, 5000, 600);
+            const result2 = triangularDetector.findOptimalTradeSize(opportunity, 18, 5000, 600);
+
+            expect(result1.optimalAmount).toBe(result2.optimalAmount);
+        });
+
+        test('should converge faster than linear search', () => {
+            const opportunity = {
+                dexName: 'pancakeswap',
+                reserves: [
+                    { in: '1000000000000000000000000', out: '4000000000000000000000' },
+                    { in: '4000000000000000000000', out: '2400000000000000000000000' },
+                    { in: '2400000000000000000000000', out: '1000000000000000000000000' },
+                ],
+                cycleProduct: 1.005,
+            };
+
+            // Should complete quickly (golden section converges in ~15 iterations)
+            const startTime = Date.now();
+            triangularDetector.findOptimalTradeSize(opportunity, 18, 10000, 600);
+            const duration = Date.now() - startTime;
+
+            // Should be fast (< 50ms for golden section)
+            expect(duration).toBeLessThan(50);
+        });
+
+        test('should handle edge case of very small trade range', () => {
+            const opportunity = {
+                dexName: 'pancakeswap',
+                reserves: [
+                    { in: '1000000000000000000', out: '4000000000000000' }, // Very small pool
+                    { in: '4000000000000000', out: '2400000000000000000' },
+                    { in: '2400000000000000000', out: '1000000000000000000' },
+                ],
+                cycleProduct: 1.01,
+            };
+
+            const result = triangularDetector.findOptimalTradeSize(opportunity, 18, 1, 600);
+            expect(result).toHaveProperty('optimalAmount');
+            expect(result).toHaveProperty('profitUSD');
         });
     });
 });

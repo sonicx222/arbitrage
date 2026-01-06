@@ -199,10 +199,16 @@ class PriceFetcher {
         const priceBI = (reserveB * factorA * precision) / (reserveA * factorB);
         const price = Number(priceBI) / 1e18;
 
+        // Calculate liquidity in USD (approximate using reserve values)
+        // For accurate USD value, we'd need external price feeds
+        // This uses a heuristic: assume base tokens (WBNB, USDT, etc.) have known prices
+        const liquidityUSD = this._estimateLiquidityUSD(reserveA, reserveB, tokenA, tokenB);
+
         return {
             price,
             reserveA: reserveA.toString(),
             reserveB: reserveB.toString(),
+            liquidityUSD,
             pairAddress,
             timestamp: Date.now()
         };
@@ -237,6 +243,52 @@ class PriceFetcher {
 
         log.debug(`Generated ${pairs.length} unique pairs to monitor against ${baseSymbols.length} base assets`);
         return pairs;
+    }
+
+    /**
+     * Estimate liquidity in USD for a pair
+     * Uses heuristics based on known token prices
+     * @private
+     */
+    _estimateLiquidityUSD(reserveA, reserveB, tokenA, tokenB) {
+        // Known approximate prices for base tokens
+        const knownPrices = {
+            // Stablecoins
+            'USDT': 1, 'USDC': 1, 'BUSD': 1, 'DAI': 1, 'TUSD': 1, 'FDUSD': 1,
+            'USDbC': 1, 'axlUSDC': 1, 'miMATIC': 1, 'FRAX': 1, 'USDplus': 1,
+            // Native tokens (approximate)
+            'WBNB': 600, 'BNB': 600,
+            'WETH': 3500, 'ETH': 3500,
+            'WMATIC': 0.5, 'MATIC': 0.5,
+            'WAVAX': 35, 'AVAX': 35,
+            // Major tokens
+            'BTCB': 95000, 'WBTC': 95000,
+            'cbETH': 3500, 'wstETH': 4000, 'rETH': 3800,
+            'stMATIC': 0.5, 'MaticX': 0.5,
+        };
+
+        const priceA = knownPrices[tokenA.symbol] || null;
+        const priceB = knownPrices[tokenB.symbol] || null;
+
+        // Convert reserves to float
+        const resAFloat = Number(reserveA) / Math.pow(10, tokenA.decimals);
+        const resBFloat = Number(reserveB) / Math.pow(10, tokenB.decimals);
+
+        // Calculate liquidity based on known prices
+        if (priceA !== null && priceB !== null) {
+            // Both tokens have known prices - use average
+            return (resAFloat * priceA) + (resBFloat * priceB);
+        } else if (priceA !== null) {
+            // Only tokenA has known price - double it (assume 50/50 pool)
+            return resAFloat * priceA * 2;
+        } else if (priceB !== null) {
+            // Only tokenB has known price - double it
+            return resBFloat * priceB * 2;
+        }
+
+        // Neither token has known price - return conservative estimate
+        // Assume $1 per token unit as fallback
+        return (resAFloat + resBFloat) * 0.5;
     }
 }
 

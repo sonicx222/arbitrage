@@ -133,8 +133,10 @@ class TransactionBuilder {
 
         const {
             dexName,
+            dexPath, // For cross-dex-triangular
             path: tokenPath,
             profitCalculation,
+            type,
         } = opportunity;
 
         // Get token addresses for path
@@ -160,8 +162,22 @@ class TransactionBuilder {
             tokenDecimals
         );
 
-        // Router
-        const router = config.dex[dexName].router;
+        // Router(s) - for cross-dex-triangular, we need multiple routers
+        let routers;
+        if (type === 'cross-dex-triangular' && dexPath) {
+            // Cross-DEX triangular uses different router for each hop
+            routers = dexPath.map(dex => config.dex[dex]?.router).filter(Boolean);
+            if (routers.length !== 3) {
+                throw new Error(`Invalid dexPath: expected 3 routers, got ${routers.length}`);
+            }
+        } else {
+            // Single-DEX triangular uses same router for all hops
+            const router = config.dex[dexName]?.router;
+            if (!router) {
+                throw new Error(`Router not found for DEX: ${dexName}`);
+            }
+            routers = [router, router, router];
+        }
 
         // Minimum profit with 1% buffer
         const minProfitUSD = profitCalculation.netProfitUSD * 0.99;
@@ -171,9 +187,11 @@ class TransactionBuilder {
         );
 
         // Encode function call
+        // Note: For cross-dex-triangular, the contract needs to support multiple routers
+        // If the contract only supports single router, we use the first one (legacy behavior)
         const data = this.contractInterface.encodeFunctionData(
             'executeTriangularArbitrage',
-            [flashPair, borrowAmount, tokenBorrow, pathAddresses, router, minProfit]
+            [flashPair, borrowAmount, tokenBorrow, pathAddresses, routers[0], minProfit]
         );
 
         // Build transaction
@@ -187,7 +205,8 @@ class TransactionBuilder {
 
         log.debug('Built triangular transaction', {
             path: tokenPath.join(' -> '),
-            dex: dexName,
+            type,
+            dex: type === 'cross-dex-triangular' ? dexPath?.join(' -> ') : dexName,
             borrowAmount: ethers.formatUnits(borrowAmount, tokenDecimals),
             minProfit: ethers.formatUnits(minProfit, tokenDecimals),
         });
@@ -203,7 +222,7 @@ class TransactionBuilder {
      * @returns {Object} Transaction object
      */
     build(opportunity, gasPrice) {
-        if (opportunity.type === 'triangular') {
+        if (opportunity.type === 'triangular' || opportunity.type === 'cross-dex-triangular') {
             return this.buildTriangularTx(opportunity, gasPrice);
         } else {
             return this.buildCrossDexTx(opportunity, gasPrice);

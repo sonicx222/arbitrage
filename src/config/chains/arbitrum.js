@@ -93,6 +93,34 @@ export default {
             type: 'uniswapV2',
             tvlRank: 4,
         },
+        // High-volume DEXes for better arbitrage detection
+        ramses: {
+            name: 'Ramses',
+            router: '0xAAA87963EFeB6f7E0a2711F397663105Acb1805e',
+            factory: '0xAAA20D08e59F6561f242b08513D36266C5A29415',
+            fee: 0.003,
+            enabled: true,
+            type: 'solidly',
+            tvlRank: 5,
+        },
+        zyberswap: {
+            name: 'Zyberswap',
+            router: '0x16e71B13fE6079B4312063F7E81F76d165Ad32Ad',
+            factory: '0xAC2ee06A14c52570Ef3B9812Ed240BCe359772e7',
+            fee: 0.003,
+            enabled: true,
+            type: 'uniswapV2',
+            tvlRank: 6,
+        },
+        arbidex: {
+            name: 'ArbiDex',
+            router: '0x7238FB45146BD8FcB2c463Dc119A53494be57Aac',
+            factory: '0x1C6E968f2E6c9DEC61DB874E28589fd5CE3E1f2c',
+            fee: 0.003,
+            enabled: true,
+            type: 'uniswapV2',
+            tvlRank: 7,
+        },
     },
 
     // Token configuration
@@ -157,10 +185,66 @@ export default {
             address: '0x3082CC23568eA640225c2467653dB90e9250AaA0',
             decimals: 18,
         },
+        // High-volume tokens for better arbitrage detection
+        PENDLE: {
+            symbol: 'PENDLE',
+            address: '0x0c880f6761F1af8d9Aa9C466984b80DAb9a8c9e8',
+            decimals: 18,
+        },
+        GRAIL: {
+            symbol: 'GRAIL',
+            address: '0x3d9907F9a368ad0a51Be60f7Da3b97cf940982D8',
+            decimals: 18,
+        },
+        JONES: {
+            symbol: 'JONES',
+            address: '0x10393c20975cF177a3513071bC110f7962CD67da',
+            decimals: 18,
+        },
+        DPX: {
+            symbol: 'DPX',
+            address: '0x6C2C06790b3E3E3c38e12Ee22F8183b37a13EE55',
+            decimals: 18,
+        },
+        SUSHI: {
+            symbol: 'SUSHI',
+            address: '0xd4d42F0b6DEF4CE0383636770eF773390d85c61A',
+            decimals: 18,
+        },
+        CRV: {
+            symbol: 'CRV',
+            address: '0x11cDb42B0EB46D95f990BeDD4695A6e3fA034978',
+            decimals: 18,
+        },
+        FRAX: {
+            symbol: 'FRAX',
+            address: '0x17FC002b466eEc40DaE837Fc4bE5c67993ddBd6F',
+            decimals: 18,
+        },
+        STG: {
+            symbol: 'STG',
+            address: '0x6694340fc020c5E6B96567843da2df01b2CE1eb6',
+            decimals: 18,
+        },
+        LDO: {
+            symbol: 'LDO',
+            address: '0x13Ad51ed4F1B7e9Dc168d8a00cB3f4dDD85EfA60',
+            decimals: 18,
+        },
+        wstETH: {
+            symbol: 'wstETH',
+            address: '0x5979D7b546E38E414F7E9822514be443A4800529',
+            decimals: 18,
+        },
+        rETH: {
+            symbol: 'rETH',
+            address: '0xEC70Dcb4A1EFa46b8F2D97C310C9c4790ba5ffA8',
+            decimals: 18,
+        },
     },
 
     // Base tokens
-    baseTokens: ['WETH', 'USDT', 'USDC', 'USDC.e', 'DAI'],
+    baseTokens: ['WETH', 'USDT', 'USDC', 'USDC.e', 'DAI', 'FRAX'],
 
     // Trading parameters
     trading: {

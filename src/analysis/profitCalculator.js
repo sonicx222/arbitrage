@@ -94,7 +94,7 @@ class ProfitCalculator {
         const currentNativePrice = nativePrice || this._getDynamicNativePrice();
 
         // Determine opportunity type and calculate accordingly
-        if (opportunity.type === 'triangular') {
+        if (opportunity.type === 'triangular' || opportunity.type === 'cross-dex-triangular') {
             return this._calculateTriangularProfit(opportunity, gasPrice, currentNativePrice);
         } else {
             return this._calculateCrossDexProfit(opportunity, gasPrice, currentNativePrice);
@@ -282,8 +282,10 @@ class ProfitCalculator {
      * @returns {Object} { grossProfitUSD, optimalInputAmount, tradeSizeUSD }
      */
     _calculateExactTriangularProfit(opportunity, maxInputAmount, tokenDecimals, baseTokenPriceUSD) {
-        const { reserves, dexName } = opportunity;
-        const fee = config.dex[dexName]?.fee || 0.003;
+        const { reserves, dexName, fees: perHopFees } = opportunity;
+
+        // For cross-DEX triangular, use individual fees; for single-DEX, use dexName
+        const singleFee = config.dex[dexName]?.fee || 0.003;
 
         // If no reserves data, fall back to simple calculation
         if (!reserves || reserves.length !== 3) {
@@ -308,7 +310,10 @@ class ProfitCalculator {
             const testAmount = minAmount + (increment * BigInt(i));
             if (testAmount <= 0n) continue;
 
-            const outputAmount = this._simulateTriangularSwaps(testAmount, reserves, fee);
+            // Use per-hop fees for cross-DEX triangular, single fee otherwise
+            const outputAmount = perHopFees
+                ? this._simulateTriangularSwapsWithFees(testAmount, reserves, perHopFees)
+                : this._simulateTriangularSwaps(testAmount, reserves, singleFee);
             const profit = outputAmount - testAmount;
 
             if (profit > bestProfit) {
@@ -333,7 +338,7 @@ class ProfitCalculator {
     }
 
     /**
-     * Simulate triangular swaps using Uniswap V2 AMM formula
+     * Simulate triangular swaps using Uniswap V2 AMM formula (single fee)
      *
      * @private
      * @param {BigInt} inputAmount - Amount to swap
@@ -346,6 +351,32 @@ class ProfitCalculator {
 
         for (let i = 0; i < reserves.length; i++) {
             const { in: reserveIn, out: reserveOut } = reserves[i];
+            currentAmount = this._getAmountOut(
+                currentAmount,
+                BigInt(reserveIn),
+                BigInt(reserveOut),
+                fee
+            );
+        }
+
+        return currentAmount;
+    }
+
+    /**
+     * Simulate triangular swaps with per-hop fees (for cross-DEX triangular)
+     *
+     * @private
+     * @param {BigInt} inputAmount - Amount to swap
+     * @param {Array} reserves - Array of {in, out} reserves for each hop
+     * @param {Array} fees - Array of fees for each hop
+     * @returns {BigInt} Final output amount
+     */
+    _simulateTriangularSwapsWithFees(inputAmount, reserves, fees) {
+        let currentAmount = inputAmount;
+
+        for (let i = 0; i < reserves.length; i++) {
+            const { in: reserveIn, out: reserveOut } = reserves[i];
+            const fee = fees[i] || 0.003;
             currentAmount = this._getAmountOut(
                 currentAmount,
                 BigInt(reserveIn),

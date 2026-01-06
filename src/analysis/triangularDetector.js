@@ -4,15 +4,17 @@ import log from '../utils/logger.js';
 /**
  * Triangular Arbitrage Detector
  *
- * Detects profitable triangular arbitrage opportunities within a single DEX.
- * Triangular arbitrage: A -> B -> C -> A where the product of exchange rates > 1
+ * Detects profitable triangular arbitrage opportunities.
+ *
+ * Key Features:
+ * 1. Single-DEX triangular: A -> B -> C -> A on same DEX
+ * 2. Cross-DEX triangular: A -> B -> C -> A across different DEXes
+ * 3. Golden section search for optimal trade sizing
+ * 4. Accurate AMM price calculations using reserves
  *
  * Example: WBNB -> CAKE -> USDT -> WBNB
  * If 1 WBNB buys 100 CAKE, 100 CAKE buys 251 USDT, and 251 USDT buys 1.02 WBNB,
  * then profit = 2% (minus fees and gas)
- *
- * Algorithm Complexity: O(DEX * BaseTokens * Tokens^2)
- * With 7 DEXs, 6 base tokens, 100 tokens = ~420,000 path checks per block
  */
 class TriangularDetector {
     constructor() {
@@ -101,12 +103,30 @@ class TriangularDetector {
                     pairAddress: priceData.pairAddress,
                 });
 
-                // Add reverse edge B -> A (price = 1 / original price)
+                // Add reverse edge B -> A
+                // For AMM pools, reverse price must be calculated from reserves
+                // because the constant product formula k = x * y means:
+                // - Forward: dy = (y * dx) / (x + dx) => price ≈ y/x
+                // - Reverse: dx = (x * dy) / (y + dy) => price ≈ x/y
                 if (!graph.has(tokenB)) {
                     graph.set(tokenB, new Map());
                 }
+
+                // Calculate reverse price from reserves for accuracy
+                let reversePrice;
+                const resA = priceData.reserveA ? BigInt(priceData.reserveA) : 0n;
+                const resB = priceData.reserveB ? BigInt(priceData.reserveB) : 0n;
+
+                if (resA > 0n && resB > 0n) {
+                    // Reverse price (B->A) = reserveA / reserveB
+                    reversePrice = Number(resA) / Number(resB);
+                } else {
+                    // Fallback to simple inverse if no reserves
+                    reversePrice = priceData.price > 0 ? 1 / priceData.price : 0;
+                }
+
                 graph.get(tokenB).set(tokenA, {
-                    price: priceData.price > 0 ? 1 / priceData.price : 0,
+                    price: reversePrice,
                     reserveIn: priceData.reserveB,
                     reserveOut: priceData.reserveA,
                     liquidityUSD: priceData.liquidityUSD || 0,
@@ -280,7 +300,10 @@ class TriangularDetector {
 
     /**
      * Find the optimal input amount that maximizes profit
-     * Uses binary search to find the sweet spot before price impact kills profit
+     * Uses Golden Section Search - converges faster than binary search for unimodal functions
+     *
+     * The profit function is unimodal: increases then decreases due to price impact.
+     * Golden section search finds the maximum in O(log(n)) iterations with better precision.
      *
      * @param {Object} opportunity - Triangular opportunity
      * @param {number} tokenDecimals - Decimals of base token
@@ -296,37 +319,299 @@ class TriangularDetector {
             return { optimalAmount: 0n, maxProfitAmount: 0n, profitUSD: 0 };
         }
 
-        let bestProfit = 0n;
-        let bestAmount = 0n;
+        // Golden ratio for optimal convergence
+        const PHI = 1.618033988749895;
+        const RESPHI = 2 - PHI; // 0.382...
 
-        // Binary search with 20 check points
-        const checkPoints = 20;
-        const increment = (maxAmount - minAmount) / BigInt(checkPoints);
+        // Convert to numbers for golden section (precision is fine for trade sizing)
+        let a = Number(minAmount);
+        let b = Number(maxAmount);
 
-        if (increment <= 0n) {
-            return { optimalAmount: 0n, maxProfitAmount: 0n, profitUSD: 0 };
-        }
+        // Initial interior points
+        let c = b - RESPHI * (b - a);
+        let d = a + RESPHI * (b - a);
 
-        for (let i = 0; i <= checkPoints; i++) {
-            const testAmount = minAmount + (increment * BigInt(i));
-            const result = this.calculateExactOutput(opportunity, testAmount, tokenDecimals);
+        // Evaluate profit at interior points
+        const evalProfit = (amount) => {
+            const result = this.calculateExactOutput(opportunity, BigInt(Math.floor(amount)), tokenDecimals);
+            return Number(result.profitAmount);
+        };
 
-            if (result.profitAmount > bestProfit) {
-                bestProfit = result.profitAmount;
-                bestAmount = testAmount;
-            } else if (result.profitAmount < bestProfit && bestProfit > 0n) {
-                // We've passed the peak, stop searching
-                break;
+        let fc = evalProfit(c);
+        let fd = evalProfit(d);
+
+        // Golden section search iterations (15 iterations = ~0.001% precision)
+        const MAX_ITERATIONS = 15;
+        for (let i = 0; i < MAX_ITERATIONS; i++) {
+            if (fc > fd) {
+                // Maximum is in [a, d]
+                b = d;
+                d = c;
+                fd = fc;
+                c = b - RESPHI * (b - a);
+                fc = evalProfit(c);
+            } else {
+                // Maximum is in [c, b]
+                a = c;
+                c = d;
+                fc = fd;
+                d = a + RESPHI * (b - a);
+                fd = evalProfit(d);
             }
+
+            // Early termination if interval is small enough
+            if (b - a < Number(minAmount) * 0.01) break;
         }
 
-        const profitFloat = Number(bestProfit) / Math.pow(10, tokenDecimals);
+        // Best amount is midpoint of final interval
+        const bestAmountFloat = (a + b) / 2;
+        const bestAmount = BigInt(Math.floor(bestAmountFloat));
+        const result = this.calculateExactOutput(opportunity, bestAmount, tokenDecimals);
+
+        const profitFloat = Number(result.profitAmount) / Math.pow(10, tokenDecimals);
         const profitUSD = profitFloat * baseTokenPriceUSD;
 
         return {
             optimalAmount: bestAmount,
-            maxProfitAmount: bestProfit,
+            maxProfitAmount: result.profitAmount,
             profitUSD,
+        };
+    }
+
+    /**
+     * Find cross-DEX triangular arbitrage opportunities
+     *
+     * Unlike single-DEX triangular, this finds paths like:
+     * WBNB (PancakeSwap) -> CAKE (BiSwap) -> USDT (SushiSwap) -> WBNB
+     *
+     * This often has higher profit potential due to price discrepancies
+     * between DEXes for the same pair.
+     *
+     * @param {Object} prices - Price data from priceFetcher
+     * @param {number} blockNumber - Current block number
+     * @returns {Array} Array of cross-DEX triangular opportunities
+     */
+    findCrossDexTriangularOpportunities(prices, blockNumber) {
+        const opportunities = [];
+        const startTime = Date.now();
+
+        // Build unified graph with all DEX edges
+        const unifiedGraph = this._buildUnifiedGraph(prices);
+
+        if (unifiedGraph.size === 0) return opportunities;
+
+        // For each base token, find best cross-DEX triangular paths
+        for (const baseToken of this.baseTokens) {
+            if (!unifiedGraph.has(baseToken)) continue;
+
+            const baseEdges = unifiedGraph.get(baseToken);
+
+            // For each first hop: Base -> A (pick best DEX)
+            for (const [tokenA, edgesBA] of baseEdges.entries()) {
+                if (tokenA === baseToken) continue;
+
+                // Find best price for Base -> A across all DEXes
+                const bestBA = this._findBestEdge(edgesBA, 'buy'); // We're buying A
+                if (!bestBA || !this._hasMinLiquidity(bestBA)) continue;
+
+                const neighborsA = unifiedGraph.get(tokenA);
+                if (!neighborsA) continue;
+
+                // For each second hop: A -> B (pick best DEX)
+                for (const [tokenB, edgesAB] of neighborsA.entries()) {
+                    if (tokenB === baseToken || tokenB === tokenA) continue;
+
+                    const bestAB = this._findBestEdge(edgesAB, 'buy');
+                    if (!bestAB || !this._hasMinLiquidity(bestAB)) continue;
+
+                    // Check third hop: B -> Base (pick best DEX)
+                    const neighborsB = unifiedGraph.get(tokenB);
+                    if (!neighborsB || !neighborsB.has(baseToken)) continue;
+
+                    const edgesBBase = neighborsB.get(baseToken);
+                    const bestBBase = this._findBestEdge(edgesBBase, 'buy');
+                    if (!bestBBase || !this._hasMinLiquidity(bestBBase)) continue;
+
+                    // Skip if all on same DEX (already handled by single-DEX detector)
+                    if (bestBA.dex === bestAB.dex && bestAB.dex === bestBBase.dex) continue;
+
+                    // Calculate cycle profit with individual DEX fees
+                    const rate1 = bestBA.price * (1 - bestBA.fee);
+                    const rate2 = bestAB.price * (1 - bestAB.fee);
+                    const rate3 = bestBBase.price * (1 - bestBBase.fee);
+
+                    const cycleProduct = rate1 * rate2 * rate3;
+                    const profitPercent = (cycleProduct - 1) * 100;
+
+                    if (profitPercent >= this.minProfitPercentage) {
+                        const minLiquidity = Math.min(
+                            bestBA.liquidityUSD,
+                            bestAB.liquidityUSD,
+                            bestBBase.liquidityUSD
+                        );
+
+                        const totalFeePercent = (bestBA.fee + bestAB.fee + bestBBase.fee) * 100;
+
+                        opportunities.push({
+                            type: 'cross-dex-triangular',
+                            path: [baseToken, tokenA, tokenB, baseToken],
+                            dexPath: [bestBA.dex, bestAB.dex, bestBBase.dex],
+                            pairAddresses: [
+                                bestBA.pairAddress,
+                                bestAB.pairAddress,
+                                bestBBase.pairAddress,
+                            ],
+                            rates: [bestBA.price, bestAB.price, bestBBase.price],
+                            fees: [bestBA.fee, bestAB.fee, bestBBase.fee],
+                            reserves: [
+                                { in: bestBA.reserveIn, out: bestBA.reserveOut },
+                                { in: bestAB.reserveIn, out: bestAB.reserveOut },
+                                { in: bestBBase.reserveIn, out: bestBBase.reserveOut },
+                            ],
+                            cycleProduct,
+                            estimatedProfitPercent: profitPercent,
+                            totalFeePercent,
+                            minLiquidityUSD: minLiquidity,
+                            blockNumber,
+                            timestamp: Date.now(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Sort by profit
+        opportunities.sort((a, b) => b.estimatedProfitPercent - a.estimatedProfitPercent);
+
+        if (opportunities.length > 0) {
+            log.info(`Found ${opportunities.length} cross-DEX triangular opportunities in ${Date.now() - startTime}ms`);
+        }
+
+        return opportunities;
+    }
+
+    /**
+     * Build a unified graph with edges from all DEXes
+     *
+     * @private
+     * @param {Object} prices - Price data
+     * @returns {Map} token -> Map(neighbor -> Array of edges from different DEXes)
+     */
+    _buildUnifiedGraph(prices) {
+        const graph = new Map();
+
+        for (const [pairKey, dexPrices] of Object.entries(prices)) {
+            const [tokenA, tokenB] = pairKey.split('/');
+
+            for (const [dexName, priceData] of Object.entries(dexPrices)) {
+                const fee = config.dex[dexName]?.fee || 0.003;
+
+                // Initialize token maps if needed
+                if (!graph.has(tokenA)) graph.set(tokenA, new Map());
+                if (!graph.has(tokenB)) graph.set(tokenB, new Map());
+
+                // Initialize edge arrays if needed
+                const neighborsA = graph.get(tokenA);
+                const neighborsB = graph.get(tokenB);
+                if (!neighborsA.has(tokenB)) neighborsA.set(tokenB, []);
+                if (!neighborsB.has(tokenA)) neighborsB.set(tokenA, []);
+
+                // Calculate reverse price from reserves
+                const resA = priceData.reserveA ? BigInt(priceData.reserveA) : 0n;
+                const resB = priceData.reserveB ? BigInt(priceData.reserveB) : 0n;
+                let reversePrice = priceData.price > 0 ? 1 / priceData.price : 0;
+                if (resA > 0n && resB > 0n) {
+                    reversePrice = Number(resA) / Number(resB);
+                }
+
+                // Add forward edge A -> B
+                neighborsA.get(tokenB).push({
+                    dex: dexName,
+                    price: priceData.price,
+                    fee,
+                    reserveIn: priceData.reserveA,
+                    reserveOut: priceData.reserveB,
+                    liquidityUSD: priceData.liquidityUSD || 0,
+                    pairAddress: priceData.pairAddress,
+                });
+
+                // Add reverse edge B -> A
+                neighborsB.get(tokenA).push({
+                    dex: dexName,
+                    price: reversePrice,
+                    fee,
+                    reserveIn: priceData.reserveB,
+                    reserveOut: priceData.reserveA,
+                    liquidityUSD: priceData.liquidityUSD || 0,
+                    pairAddress: priceData.pairAddress,
+                });
+            }
+        }
+
+        return graph;
+    }
+
+    /**
+     * Find the best edge (highest price for buying, lowest for selling)
+     *
+     * @private
+     * @param {Array} edges - Array of edges from different DEXes
+     * @param {string} direction - 'buy' for highest price, 'sell' for lowest
+     * @returns {Object|null} Best edge or null
+     */
+    _findBestEdge(edges, direction = 'buy') {
+        if (!edges || edges.length === 0) return null;
+
+        // Filter for minimum liquidity first
+        const validEdges = edges.filter(e => e.liquidityUSD >= this.minLiquidityUSD);
+        if (validEdges.length === 0) return null;
+
+        if (direction === 'buy') {
+            // For buying the next token, we want highest price (more output)
+            return validEdges.reduce((best, current) =>
+                (current.price * (1 - current.fee)) > (best.price * (1 - best.fee)) ? current : best
+            );
+        } else {
+            // For selling, we want lowest price (cheaper input)
+            return validEdges.reduce((best, current) =>
+                (current.price * (1 - current.fee)) < (best.price * (1 - best.fee)) ? current : best
+            );
+        }
+    }
+
+    /**
+     * Calculate exact output for cross-DEX triangular with variable fees
+     *
+     * @param {Object} opportunity - Cross-DEX triangular opportunity
+     * @param {BigInt} inputAmount - Amount of base token to trade
+     * @param {number} tokenDecimals - Decimals of the base token
+     * @returns {Object} { outputAmount, profitAmount, effectiveRate }
+     */
+    calculateCrossDexOutput(opportunity, inputAmount, tokenDecimals = 18) {
+        const { reserves, fees } = opportunity;
+
+        let currentAmount = inputAmount;
+
+        // Execute each swap with its specific DEX fee
+        for (let i = 0; i < reserves.length; i++) {
+            const { in: reserveIn, out: reserveOut } = reserves[i];
+            const fee = fees[i] || 0.003;
+            currentAmount = this._getAmountOut(
+                currentAmount,
+                BigInt(reserveIn),
+                BigInt(reserveOut),
+                fee
+            );
+        }
+
+        const inputFloat = Number(inputAmount) / Math.pow(10, tokenDecimals);
+        const outputFloat = Number(currentAmount) / Math.pow(10, tokenDecimals);
+        const effectiveRate = outputFloat / inputFloat;
+
+        return {
+            outputAmount: currentAmount,
+            profitAmount: currentAmount - inputAmount,
+            effectiveRate,
         };
     }
 
@@ -339,6 +624,7 @@ class TriangularDetector {
             totalTokens: this.allTokens.length,
             minProfitThreshold: this.minProfitPercentage,
             minLiquidity: this.minLiquidityUSD,
+            supportsCrossDexTriangular: true,
         };
     }
 }

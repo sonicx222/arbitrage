@@ -2,15 +2,17 @@ import { ethers, parseUnits, formatUnits } from 'ethers';
 import rpcManager from '../utils/rpcManager.js';
 import triangularDetector from './triangularDetector.js';
 import profitCalculator from './profitCalculator.js';
+import cacheManager from '../data/cacheManager.js';
 import config from '../config.js';
 import log from '../utils/logger.js';
 
 /**
  * Arbitrage Detector - Identifies profitable arbitrage opportunities across DEXs
  *
- * Supports two types of arbitrage:
- * 1. Cross-DEX: Buy on DEX A, sell on DEX B (original functionality)
- * 2. Triangular: A -> B -> C -> A within single DEX (new)
+ * Supports multiple arbitrage types:
+ * 1. Cross-DEX: Buy on DEX A, sell on DEX B
+ * 2. Triangular: A -> B -> C -> A within single DEX
+ * 3. Cross-DEX Triangular: A -> B -> C -> A across different DEXes
  */
 class ArbitrageDetector {
     constructor() {
@@ -62,19 +64,10 @@ class ArbitrageDetector {
             }
         }
 
-        // 2. Triangular arbitrage (new)
+        // 2. Triangular arbitrage detection (multiple algorithms available)
         if (this.triangularEnabled) {
-            try {
-                const triangularOpps = triangularDetector.findTriangularOpportunities(prices, blockNumber);
-
-                if (triangularOpps.length > 0) {
-                    log.debug(`Found ${triangularOpps.length} raw triangular opportunities`);
-                }
-
-                opportunities.push(...triangularOpps);
-            } catch (err) {
-                log.error('Triangular detection error', { error: err.message });
-            }
+            const triangularOpps = this._detectTriangularOpportunities(prices, blockNumber);
+            opportunities.push(...triangularOpps);
         }
 
         // 3. Calculate accurate profit for all opportunities
@@ -135,8 +128,9 @@ class ArbitrageDetector {
             tokenBDecimals
         );
 
-        // 3. Factor in Gas
-        const gasCostUSD = this.estimateGasCost(gasPrice) * 600; // Updated heuristic BNB price ($600)
+        // 3. Factor in Gas (use dynamic native token price)
+        const nativePrice = this._getDynamicNativePrice();
+        const gasCostUSD = this.estimateGasCost(gasPrice) * nativePrice;
         const netProfitUSD = profitUSD - gasCostUSD;
 
         const tradeSizeUSD = (Number(optimalAmount) / Math.pow(10, tokenBDecimals)) * priceUSD;
@@ -160,6 +154,36 @@ class ArbitrageDetector {
     }
 
     /**
+     * Detect triangular arbitrage opportunities
+     *
+     * @private
+     * @param {Object} prices - Price data from priceFetcher
+     * @param {number} blockNumber - Current block number
+     * @returns {Array} Array of triangular opportunities
+     */
+    _detectTriangularOpportunities(prices, blockNumber) {
+        const opportunities = [];
+
+        try {
+            // Single-DEX triangular
+            const triangularOpps = triangularDetector.findTriangularOpportunities(prices, blockNumber);
+            opportunities.push(...triangularOpps);
+
+            // Cross-DEX triangular
+            const crossDexOpps = triangularDetector.findCrossDexTriangularOpportunities(prices, blockNumber);
+            opportunities.push(...crossDexOpps);
+
+            if (triangularOpps.length > 0 || crossDexOpps.length > 0) {
+                log.debug(`Found ${triangularOpps.length} single-DEX + ${crossDexOpps.length} cross-DEX triangular`);
+            }
+        } catch (err) {
+            log.error('Triangular detection error', { error: err.message });
+        }
+
+        return opportunities;
+    }
+
+    /**
      * Quick check if a pair is worth deep analysis
      * @private
      */
@@ -167,8 +191,8 @@ class ArbitrageDetector {
         const minLiquidity = Math.min(buyDexData.liquidityUSD || 0, sellDexData.liquidityUSD || 0);
         if (minLiquidity < 1000) return false;
 
-        const buyFee = config.dex[buyDexData.dexName].fee;
-        const sellFee = config.dex[sellDexData.sellName]?.fee || config.dex[sellDexData.dexName].fee;
+        const buyFee = config.dex[buyDexData.dexName]?.fee || 0.003;
+        const sellFee = config.dex[sellDexData.dexName]?.fee || 0.003;
         const totalFee = (buyFee + sellFee) * 100;
 
         // Simple spread check before expensive optimization
@@ -218,13 +242,38 @@ class ArbitrageDetector {
     }
 
     /**
-     * Estimate gas cost in BNB
+     * Estimate gas cost in native token (BNB/ETH/MATIC etc.)
      */
     estimateGasCost(gasPrice = null) {
         const price = gasPrice || BigInt(parseUnits(this.gasPriceGwei.toString(), 'gwei'));
-        // Gas cost in BNB
-        const gasCostBNB = (BigInt(this.estimatedGasLimit) * price);
-        return Number(gasCostBNB) / 1e18;
+        // Gas cost in native token
+        const gasCostNative = (BigInt(this.estimatedGasLimit) * price);
+        return Number(gasCostNative) / 1e18;
+    }
+
+    /**
+     * Get dynamic native token price from cache
+     * @private
+     */
+    _getDynamicNativePrice() {
+        const nativeSymbol = config.nativeToken?.symbol || 'WBNB';
+        const fallbackPrices = {
+            'WBNB': 600, 'BNB': 600,
+            'WETH': 3500, 'ETH': 3500,
+            'WMATIC': 0.5, 'MATIC': 0.5,
+            'WAVAX': 35, 'AVAX': 35,
+        };
+
+        const dexNames = Object.entries(config.dex)
+            .filter(([_, dexConfig]) => dexConfig.enabled)
+            .map(([name]) => name);
+
+        return cacheManager.getNativeTokenPrice(
+            nativeSymbol,
+            config.tokens,
+            dexNames,
+            fallbackPrices[nativeSymbol] || 600
+        );
     }
 
     /**

@@ -93,6 +93,43 @@ export default {
             type: 'uniswapV2',
             tvlRank: 3,
         },
+        // Additional DEXes for better arbitrage detection
+        alienbase: {
+            name: 'AlienBase',
+            router: '0x8c1A3cF8f83074169FE5D7aD50B978e1cD6b37c7',
+            factory: '0x3E84D913803b02A4a7f027165E8cA42C14C0FdE7',
+            fee: 0.003,
+            enabled: true,
+            type: 'uniswapV2',
+            tvlRank: 4,
+        },
+        swapbased: {
+            name: 'SwapBased',
+            router: '0xaaa3b1F1bd7BCc97fD1917c18ADE665C5D31F066',
+            factory: '0x04C9f118d21e8B767D2e50C946f0cC9F6C367300',
+            fee: 0.003,
+            enabled: true,
+            type: 'uniswapV2',
+            tvlRank: 5,
+        },
+        rocketswap: {
+            name: 'RocketSwap',
+            router: '0x4cf76043B3f97ba06917cBd90F9e3A2AAC1B306e',
+            factory: '0x1B8128c3A1B7D20053D10763ff02466ca7FF99FC',
+            fee: 0.003,
+            enabled: true,
+            type: 'uniswapV2',
+            tvlRank: 6,
+        },
+        uniswapV2: {
+            name: 'Uniswap V2',
+            router: '0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24',
+            factory: '0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6',
+            fee: 0.003,
+            enabled: true,
+            type: 'uniswapV2',
+            tvlRank: 2,
+        },
     },
 
     // Token configuration
@@ -147,10 +184,61 @@ export default {
             address: '0x532f27101965dd16442E59d40670FaF5eBB142E4',
             decimals: 18,
         },
+        // High-volume tokens for better arbitrage detection
+        WELL: {
+            symbol: 'WELL',
+            address: '0xA88594D404727625A9437C3f886C7643872296AE',
+            decimals: 18,
+        },
+        SNX: {
+            symbol: 'SNX',
+            address: '0x22e6966B799c4D5B13BE962E1D117b56327FDa66',
+            decimals: 18,
+        },
+        EXTRA: {
+            symbol: 'EXTRA',
+            address: '0x2dad3a13ef0c6366220f989157009e501e7938F8',
+            decimals: 18,
+        },
+        SEAM: {
+            symbol: 'SEAM',
+            address: '0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85',
+            decimals: 18,
+        },
+        BASED: {
+            symbol: 'BASED',
+            address: '0x32E0f9d26D1e33625742A52620cC76C1130efde6',
+            decimals: 18,
+        },
+        OVN: {
+            symbol: 'OVN',
+            address: '0xA3d1a8DEB97B111454B294E2324EfAD13a9d8396',
+            decimals: 18,
+        },
+        USDplus: {
+            symbol: 'USDplus',
+            address: '0xB79DD08EA68A908A97220C76d19A6aA9cBDE4376',
+            decimals: 6,
+        },
+        axlUSDC: {
+            symbol: 'axlUSDC',
+            address: '0xEB466342C4d449BC9f53A865D5Cb90586f405215',
+            decimals: 6,
+        },
+        wstETH: {
+            symbol: 'wstETH',
+            address: '0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452',
+            decimals: 18,
+        },
+        rETH: {
+            symbol: 'rETH',
+            address: '0xB6fe221Fe9EeF5aBa221c348bA20A1Bf5e73624c',
+            decimals: 18,
+        },
     },
 
-    // Base tokens
-    baseTokens: ['WETH', 'USDC', 'USDbC', 'DAI'],
+    // Base tokens (including stables for better triangular arbitrage)
+    baseTokens: ['WETH', 'USDC', 'USDbC', 'DAI', 'axlUSDC'],
 
     // Trading parameters
     trading: {

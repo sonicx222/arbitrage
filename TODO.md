@@ -75,6 +75,11 @@ See `docs/IMPLEMENTATION_ROADMAP.md` for detailed analysis and rationale.
 - [x] Dynamic token pricing from price cache (in cacheManager + profitCalculator)
 - [x] L2 gas fee calculation (src/execution/l2GasCalculator.js)
 - [x] Wire execution flow (connect detectors to executionManager in index.js)
+- [x] Expand DEX coverage for better opportunity detection (2026-01-06)
+  - BSC: Added THENA, Wombat, NomiSwap, enabled SushiSwap (now 8 DEXes)
+  - Arbitrum: Added Ramses, Zyberswap, ArbiDex (now 7 DEXes, 23 tokens)
+  - Base: Added AlienBase, SwapBased, RocketSwap, Uniswap V2 (now 8 DEXes, 21 tokens)
+  - Polygon: Added Dystopia, MeshSwap, JetSwap (now 7 DEXes, 21 tokens)
 
 ### Priority 1: High (Week 2-3)
 - [ ] Flash arbitrage smart contract (Solidity)
