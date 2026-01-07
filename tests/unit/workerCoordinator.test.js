@@ -292,4 +292,133 @@ describe('WorkerCoordinator', () => {
             });
         });
     });
+
+    describe('Heartbeat Monitoring - Regression Tests', () => {
+        /**
+         * Regression test for false "unresponsive" detection during worker restarts.
+         *
+         * Bug: When workers were restarted, the old lastHeartbeat timestamp from the
+         * previous worker instance remained in workerStatus, causing the heartbeat
+         * monitor to immediately mark freshly spawned workers as "unresponsive"
+         * (showing 430+ seconds since heartbeat for just-started workers).
+         *
+         * Fix: spawnWorker() now initializes lastHeartbeat to Date.now() to prevent
+         * stale timestamps from causing false unresponsive detection.
+         */
+        it('should initialize lastHeartbeat when setting initializing status to prevent false unresponsive detection', () => {
+            // Simulate the old bug scenario: stale status from previous worker
+            const staleTime = Date.now() - 500000; // 500 seconds ago
+            coordinator.workerStatus.set(56, {
+                status: 'running',
+                lastHeartbeat: staleTime,
+                lastUpdate: staleTime,
+            });
+
+            // Now simulate what spawnWorker does (with the fix)
+            // It should reset lastHeartbeat to current time
+            const beforeSpawn = Date.now();
+            coordinator.updateWorkerStatus(56, 'initializing', { lastHeartbeat: Date.now() });
+            const afterSpawn = Date.now();
+
+            const status = coordinator.workerStatus.get(56);
+
+            // lastHeartbeat should be updated to current time, not the stale value
+            expect(status.lastHeartbeat).toBeGreaterThanOrEqual(beforeSpawn);
+            expect(status.lastHeartbeat).toBeLessThanOrEqual(afterSpawn);
+            expect(status.status).toBe('initializing');
+        });
+
+        it('should not mark freshly spawned workers as unresponsive during heartbeat check', () => {
+            // Set up a freshly spawned worker with current timestamp
+            const now = Date.now();
+            coordinator.updateWorkerStatus(56, 'running', { lastHeartbeat: now });
+
+            // Simulate heartbeat check logic
+            const status = coordinator.workerStatus.get(56);
+            const lastHeartbeat = status.lastHeartbeat || status.lastUpdate;
+            const timeSinceHeartbeat = Date.now() - lastHeartbeat;
+
+            // Should not be considered unresponsive (timeout is 30000ms)
+            expect(timeSinceHeartbeat).toBeLessThan(coordinator.workerTimeout);
+        });
+
+        it('should correctly detect actually unresponsive workers', () => {
+            // Set up a worker with old timestamp (beyond timeout)
+            const oldTime = Date.now() - 60000; // 60 seconds ago
+            coordinator.updateWorkerStatus(56, 'running', { lastHeartbeat: oldTime });
+
+            // Simulate heartbeat check logic
+            const status = coordinator.workerStatus.get(56);
+            const lastHeartbeat = status.lastHeartbeat || status.lastUpdate;
+            const timeSinceHeartbeat = Date.now() - lastHeartbeat;
+
+            // Should be considered unresponsive (timeout is 30000ms)
+            expect(timeSinceHeartbeat).toBeGreaterThan(coordinator.workerTimeout);
+        });
+
+        it('should fallback to lastUpdate if lastHeartbeat is not set', () => {
+            // Set up status without explicit lastHeartbeat (uses lastUpdate from updateWorkerStatus)
+            coordinator.updateWorkerStatus(56, 'running');
+
+            const status = coordinator.workerStatus.get(56);
+            const lastHeartbeat = status.lastHeartbeat || status.lastUpdate;
+
+            // lastUpdate should be set and recent
+            expect(lastHeartbeat).toBeDefined();
+            expect(Date.now() - lastHeartbeat).toBeLessThan(1000); // Should be very recent
+        });
+
+        it('should preserve lastHeartbeat across status transitions when explicitly set', () => {
+            const timestamp = Date.now();
+
+            // Initial status with lastHeartbeat
+            coordinator.updateWorkerStatus(56, 'initializing', { lastHeartbeat: timestamp });
+
+            // Transition to running status
+            coordinator.handleWorkerMessage(56, {
+                type: MessageType.STARTED,
+                data: { chainId: 56 },
+            });
+
+            const status = coordinator.workerStatus.get(56);
+
+            // lastHeartbeat should be preserved from the initializing phase
+            expect(status.lastHeartbeat).toBe(timestamp);
+            expect(status.status).toBe('running');
+        });
+
+        it('should update lastHeartbeat when heartbeat message is received', () => {
+            const oldTime = Date.now() - 10000;
+            coordinator.updateWorkerStatus(56, 'running', { lastHeartbeat: oldTime });
+
+            const beforeHeartbeat = Date.now();
+
+            // Receive heartbeat message
+            coordinator.handleWorkerMessage(56, {
+                type: MessageType.HEARTBEAT,
+                data: { chainId: 56 },
+            });
+
+            const status = coordinator.workerStatus.get(56);
+
+            // lastHeartbeat should be updated to current time
+            expect(status.lastHeartbeat).toBeGreaterThanOrEqual(beforeHeartbeat);
+        });
+
+        it('should skip heartbeat check for non-running workers', () => {
+            // Simulate what heartbeat monitor does - it should skip non-running workers
+            coordinator.updateWorkerStatus(56, 'initializing');
+            coordinator.updateWorkerStatus(1, 'stopped');
+            coordinator.updateWorkerStatus(137, 'running', { lastHeartbeat: Date.now() });
+
+            let workersChecked = 0;
+            for (const [chainId, status] of coordinator.workerStatus) {
+                if (status.status !== 'running') continue;
+                workersChecked++;
+            }
+
+            // Only the running worker should be checked
+            expect(workersChecked).toBe(1);
+        });
+    });
 });

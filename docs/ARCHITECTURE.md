@@ -38,7 +38,8 @@ src/
 │   ├── reserveDifferentialAnalyzer.js # Cross-DEX lag detection
 │   ├── v3LiquidityAnalyzer.js # V3 tick-level analysis
 │   ├── dexAggregator.js      # 1inch/Paraswap integration
-│   └── crossPoolCorrelation.js # Price correlation matrix
+│   ├── crossPoolCorrelation.js # Price correlation matrix
+│   └── whaleTracker.js       # Large trader tracking (mempool alt)
 │
 ├── chains/                   # Chain abstraction layer
 │   ├── BaseChain.js          # Abstract base class
@@ -203,6 +204,15 @@ Predictive detection via correlation:
 - Base token correlation (0.6)
 - Predictive opportunity alerts
 
+### 13. WhaleTracker (`src/analysis/whaleTracker.js`)
+
+Free mempool monitoring alternative:
+- Tracks large trader addresses and patterns
+- Identifies "whale" addresses based on trading volume
+- Assesses competition before execution
+- Emits `whaleActivity` signals for prioritization
+- Import/export whale data for persistence
+
 ---
 
 ## Data Flow
@@ -242,22 +252,24 @@ Opportunities are tagged with their detection source:
 | `reserve-differential` | handleDifferentialOpportunity | Cross-DEX price lag detection |
 | `correlation-predictive` | handleCorrelatedPoolCheck | Predictive from correlated pools |
 | `aggregator-arbitrage` | handleAggregatorOpportunity | Split-route via 1inch/Paraswap |
+| `whale-trade` | handleWhaleActivity | Large trader activity signal |
 | `block-polling` | handleNewBlock | Traditional block-based scan |
 
 ### Execution Flow
 
 ```
 1. ExecutionManager receives opportunity
-2. Pre-flight validation (profit threshold, age check)
-3. FlashLoanOptimizer selects best provider:
+2. WhaleTracker competition check (skip if high competition)
+3. Pre-flight validation (profit threshold, age check)
+4. FlashLoanOptimizer selects best provider:
    - dYdX (0%) → Balancer (0%) → Aave V3 (0.09%) → PancakeSwap (0.25%)
    - Based on asset availability and chain support
-4. Resolve flash pair address (cached or fetched from factory)
-5. GasOptimizer determines optimal gas price
-6. TransactionBuilder constructs TX with provider-specific params
-7. Simulation via eth_call
-8. Live execution (if enabled)
-9. Result tracking and statistics
+5. Resolve flash pair address (cached or fetched from factory)
+6. GasOptimizer determines optimal gas price
+7. TransactionBuilder constructs TX with provider-specific params
+8. Simulation via eth_call
+9. Live execution (if enabled)
+10. Result tracking and statistics
 ```
 
 ---

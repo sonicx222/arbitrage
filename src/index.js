@@ -12,6 +12,7 @@ import adaptivePrioritizer from './analysis/adaptivePrioritizer.js';
 import reserveDifferentialAnalyzer from './analysis/reserveDifferentialAnalyzer.js';
 import crossPoolCorrelation from './analysis/crossPoolCorrelation.js';
 import dexAggregator from './analysis/dexAggregator.js';
+import whaleTracker from './analysis/whaleTracker.js';
 import config from './config.js';
 import log from './utils/logger.js';
 import { formatChain, formatUSD, formatPercent } from './utils/logFormatter.js';
@@ -278,9 +279,60 @@ class ArbitrageBot {
             await this.handleAggregatorOpportunity(opportunity);
         });
 
+        // Handle whale activity signals (from confirmed whale trades)
+        whaleTracker.on('whaleActivity', async (signal) => {
+            await this.handleWhaleActivity(signal);
+        });
+
+        // Handle swap events for whale tracking (feeds trader addresses to WhaleTracker)
+        eventDrivenDetector.on('swapDetected', (swapData) => {
+            this.handleSwapForWhaleTracking(swapData);
+        });
+
         // Log price changes at debug level
         eventDrivenDetector.on('priceChange', (data) => {
             log.debug(`Sync event: ${data.pairKey} on ${data.dexName}`, {
+                blockNumber: data.blockNumber,
+            });
+        });
+
+        // Handle V3 price updates (V3 Swap events include sqrtPriceX96 directly!)
+        // This is more valuable than V2 because we get the exact pool price
+        eventDrivenDetector.on('v3PriceUpdate', async (data) => {
+            // Record price for cross-pool correlation
+            crossPoolCorrelation.recordPriceUpdate({
+                pairKey: data.poolKey,
+                dexName: data.dexName,
+                price: data.price,
+                blockNumber: data.blockNumber,
+                feeTier: data.feeTier,
+                isV3: true,
+            });
+
+            // Process for correlation events
+            crossPoolCorrelation.processReserveUpdate({
+                pairKey: data.poolKey,
+                dexName: data.dexName,
+                price: data.price,
+                blockNumber: data.blockNumber,
+            });
+
+            // Run differential analysis for V3 pools
+            reserveDifferentialAnalyzer.processReserveUpdate({
+                pairKey: data.poolKey,
+                dexName: data.dexName,
+                tokenA: data.tokenA,
+                tokenB: data.tokenB,
+                price: data.price,
+                blockNumber: data.blockNumber,
+                timestamp: data.timestamp,
+                isV3: true,
+                feeTier: data.feeTier,
+            });
+
+            log.debug(`V3 Swap event: ${data.poolKey} (${data.feeTier / 10000}%) on ${data.dexName}`, {
+                price: data.price?.toFixed(6),
+                tick: data.tick,
                 blockNumber: data.blockNumber,
             });
         });
@@ -324,8 +376,13 @@ class ArbitrageBot {
         // Send alert
         await alertManager.notify(opportunity);
 
-        // Execute if enabled
+        // Execute if enabled (with whale competition check)
         if (config.execution?.enabled) {
+            if (!this.shouldExecuteWithWhaleCheck(opportunity)) {
+                log.info(`[DIFFERENTIAL] Skipping execution due to whale competition`);
+                return;
+            }
+
             const result = await executionManager.execute(opportunity);
 
             if (result.simulated) {
@@ -400,6 +457,11 @@ class ArbitrageBot {
                     await alertManager.notify(opportunity);
 
                     if (config.execution?.enabled) {
+                        if (!this.shouldExecuteWithWhaleCheck(opportunity)) {
+                            log.info(`[CORRELATION] Skipping execution due to whale competition`);
+                            continue;
+                        }
+
                         const result = await executionManager.execute(opportunity);
                         if (result.simulated) {
                             dashboard.recordSimulation(result.success);
@@ -450,6 +512,111 @@ class ArbitrageBot {
         if (config.execution?.enabled && config.execution?.aggregatorEnabled) {
             log.info('Aggregator execution not yet implemented - opportunity logged for analysis');
         }
+    }
+
+    /**
+     * Handle whale activity signal
+     * When a known whale trades, check for related arbitrage opportunities
+     */
+    async handleWhaleActivity(signal) {
+        if (!signal) return;
+
+        log.info(`[WHALE] Activity detected`, {
+            address: signal.address.slice(0, 10) + '...',
+            pair: signal.pairKey,
+            direction: signal.direction,
+            amount: `$${signal.amountUSD?.toFixed(0)}`,
+            block: signal.blockNumber,
+        });
+
+        // Whale trades often create price dislocations - boost priority of this pair
+        if (signal.pairKey) {
+            adaptivePrioritizer.recordOpportunity(`${signal.pairKey}:whale`, {
+                volumeUSD: signal.amountUSD,
+            });
+        }
+    }
+
+    /**
+     * Handle swap event for whale tracking
+     * This feeds trader addresses from Swap events to WhaleTracker
+     * Enables automatic whale detection from on-chain activity
+     *
+     * @param {Object} swapData - Swap event data from EventDrivenDetector
+     */
+    handleSwapForWhaleTracking(swapData) {
+        if (!swapData || !swapData.sender) return;
+
+        // Record the trade for the sender (the address initiating the swap)
+        whaleTracker.recordTrade({
+            address: swapData.sender,
+            pairKey: swapData.pairKey,
+            dexName: swapData.dexName,
+            amountUSD: swapData.amountUSD,
+            direction: swapData.direction,
+            blockNumber: swapData.blockNumber,
+            txHash: swapData.transactionHash,
+        });
+
+        // Also record for recipient if different from sender (might be a router)
+        // This helps track MEV bots and arbitrage contracts
+        if (swapData.recipient && swapData.recipient !== swapData.sender) {
+            // Only track if recipient looks like an EOA or known contract
+            // Router addresses typically receive then forward tokens
+            whaleTracker.recordTrade({
+                address: swapData.recipient,
+                pairKey: swapData.pairKey,
+                dexName: swapData.dexName,
+                amountUSD: swapData.amountUSD,
+                direction: swapData.direction === 'buy' ? 'sell' : 'buy', // Recipient gets opposite direction
+                blockNumber: swapData.blockNumber,
+                txHash: swapData.transactionHash,
+            });
+        }
+
+        log.debug(`[SWAP] Recorded for whale tracking`, {
+            sender: swapData.sender.slice(0, 10) + '...',
+            pair: swapData.pairKey,
+            amount: `$${swapData.amountUSD?.toFixed(0)}`,
+        });
+    }
+
+    /**
+     * Check whale competition before executing an opportunity
+     * Returns true if we should proceed, false if we should skip
+     *
+     * @param {Object} opportunity - The opportunity to check
+     * @returns {boolean} Whether to proceed with execution
+     */
+    shouldExecuteWithWhaleCheck(opportunity) {
+        // Extract pair key from opportunity
+        const pairKey = opportunity.pairKey ||
+            (opportunity.path ? `${opportunity.path[0]}/${opportunity.path[1]}` : null);
+
+        if (!pairKey) return true; // Can't check, proceed
+
+        // Determine trade direction
+        const direction = opportunity.buyDex ? 'buy' : (opportunity.direction || 'buy');
+
+        // Assess whale competition
+        const competition = whaleTracker.assessCompetition(pairKey, direction);
+
+        if (competition.level === 'high') {
+            log.warn(`[WHALE] High competition detected for ${pairKey}`, {
+                reason: competition.reason,
+                recommendation: competition.recommendation,
+                whaleVolume: `$${competition.whaleVolume?.toFixed(0) || 'N/A'}`,
+            });
+
+            // Skip execution when whale competition is high
+            if (competition.recommendation === 'caution') {
+                return false;
+            }
+        } else if (competition.level === 'medium') {
+            log.debug(`[WHALE] Medium competition for ${pairKey}: ${competition.reason}`);
+        }
+
+        return true;
     }
 
     /**
@@ -510,8 +677,13 @@ class ArbitrageBot {
 
                         await alertManager.notify(opportunity);
 
-                        // Execute if enabled
+                        // Execute if enabled (with whale competition check)
                         if (config.execution?.enabled) {
+                            if (!this.shouldExecuteWithWhaleCheck(opportunity)) {
+                                log.info(`[EVENT] Skipping execution due to whale competition`);
+                                continue;
+                            }
+
                             const result = await executionManager.execute(opportunity);
                             if (result.simulated) {
                                 dashboard.recordSimulation(result.success);
@@ -760,8 +932,13 @@ class ArbitrageBot {
                     // Send alert
                     await alertManager.notify(opportunity);
 
-                    // Execute if enabled
+                    // Execute if enabled (with whale competition check)
                     if (config.execution?.enabled) {
+                        if (!this.shouldExecuteWithWhaleCheck(opportunity)) {
+                            log.info(`[BLOCK] Skipping execution due to whale competition`);
+                            continue;
+                        }
+
                         const result = await executionManager.execute(opportunity);
 
                         if (result.simulated) {
@@ -856,6 +1033,11 @@ class ArbitrageBot {
             stats: dexAggregator.getStats(),
         });
 
+        // Log whale tracker stats
+        log.info('Whale tracker stats:', {
+            stats: whaleTracker.getStats(),
+        });
+
         // Stop block monitor
         await blockMonitor.stop();
 
@@ -945,6 +1127,7 @@ class ArbitrageBot {
                 differential: reserveDifferentialAnalyzer.getStats(),
                 correlation: crossPoolCorrelation.getStats(),
                 aggregator: dexAggregator.getStats(),
+                whaleTracker: whaleTracker.getStats(),
                 detectionStats: this.eventDrivenStats,
             };
 

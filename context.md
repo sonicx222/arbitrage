@@ -518,16 +518,335 @@ Handles split-route opportunities from aggregator APIs:
 The `/status` API now includes:
 - `correlation`: Stats from CrossPoolCorrelation (pools tracked, correlation checks)
 - `aggregator`: Stats from DexAggregator (quotes requested, opportunities found)
+- `whaleTracker`: Stats from WhaleTracker (addresses tracked, whales identified, signals emitted)
 
 ### Test Results
-- **1039 tests passing** (1 skipped)
+- **1061 tests passing** (1 skipped)
 - All integration-related tests pass
+
+---
+
+## Session 4: Whale Tracker Integration (2026-01-07)
+
+### Objective
+Wire the WhaleTracker (mempool mitigation) into the main bot flow to use whale competition assessment before executing opportunities.
+
+### Integration Completed
+
+#### WhaleTracker → Main Bot Flow
+**Files Modified:**
+- `src/index.js`
+
+**Changes:**
+- Import and set up `whaleTracker` singleton
+- Added `handleWhaleActivity()` handler for whale signals
+- Added `shouldExecuteWithWhaleCheck()` method for competition assessment
+- Integrated whale check before execution in all opportunity handlers:
+  - `handleDifferentialOpportunity()` - Reserve differential opportunities
+  - `handleCorrelatedPoolCheck()` - Correlation-based predictive detection
+  - `handleReserveUpdate()` - Event-driven Sync event opportunities
+  - `handleNewBlock()` - Block-polling opportunities
+- Added whale tracker stats to `getStatus()` endpoint
+- Added whale tracker stats logging on shutdown
+
+**Flow:**
+```
+Opportunity Detected
+    │
+    ▼
+shouldExecuteWithWhaleCheck(opportunity)
+    │
+    ├─→ whaleTracker.assessCompetition(pairKey, direction)
+    │       │
+    │       ├─→ level: 'high', recommendation: 'caution' → SKIP EXECUTION
+    │       │
+    │       ├─→ level: 'medium' → LOG + PROCEED
+    │       │
+    │       └─→ level: 'low'/'none' → PROCEED
+    │
+    └─→ executionManager.execute(opportunity)
+```
+
+**Note on Full Functionality:**
+Currently, WhaleTracker can:
+- Import known whale addresses via `importWhales()`
+- Emit `whaleActivity` events when known whales trade
+- Assess competition via `assessCompetition()`
+
+~~Full automatic whale detection requires Swap event processing (to get trader addresses), which is a future enhancement. Currently Sync events only provide reserve data, not trader addresses.~~ **IMPLEMENTED** - See Session 5 below.
+
+### Status Endpoint Changes
+
+The `/status` API now includes:
+- `whaleTracker`: Stats from WhaleTracker (addresses tracked, whales identified, signals emitted)
+
+---
+
+## Session 5: Swap Event Processing for Whale Tracking (2026-01-07)
+
+### Objective
+Implement Swap event processing in EventDrivenDetector to capture trader addresses and feed them to WhaleTracker for automatic whale detection.
+
+### Implementation Completed
+
+#### Swap Event Processing → EventDrivenDetector
+**Files Modified:**
+- `src/monitoring/eventDrivenDetector.js`
+- `tests/unit/eventDrivenDetector.test.js`
+
+**Changes:**
+- Added `SWAP_TOPIC` constant for Uniswap V2 Swap events
+- Added swap event configuration (`swapEventsEnabled`, `minSwapUSD`)
+- Added swap statistics tracking (`swapEventsReceived`, `swapEventsProcessed`, `lastSwapTime`)
+- Implemented `subscribeToSwapEvents()` for WebSocket subscription
+- Implemented `handleSwapEvent()` for processing Swap events
+- Implemented `decodeSwapEvent()` for parsing event data (sender, recipient, amounts)
+- Implemented `calculateSwapValue()` for USD value and direction calculation
+
+**Technical Details:**
+```javascript
+// Swap event topic (Uniswap V2 style)
+// event Swap(address indexed sender, uint amount0In, uint amount1In,
+//            uint amount0Out, uint amount1Out, address indexed to)
+this.SWAP_TOPIC = '0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822';
+
+// Configuration
+this.swapEventsEnabled = config.eventDriven?.swapEvents !== false;
+this.minSwapUSD = config.eventDriven?.minSwapUSD || 1000;
+```
+
+**Event Flow:**
+```
+WebSocket receives Swap event
+    │
+    ▼
+handleSwapEvent() → decodeSwapEvent()
+    │
+    ├─→ Extract sender/recipient from indexed topics
+    │
+    ├─→ Decode amounts from data field
+    │
+    ├─→ calculateSwapValue() → USD value + direction
+    │
+    ├─→ Filter by minSwapUSD threshold
+    │
+    └─→ emit('swapDetected', { sender, recipient, amountUSD, direction, ... })
+```
+
+#### WhaleTracker Integration → index.js
+**Files Modified:**
+- `src/index.js`
+
+**Changes:**
+- Added event listener for `swapDetected` events from EventDrivenDetector
+- Implemented `handleSwapForWhaleTracking()` method
+- Records both sender and recipient addresses (recipient with opposite direction)
+
+**Integration Flow:**
+```
+eventDrivenDetector.emit('swapDetected')
+    │
+    ▼
+handleSwapForWhaleTracking(swapData)
+    │
+    ├─→ whaleTracker.recordTrade(sender, ...)
+    │
+    └─→ whaleTracker.recordTrade(recipient, ...) // if different from sender
+```
+
+### Test Coverage
+
+Added 10 new tests for Swap event processing:
+- `should have correct Swap event topic hash`
+- `should correctly decode Swap event data`
+- `should return null for invalid swap event data`
+- `should return null for insufficient data length`
+- `should calculate swap value and direction correctly for buy`
+- `should calculate swap value and direction correctly for sell`
+- `should emit swapDetected event on valid swap`
+- `should update swap statistics`
+- `should ignore swaps below minimum USD threshold`
+- `should ignore swaps from unknown pairs`
+- `should include swap event stats in getStats`
+
+**Total tests:** 35 tests for eventDrivenDetector.test.js (all passing)
+
+### Architecture Impact
+
+Now the system has **full automatic whale detection**:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Event-Driven Architecture                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  WebSocket Provider                                                  │
+│       │                                                              │
+│       ├─────────────────────────────────────────────────────────┐   │
+│       │                                                         │   │
+│       ▼                                                         ▼   │
+│  ┌─────────────────┐                                ┌─────────────┐ │
+│  │  Sync Events    │                                │ Swap Events │ │
+│  │  (Reserves)     │                                │ (Traders)   │ │
+│  └────────┬────────┘                                └──────┬──────┘ │
+│           │                                                │        │
+│           ▼                                                ▼        │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │              EventDrivenDetector                               │ │
+│  │  • reserveUpdate events → Arbitrage Detection                  │ │
+│  │  • swapDetected events → WhaleTracker                          │ │
+│  └───────────────────────────────┬────────────────────────────────┘ │
+│                                  │                                  │
+│                                  ▼                                  │
+│                       ┌────────────────────┐                        │
+│                       │   WhaleTracker     │                        │
+│                       │ • Auto-detect whales│                       │
+│                       │ • Competition check │                       │
+│                       │ • Activity signals  │                       │
+│                       └────────────────────┘                        │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Expected Impact
+
+- **Automatic whale detection**: No longer requires manual whale address imports
+- **Real-time trader tracking**: Every Swap event feeds trader data to WhaleTracker
+- **Better competition assessment**: More data for `assessCompetition()` decisions
+- **MEV bot detection**: Tracking recipients helps identify arbitrage/MEV contracts
+
+---
+
+## Session 6: V3 Event-Driven Detection (2026-01-07)
+
+### Objective
+Add V3 Swap event support to EventDrivenDetector for real-time price updates from V3 pools.
+
+### Implementation Completed
+
+#### V3 Swap Event Processing
+**Files Modified:**
+- `src/monitoring/eventDrivenDetector.js`
+- `src/index.js`
+- `tests/unit/eventDrivenDetector.test.js`
+
+**Key Differences V2 vs V3:**
+
+| Feature | V2 | V3 |
+|---------|----|----|
+| Price updates | Sync event (reserves only) | Swap event (includes sqrtPriceX96, tick) |
+| Swap amounts | uint256 (always positive) | int256 (signed: +IN, -OUT) |
+| Fee tiers | Single fixed fee | Multiple (0.01%, 0.05%, 0.25%, 1%) |
+| Price data | Calculated from reserves | Direct from sqrtPriceX96 |
+| Event topic | `0x1c411e...` (Sync) | `0xc42079...` (V3 Swap) |
+
+**V3 Swap Event Signature:**
+```solidity
+event Swap(
+    address indexed sender,
+    address indexed recipient,
+    int256 amount0,      // Positive = tokens IN, Negative = tokens OUT
+    int256 amount1,      // Positive = tokens IN, Negative = tokens OUT
+    uint160 sqrtPriceX96, // sqrt(price) * 2^96
+    uint128 liquidity,   // Current liquidity in range
+    int24 tick           // Current tick after swap
+);
+```
+
+**New Components:**
+1. **V3 Pool Registry** - Separate registry for V3 pools (`v3PoolRegistry`, `addressToV3PoolInfo`)
+2. **V3 Swap Topic** - `SWAP_TOPIC_V3 = 0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67`
+3. **V3 Event Decoder** - `decodeSwapEventV3()` handles signed int256 amounts
+4. **V3 Price Calculator** - `calculateSwapValueV3()` extracts price from sqrtPriceX96
+5. **Signed Integer Parsing** - `_parseSignedInt256()`, `_parseSignedInt24()` for two's complement
+
+**V3-Specific Stats:**
+```javascript
+stats: {
+    v3SwapEventsReceived: 0,
+    v3SwapEventsProcessed: 0,
+    v3PriceUpdates: 0,
+    lastV3SwapTime: null,
+}
+```
+
+**Configuration:**
+```env
+EVENT_DRIVEN_V3_ENABLED=true        # Enable V3 event monitoring
+EVENT_DRIVEN_MAX_V3_POOLS=50        # Max V3 pools to subscribe
+```
+
+**Integration Flow:**
+```
+V3 Swap Event
+    │
+    ▼
+handleSwapEventV3()
+    │
+    ├─→ decodeSwapEventV3() → Parse signed amounts, sqrtPriceX96
+    │
+    ├─→ calculateSwapValueV3() → USD value, direction, price from sqrt
+    │
+    ├─→ emit('v3PriceUpdate') → Price/liquidity for correlation tracking
+    │
+    └─→ emit('swapDetected') → Whale tracking (if > minSwapUSD)
+```
+
+**index.js Handler:**
+```javascript
+eventDrivenDetector.on('v3PriceUpdate', async (data) => {
+    // Record for cross-pool correlation
+    crossPoolCorrelation.recordPriceUpdate({ ... });
+    // Run differential analysis
+    reserveDifferentialAnalyzer.processReserveUpdate({ ... });
+});
+```
+
+### Test Coverage
+- **19 new V3 tests** added to `eventDrivenDetector.test.js`
+- Total: **54 tests passing** for event-driven detector
+
+### Why V3 Events are More Valuable
+
+1. **Direct Price Data**: V3 Swap events include `sqrtPriceX96` - no need to calculate from reserves
+2. **Better Precision**: Concentrated liquidity means price data is exact within active range
+3. **Fee Tier Info**: Can track which fee tier pools are active
+4. **Liquidity Signal**: `liquidity` field shows available depth at current price
+5. **Tick Data**: `tick` reveals exact position in price range
+
+### Architecture Impact
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                    EventDrivenDetector                                │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                       │
+│  WebSocket Provider                                                   │
+│       │                                                               │
+│       ├─────────────────────────────┬─────────────────────────┐      │
+│       │                             │                         │      │
+│       ▼                             ▼                         ▼      │
+│  ┌─────────────────┐       ┌─────────────────┐      ┌──────────────┐ │
+│  │  V2 Sync Events │       │  V2 Swap Events │      │ V3 Swap Events│ │
+│  │  (Reserves)     │       │  (Traders)      │      │ (Price+Traders)│
+│  └────────┬────────┘       └────────┬────────┘      └───────┬──────┘ │
+│           │                         │                       │        │
+│           ▼                         ▼                       ▼        │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │              Event Processing & Emission                        │  │
+│  │  • reserveUpdate (V2 price updates)                            │  │
+│  │  • swapDetected (V2+V3 whale tracking)                         │  │
+│  │  • v3PriceUpdate (V3 price + tick + liquidity)                 │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                                                                       │
+└──────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Next Steps
 
-1. **Run live testing** to validate improvements from all 7 implemented optimizations
+1. **Run live testing** to validate improvements from all 8 implemented optimizations
 2. Monitor detection metrics (opportunities/hour, detection latency, false positive rate)
 3. Monitor new metrics:
    - `correlation.correlationChecks` - How often correlation-based detection triggers

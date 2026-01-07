@@ -98,7 +98,9 @@ export default class WorkerCoordinator extends EventEmitter {
         // Store worker and config
         this.workers.set(chainId, worker);
         this.workerConfigs.set(chainId, chainConfig);
-        this.updateWorkerStatus(chainId, 'initializing');
+        // Initialize lastHeartbeat to prevent false "unresponsive" detection during restarts
+        // (old status entries may have stale timestamps from previous worker instances)
+        this.updateWorkerStatus(chainId, 'initializing', { lastHeartbeat: Date.now() });
 
         log.info(`Spawned worker for chain ${chainId} (${chainConfig.name})`);
 
