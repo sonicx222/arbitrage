@@ -4,6 +4,7 @@ import rpcManager from '../utils/rpcManager.js';
 import cacheManager from './cacheManager.js';
 import config from '../config.js';
 import log from '../utils/logger.js';
+import { NATIVE_TOKEN_PRICES, STABLECOINS, getFallbackPrice } from '../constants/tokenPrices.js';
 
 /**
  * Price Fetcher - Fetches token prices from DEX pairs via smart contract calls
@@ -131,6 +132,11 @@ class PriceFetcher {
                     log.debug(`Price fetch progress: ${i + batch.length}/${pairs.length} pairs`);
                 }
             } catch (err) {
+                // Log the error so it's not silently swallowed
+                log.warn(`Multicall batch failed (pairs ${i}-${i + batch.length})`, {
+                    error: err.message,
+                    batchSize: batch.length,
+                });
                 // Return failed results so indices stay aligned
                 batch.forEach(() => allResults.push({ success: false, returnData: '0x' }));
             }
@@ -247,28 +253,13 @@ class PriceFetcher {
 
     /**
      * Estimate liquidity in USD for a pair
-     * Uses heuristics based on known token prices
+     * Uses centralized token prices for consistency
      * @private
      */
     _estimateLiquidityUSD(reserveA, reserveB, tokenA, tokenB) {
-        // Known approximate prices for base tokens
-        const knownPrices = {
-            // Stablecoins
-            'USDT': 1, 'USDC': 1, 'BUSD': 1, 'DAI': 1, 'TUSD': 1, 'FDUSD': 1,
-            'USDbC': 1, 'axlUSDC': 1, 'miMATIC': 1, 'FRAX': 1, 'USDplus': 1,
-            // Native tokens (approximate)
-            'WBNB': 600, 'BNB': 600,
-            'WETH': 3500, 'ETH': 3500,
-            'WMATIC': 0.5, 'MATIC': 0.5,
-            'WAVAX': 35, 'AVAX': 35,
-            // Major tokens
-            'BTCB': 95000, 'WBTC': 95000,
-            'cbETH': 3500, 'wstETH': 4000, 'rETH': 3800,
-            'stMATIC': 0.5, 'MaticX': 0.5,
-        };
-
-        const priceA = knownPrices[tokenA.symbol] || null;
-        const priceB = knownPrices[tokenB.symbol] || null;
+        // Use centralized price constants for consistency across the codebase
+        const priceA = getFallbackPrice(tokenA.symbol, null);
+        const priceB = getFallbackPrice(tokenB.symbol, null);
 
         // Convert reserves to float
         const resAFloat = Number(reserveA) / Math.pow(10, tokenA.decimals);

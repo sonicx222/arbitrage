@@ -6,6 +6,7 @@ import cacheManager from '../data/cacheManager.js';
 import config from '../config.js';
 import log from '../utils/logger.js';
 import { formatOpportunity, formatOpportunitySummary, formatDuration } from '../utils/logFormatter.js';
+import { NATIVE_TOKEN_PRICES } from '../constants/tokenPrices.js';
 
 /**
  * Arbitrage Detector - Identifies profitable arbitrage opportunities across DEXs
@@ -68,16 +69,10 @@ class ArbitrageDetector {
         }
 
         // 3. Calculate accurate profit for all opportunities
+        // Note: batchCalculate already returns results sorted by netProfitUSD descending
         if (opportunities.length > 0) {
             opportunities = profitCalculator.batchCalculate(opportunities, gasPrice);
         }
-
-        // 4. Sort by net profit descending
-        opportunities.sort((a, b) => {
-            const profitA = a.profitCalculation?.netProfitUSD || a.profitUSD || 0;
-            const profitB = b.profitCalculation?.netProfitUSD || b.profitUSD || 0;
-            return profitB - profitA;
-        });
 
         // 5. Log results - single consolidated log entry
         const duration = Date.now() - startTime;
@@ -255,22 +250,17 @@ class ArbitrageDetector {
      */
     _getDynamicNativePrice() {
         const nativeSymbol = config.nativeToken?.symbol || 'WBNB';
-        const fallbackPrices = {
-            'WBNB': 600, 'BNB': 600,
-            'WETH': 3500, 'ETH': 3500,
-            'WMATIC': 0.5, 'MATIC': 0.5,
-            'WAVAX': 35, 'AVAX': 35,
-        };
 
         const dexNames = Object.entries(config.dex)
             .filter(([_, dexConfig]) => dexConfig.enabled)
             .map(([name]) => name);
 
+        // Use centralized fallback prices
         return cacheManager.getNativeTokenPrice(
             nativeSymbol,
             config.tokens,
             dexNames,
-            fallbackPrices[nativeSymbol] || 600
+            NATIVE_TOKEN_PRICES[nativeSymbol] || 600
         );
     }
 
@@ -310,17 +300,18 @@ class ArbitrageDetector {
         // Flash loan fee (0.25% = 0.0025)
         const flashLoanFee = config.execution?.flashLoanFee || 0.0025;
 
-        // Search range: 1 USD worth of B to 50% of pool (safety) or $5k
+        // Search range from config (with defaults for backwards compatibility)
+        const MIN_TRADE_USD = config.trading?.minTradeSizeUSD || 10;
+        const MAX_TRADE_USD = config.trading?.maxTradeSizeUSD || 5000;
+
         const liquidityUSD = buyDexData.liquidityUSD;
         const reserveB_Float = Number(buyInRes) / Math.pow(10, tokenBDecimals);
         const priceB_USD = (liquidityUSD / 2) / reserveB_Float || 1; // Approx price
 
-        const MAX_TRADE_USD = 5000; // Cap at $5k for safety
-
         // Safety check for very small pools
         if (priceB_USD === 0) return { profitUSD: 0, optimalAmount: 0n, priceUSD: 0 };
 
-        const minAmount = BigInt(Math.floor((10 / priceB_USD) * Math.pow(10, tokenBDecimals))); // $10 min
+        const minAmount = BigInt(Math.floor((MIN_TRADE_USD / priceB_USD) * Math.pow(10, tokenBDecimals)));
         const maxAmount = BigInt(Math.floor((MAX_TRADE_USD / priceB_USD) * Math.pow(10, tokenBDecimals)));
 
         if (maxAmount <= minAmount) return { profitUSD: 0, optimalAmount: 0n, priceUSD: priceB_USD };

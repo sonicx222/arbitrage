@@ -130,6 +130,9 @@ export default {
     maxSlippage: parseFloat(process.env.MAX_SLIPPAGE || '1.0'),
     gasPriceGwei: parseInt(process.env.GAS_PRICE_GWEI || '5'),
     estimatedGasLimit: 350000, // Estimated gas for flash loan + swaps
+    // Trade size limits (USD)
+    minTradeSizeUSD: parseFloat(process.env.MIN_TRADE_SIZE_USD || '10'),
+    maxTradeSizeUSD: parseFloat(process.env.MAX_TRADE_SIZE_USD || '5000'),
   },
 
   // Monitoring Configuration

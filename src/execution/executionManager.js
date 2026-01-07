@@ -3,6 +3,7 @@ import rpcManager from '../utils/rpcManager.js';
 import transactionBuilder from './transactionBuilder.js';
 import gasOptimizer from './gasOptimizer.js';
 import cacheManager from '../data/cacheManager.js';
+import blockMonitor from '../monitoring/blockMonitor.js';
 import config from '../config.js';
 import log from '../utils/logger.js';
 import { FACTORY_ABI, PANCAKE_FACTORY_ADDRESS } from '../contracts/abis.js';
@@ -319,7 +320,8 @@ class ExecutionManager {
         }
 
         // Check age (opportunities older than 2 blocks are stale)
-        const currentBlock = cacheManager.currentBlockNumber;
+        // Use blockMonitor for accurate current block (cacheManager may be stale)
+        const currentBlock = blockMonitor.getCurrentBlock() || cacheManager.currentBlockNumber;
         if (opportunity.blockNumber && currentBlock - opportunity.blockNumber > 2) {
             return {
                 valid: false,

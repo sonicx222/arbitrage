@@ -5,6 +5,13 @@ import { FLASH_LOAN_FEE } from '../contracts/abis.js';
 import cacheManager from '../data/cacheManager.js';
 import l2GasCalculator from '../execution/l2GasCalculator.js';
 import slippageManager from './slippageManager.js';
+import {
+    NATIVE_TOKEN_PRICES,
+    STABLECOINS,
+    getFallbackPrice,
+    isStablecoin,
+    isNativeToken,
+} from '../constants/tokenPrices.js';
 
 // Lazy import to avoid circular dependency
 let triangularDetector = null;
@@ -30,17 +37,8 @@ const getTriangularDetector = async () => {
  */
 class ProfitCalculator {
     constructor() {
-        // Native token price fallbacks (used when cache is empty)
-        this.defaultNativePrices = {
-            'WBNB': 600,
-            'BNB': 600,
-            'WETH': 3500,
-            'ETH': 3500,
-            'WMATIC': 0.5,
-            'MATIC': 0.5,
-            'WAVAX': 35,
-            'AVAX': 35,
-        };
+        // Native token price fallbacks (use centralized constants)
+        this.defaultNativePrices = NATIVE_TOKEN_PRICES;
 
         // Current native token price (dynamically updated)
         this.nativeTokenPriceUSD = this.defaultNativePrices['WBNB'];
@@ -146,11 +144,15 @@ class ProfitCalculator {
     /**
      * Calculate profit for cross-DEX arbitrage
      *
+     * NOTE: The profitUSD from arbitrageDetector.optimizeTradeAmount() is ALREADY net of flash loan fee.
+     * We must NOT deduct flash loan fee again here to avoid double-counting.
+     * We only add gas cost and slippage buffer to the calculation.
+     *
      * @private
      */
     _calculateCrossDexProfit(opportunity, gasPrice, bnbPrice) {
         const {
-            profitUSD: grossProfitUSD,
+            profitUSD: grossProfitUSD, // This is already net of flash loan fee from optimizeTradeAmount
             optimalTradeSizeUSD,
             gasCostUSD: existingGasCost,
             tokenA,
@@ -158,7 +160,8 @@ class ProfitCalculator {
             minLiquidityUSD,
         } = opportunity;
 
-        // Calculate flash loan fee
+        // NOTE: Flash loan fee is ALREADY deducted in arbitrageDetector.optimizeTradeAmount()
+        // We track it for reporting purposes only, but do NOT subtract it again
         const flashFeeUSD = optimalTradeSizeUSD * this.flashLoanFee;
 
         // Calculate gas cost
@@ -182,8 +185,8 @@ class ProfitCalculator {
 
         const slippageUSD = grossProfitUSD * slippageRate;
 
-        // Net profit
-        const netProfitUSD = grossProfitUSD - flashFeeUSD - gasCostUSD - slippageUSD;
+        // Net profit: grossProfitUSD already has flash fee deducted, only subtract gas and slippage
+        const netProfitUSD = grossProfitUSD - gasCostUSD - slippageUSD;
         const netProfitPercent = optimalTradeSizeUSD > 0
             ? (netProfitUSD / optimalTradeSizeUSD) * 100
             : 0;
@@ -194,7 +197,7 @@ class ProfitCalculator {
 
         return {
             type: 'cross-dex',
-            grossProfitUSD,
+            grossProfitUSD: grossProfitUSD + flashFeeUSD, // Report true gross (before flash fee)
             flashFeeUSD,
             gasCostUSD,
             slippageUSD,
@@ -205,7 +208,7 @@ class ProfitCalculator {
             tradeSizeUSD: optimalTradeSizeUSD,
             isProfitable,
             breakdown: {
-                gross: grossProfitUSD,
+                gross: grossProfitUSD + flashFeeUSD, // True gross profit
                 flashLoan: -flashFeeUSD,
                 gas: -gasCostUSD,
                 slippage: -slippageUSD,
@@ -612,14 +615,13 @@ class ProfitCalculator {
      * @returns {number} Token price in USD
      */
     _getTokenPriceUSD(tokenSymbol, nativePrice) {
-        // Stablecoins - always $1
-        if (['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'FDUSD'].includes(tokenSymbol)) {
+        // Stablecoins - always $1 (use centralized list)
+        if (isStablecoin(tokenSymbol)) {
             return 1.0;
         }
 
-        // Native tokens - use provided price
-        const nativeSymbols = ['WBNB', 'BNB', 'WETH', 'ETH', 'WMATIC', 'MATIC', 'WAVAX', 'AVAX'];
-        if (nativeSymbols.includes(tokenSymbol)) {
+        // Native tokens - use provided price (use centralized check)
+        if (isNativeToken(tokenSymbol)) {
             return nativePrice;
         }
 
@@ -635,25 +637,8 @@ class ProfitCalculator {
             return cachedPrice;
         }
 
-        // Fallback to hardcoded approximate prices for major tokens
-        const fallbackPrices = {
-            'BTCB': 95000,
-            'WBTC': 95000,
-            'CAKE': 2.5,
-            'XRP': 2.0,
-            'ADA': 1.0,
-            'DOT': 7.0,
-            'LINK': 20.0,
-            'UNI': 12.0,
-            'AAVE': 300.0,
-            'ARB': 1.0,
-            'OP': 2.0,
-            'JOE': 0.5,
-            'PNG': 0.1,
-            'SUSHI': 1.5,
-        };
-
-        return fallbackPrices[tokenSymbol] || 1.0; // Default to $1 for unknown
+        // Fallback to centralized token prices
+        return getFallbackPrice(tokenSymbol, 1.0);
     }
 
     /**

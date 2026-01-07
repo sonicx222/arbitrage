@@ -249,6 +249,12 @@ class TransactionBuilder {
      * @returns {Object} Transaction object
      */
     build(opportunity, gasParams) {
+        // Validate opportunity type
+        const validTypes = ['cross-dex', 'triangular', 'cross-dex-triangular'];
+        if (!validTypes.includes(opportunity.type)) {
+            throw new Error(`Invalid opportunity type: ${opportunity.type}. Expected one of: ${validTypes.join(', ')}`);
+        }
+
         if (opportunity.type === 'triangular' || opportunity.type === 'cross-dex-triangular') {
             return this.buildTriangularTx(opportunity, gasParams);
         } else {

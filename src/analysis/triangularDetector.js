@@ -300,19 +300,28 @@ class TriangularDetector {
      * The profit function is unimodal: increases then decreases due to price impact.
      * Golden section search finds the maximum in O(log(n)) iterations with better precision.
      *
+     * IMPORTANT: Accounts for flash loan fee (0.25%) which is deducted from the borrowed amount
+     *
      * @param {Object} opportunity - Triangular opportunity
      * @param {number} tokenDecimals - Decimals of base token
      * @param {number} maxTradeUSD - Maximum trade size in USD
      * @param {number} baseTokenPriceUSD - Price of base token in USD
      * @returns {Object} { optimalAmount, maxProfitAmount, profitUSD }
      */
-    findOptimalTradeSize(opportunity, tokenDecimals = 18, maxTradeUSD = 5000, baseTokenPriceUSD = 1) {
-        const minAmount = BigInt(Math.floor((10 / baseTokenPriceUSD) * Math.pow(10, tokenDecimals)));
-        const maxAmount = BigInt(Math.floor((maxTradeUSD / baseTokenPriceUSD) * Math.pow(10, tokenDecimals)));
+    findOptimalTradeSize(opportunity, tokenDecimals = 18, maxTradeUSD = null, baseTokenPriceUSD = 1) {
+        // Use config values with fallbacks for backwards compatibility
+        const MIN_TRADE_USD = config.trading?.minTradeSizeUSD || 10;
+        const MAX_TRADE_USD = maxTradeUSD || config.trading?.maxTradeSizeUSD || 5000;
+
+        const minAmount = BigInt(Math.floor((MIN_TRADE_USD / baseTokenPriceUSD) * Math.pow(10, tokenDecimals)));
+        const maxAmount = BigInt(Math.floor((MAX_TRADE_USD / baseTokenPriceUSD) * Math.pow(10, tokenDecimals)));
 
         if (maxAmount <= minAmount) {
             return { optimalAmount: 0n, maxProfitAmount: 0n, profitUSD: 0 };
         }
+
+        // Flash loan fee (0.25% = 0.0025) - must be accounted for in profit calculation
+        const flashLoanFee = config.execution?.flashLoanFee || 0.0025;
 
         // Golden ratio for optimal convergence
         const PHI = 1.618033988749895;
@@ -326,10 +335,17 @@ class TriangularDetector {
         let c = b - RESPHI * (b - a);
         let d = a + RESPHI * (b - a);
 
-        // Evaluate profit at interior points
+        // Evaluate profit at interior points (accounting for flash loan fee)
         const evalProfit = (amount) => {
-            const result = this.calculateExactOutput(opportunity, BigInt(Math.floor(amount)), tokenDecimals);
-            return Number(result.profitAmount);
+            const amountBigInt = BigInt(Math.floor(amount));
+            const result = this.calculateExactOutput(opportunity, amountBigInt, tokenDecimals);
+
+            // Deduct flash loan fee from profit
+            // Flash loan fee is calculated on the borrowed (input) amount
+            const flashFeeAmount = (amountBigInt * BigInt(Math.floor(flashLoanFee * 10000))) / 10000n;
+            const netProfit = result.profitAmount - flashFeeAmount;
+
+            return Number(netProfit);
         };
 
         let fc = evalProfit(c);
@@ -363,12 +379,16 @@ class TriangularDetector {
         const bestAmount = BigInt(Math.floor(bestAmountFloat));
         const result = this.calculateExactOutput(opportunity, bestAmount, tokenDecimals);
 
-        const profitFloat = Number(result.profitAmount) / Math.pow(10, tokenDecimals);
+        // Calculate net profit after flash loan fee
+        const flashFeeAmount = (bestAmount * BigInt(Math.floor(flashLoanFee * 10000))) / 10000n;
+        const netProfitAmount = result.profitAmount - flashFeeAmount;
+
+        const profitFloat = Number(netProfitAmount) / Math.pow(10, tokenDecimals);
         const profitUSD = profitFloat * baseTokenPriceUSD;
 
         return {
             optimalAmount: bestAmount,
-            maxProfitAmount: result.profitAmount,
+            maxProfitAmount: netProfitAmount,
             profitUSD,
         };
     }
