@@ -17,6 +17,10 @@ class ChainFactory {
             42161: 'arbitrum',
             8453: 'base',
             43114: 'avalanche',
+            // Tier 1 New Chains (v3.1)
+            10: 'optimism',
+            250: 'fantom',
+            324: 'zksync',
         };
     }
 

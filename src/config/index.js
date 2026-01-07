@@ -10,6 +10,10 @@ import polygonConfig from './chains/polygon.js';
 import arbitrumConfig from './chains/arbitrum.js';
 import baseConfig from './chains/base.js';
 import avalancheConfig from './chains/avalanche.js';
+// Tier 1 New Chains (v3.1)
+import optimismConfig from './chains/optimism.js';
+import fantomConfig from './chains/fantom.js';
+import zksyncConfig from './chains/zksync.js';
 
 /**
  * Multi-Chain Configuration Manager
@@ -25,6 +29,10 @@ export const chainConfigs = {
     42161: arbitrumConfig, // Arbitrum
     8453: baseConfig,     // Base
     43114: avalancheConfig, // Avalanche
+    // Tier 1 New Chains (v3.1)
+    10: optimismConfig,   // Optimism
+    250: fantomConfig,    // Fantom
+    324: zksyncConfig,    // zkSync Era
 };
 
 // Chain ID to name mapping
@@ -35,6 +43,10 @@ export const chainNames = {
     42161: 'Arbitrum',
     8453: 'Base',
     43114: 'Avalanche',
+    // Tier 1 New Chains (v3.1)
+    10: 'Optimism',
+    250: 'Fantom',
+    324: 'zkSync',
 };
 
 /**
@@ -133,6 +145,7 @@ export const globalConfig = {
 
 // Token mappings for cross-chain arbitrage
 // Expanded from 4 to 11 tokens for better cross-chain opportunity detection
+// v3.1: Added Optimism (10), Fantom (250), zkSync (324)
 export const crossChainTokens = {
     // Stablecoins - highest volume, most consistent cross-chain
     'USDC': {
@@ -142,6 +155,9 @@ export const crossChainTokens = {
         42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
         8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
         43114: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
+        10: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',    // Optimism
+        250: '0x04068DA6C83AFCFA0e13ba15A6696662335D5B75',   // Fantom
+        324: '0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4',   // zkSync
     },
     'USDT': {
         1: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
@@ -149,6 +165,9 @@ export const crossChainTokens = {
         137: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
         42161: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
         43114: '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7',
+        10: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',    // Optimism
+        250: '0x049d68029688eAbF473097a2fC38ef61633A3C7A',   // Fantom
+        324: '0x493257fD37EDB34451f62EDf8D2a0C418852bA4C',   // zkSync
     },
     'DAI': {
         1: '0x6B175474E89094C44Da98b954EedeAC495F36668',
@@ -157,6 +176,9 @@ export const crossChainTokens = {
         42161: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
         8453: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb',
         43114: '0xd586E7F844cEa2F87f50152665BCbc2C279D8d70',
+        10: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',    // Optimism
+        250: '0x8D11eC38a3EB5E956B052f67Da8Bdc9bef8Abf3E',   // Fantom
+        324: '0x4B9eb6c0b6ea15176BBF62841C6B2A8a398cb656',   // zkSync
     },
     // Native wrapped tokens - high volume, price discrepancies common
     'WETH': {
@@ -166,6 +188,9 @@ export const crossChainTokens = {
         42161: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
         8453: '0x4200000000000000000000000000000000000006',
         43114: '0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB',
+        10: '0x4200000000000000000000000000000000000006',    // Optimism
+        250: '0x74b23882a30290451A17c44f4F05243b6b58C76d',   // Fantom
+        324: '0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91',   // zkSync
     },
     // Bitcoin wrapped tokens - often have cross-chain premiums
     'WBTC': {
@@ -174,6 +199,9 @@ export const crossChainTokens = {
         137: '0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6',
         42161: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f',
         43114: '0x50b7545627a5162F82A992c33b87aDc75187B218',
+        10: '0x68f180fcCe6836688e9084f035309E29Bf0A2095',    // Optimism
+        250: '0x321162Cd933E2Be498Cd2267a90534A804051b11',   // Fantom
+        324: '0xBBeB516fb02a01611cBBE0453Fe3c580D7281011',   // zkSync
     },
     // DeFi blue chips - good liquidity across chains
     'LINK': {

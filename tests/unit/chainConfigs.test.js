@@ -160,14 +160,17 @@ describe('Chain Configurations', () => {
 
 describe('Config Index Functions', () => {
     describe('chainConfigs', () => {
-        test('contains all 6 chain configurations', () => {
-            expect(Object.keys(chainConfigs)).toHaveLength(6);
-            expect(chainConfigs[56]).toBeDefined();  // BSC
-            expect(chainConfigs[1]).toBeDefined();   // Ethereum
-            expect(chainConfigs[137]).toBeDefined(); // Polygon
+        test('contains all 9 chain configurations', () => {
+            expect(Object.keys(chainConfigs)).toHaveLength(9);
+            expect(chainConfigs[56]).toBeDefined();    // BSC
+            expect(chainConfigs[1]).toBeDefined();     // Ethereum
+            expect(chainConfigs[137]).toBeDefined();   // Polygon
             expect(chainConfigs[42161]).toBeDefined(); // Arbitrum
-            expect(chainConfigs[8453]).toBeDefined(); // Base
+            expect(chainConfigs[8453]).toBeDefined();  // Base
             expect(chainConfigs[43114]).toBeDefined(); // Avalanche
+            expect(chainConfigs[10]).toBeDefined();    // Optimism
+            expect(chainConfigs[250]).toBeDefined();   // Fantom
+            expect(chainConfigs[324]).toBeDefined();   // zkSync Era
         });
     });
 
