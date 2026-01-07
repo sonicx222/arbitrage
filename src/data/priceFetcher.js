@@ -34,13 +34,15 @@ class PriceFetcher {
 
     /**
      * Get the adaptive prioritizer (lazy load to avoid circular deps)
+     * Uses dynamic import for ESM compatibility
      * @private
+     * @returns {Promise<Object|null>} Prioritizer instance or null if unavailable
      */
-    _getPrioritizer() {
+    async _getPrioritizer() {
         if (!this._prioritizer) {
             try {
-                // Dynamic import to avoid circular dependency
-                const module = require('../analysis/adaptivePrioritizer.js');
+                // Dynamic import for ESM compatibility (avoids circular dependency)
+                const module = await import('../analysis/adaptivePrioritizer.js');
                 this._prioritizer = module.default || module;
             } catch {
                 this._prioritizer = null;
@@ -71,12 +73,15 @@ class PriceFetcher {
             const tokenPairs = this._getTokenPairs();
             const validPairs = await this._resolvePairs(tokenPairs);
 
+            // Load prioritizer upfront if needed (async for ESM compatibility)
+            const prioritizer = respectPriority ? await this._getPrioritizer() : null;
+
             // Separate pairs into: fresh from cache vs need RPC fetch
             const { freshPrices, pairsToFetch } = this._separateFreshFromStale(
                 validPairs,
                 blockNumber,
                 excludePairs,
-                respectPriority
+                prioritizer
             );
 
             // Only fetch pairs that need RPC calls
@@ -111,11 +116,14 @@ class PriceFetcher {
     /**
      * Separate pairs into fresh (from cache/events) vs stale (need RPC)
      * @private
+     * @param {Array} validPairs - Valid pairs to process
+     * @param {number} blockNumber - Current block number
+     * @param {Set} excludePairs - Pairs to exclude from fetching
+     * @param {Object|null} prioritizer - AdaptivePrioritizer instance or null
      */
-    _separateFreshFromStale(validPairs, blockNumber, excludePairs, respectPriority) {
+    _separateFreshFromStale(validPairs, blockNumber, excludePairs, prioritizer) {
         const freshPrices = {};
         const pairsToFetch = [];
-        const prioritizer = respectPriority ? this._getPrioritizer() : null;
 
         for (const pair of validPairs) {
             const pairKey = pair.pairKey;

@@ -193,38 +193,44 @@ class BlockMonitor extends EventEmitter {
 
     /**
      * Handle reconnection with exponential backoff
+     * Uses iterative approach to avoid stack overflow from recursive calls
      */
     async handleReconnect() {
-        if (!this.isRunning) {
-            return; // Don't reconnect if stopped
-        }
-
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            log.error(`Max reconnection attempts (${this.maxReconnectAttempts}) reached`);
-            this.emit('error', new Error('Max reconnection attempts reached'));
-            return;
-        }
-
-        this.reconnectAttempts++;
-        const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-
-        log.ws(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-
-        await this.sleep(delay);
-
-        try {
-            // Clean up old provider
-            if (this.provider) {
-                this.provider.removeAllListeners();
+        // Use while loop instead of recursion to prevent stack overflow
+        while (this.isRunning) {
+            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                log.error(`Max reconnection attempts (${this.maxReconnectAttempts}) reached`);
+                this.emit('error', new Error('Max reconnection attempts reached'));
+                return;
             }
 
-            // Reconnect
-            await this.connect();
-            log.ws('✅ Reconnected successfully');
+            this.reconnectAttempts++;
+            const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
 
-        } catch (error) {
-            log.error('Reconnection failed', { error: error.message });
-            await this.handleReconnect(); // Try again
+            log.ws(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
+            await this.sleep(delay);
+
+            // Check again after sleep in case stop() was called
+            if (!this.isRunning) {
+                return;
+            }
+
+            try {
+                // Clean up old provider
+                if (this.provider) {
+                    this.provider.removeAllListeners();
+                }
+
+                // Reconnect
+                await this.connect();
+                log.ws('✅ Reconnected successfully');
+                return; // Success - exit the loop
+
+            } catch (error) {
+                log.error('Reconnection failed', { error: error.message });
+                // Loop continues to next attempt
+            }
         }
     }
 

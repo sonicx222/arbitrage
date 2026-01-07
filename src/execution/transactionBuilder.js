@@ -186,21 +186,29 @@ class TransactionBuilder {
             tokenDecimals
         );
 
-        // Router(s) - for cross-dex-triangular, we need multiple routers
-        let routers;
+        // Router selection - contract currently only supports single-router triangular
+        let router;
         if (type === 'cross-dex-triangular' && dexPath) {
-            // Cross-DEX triangular uses different router for each hop
-            routers = dexPath.map(dex => config.dex[dex]?.router).filter(Boolean);
-            if (routers.length !== 3) {
-                throw new Error(`Invalid dexPath: expected 3 routers, got ${routers.length}`);
+            // Cross-DEX triangular requires multiple routers, but the current contract
+            // only supports a single router. Reject these until contract is upgraded.
+            // Check if all routers are the same (edge case where cross-dex uses same DEX)
+            const uniqueRouters = [...new Set(dexPath.map(dex => config.dex[dex]?.router).filter(Boolean))];
+            if (uniqueRouters.length > 1) {
+                throw new Error(
+                    `Cross-DEX triangular arbitrage not supported: contract requires single router, ` +
+                    `but path uses ${uniqueRouters.length} different DEXes (${dexPath.join(' -> ')}). ` +
+                    `Contract upgrade required to support multiple routers.`
+                );
             }
+            // All DEXes use same router - can proceed
+            router = uniqueRouters[0];
+            log.warn('Cross-DEX triangular path uses same router for all hops', { dexPath });
         } else {
             // Single-DEX triangular uses same router for all hops
-            const router = config.dex[dexName]?.router;
+            router = config.dex[dexName]?.router;
             if (!router) {
                 throw new Error(`Router not found for DEX: ${dexName}`);
             }
-            routers = [router, router, router];
         }
 
         // Minimum profit with 1% buffer
@@ -211,11 +219,9 @@ class TransactionBuilder {
         );
 
         // Encode function call
-        // Note: For cross-dex-triangular, the contract needs to support multiple routers
-        // If the contract only supports single router, we use the first one (legacy behavior)
         const data = this.contractInterface.encodeFunctionData(
             'executeTriangularArbitrage',
-            [flashPair, borrowAmount, tokenBorrow, pathAddresses, routers[0], minProfit]
+            [flashPair, borrowAmount, tokenBorrow, pathAddresses, router, minProfit]
         );
 
         // Build base transaction

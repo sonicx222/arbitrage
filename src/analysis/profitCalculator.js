@@ -344,9 +344,20 @@ class ProfitCalculator {
         }
 
         // Binary search for optimal input amount (10 check points)
-        const minAmount = maxInputAmount / 50n; // Start at 2% of max
+        // Ensure minAmount is at least 1n to avoid zero-division and empty search space
+        const minAmount = maxInputAmount / 50n || 1n; // Start at 2% of max, min 1n
         const checkPoints = 10;
         const increment = (maxInputAmount - minAmount) / BigInt(checkPoints);
+
+        // If increment is 0, there's not enough range to search - return with minAmount
+        if (increment <= 0n) {
+            const tradeSizeUSD = (Number(minAmount) / Math.pow(10, tokenDecimals)) * baseTokenPriceUSD;
+            return {
+                grossProfitUSD: 0,
+                optimalInputAmount: minAmount,
+                tradeSizeUSD,
+            };
+        }
 
         let bestProfit = 0n;
         let bestAmount = minAmount;

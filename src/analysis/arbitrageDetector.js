@@ -184,13 +184,21 @@ class ArbitrageDetector {
         const minLiquidity = Math.min(buyDexData.liquidityUSD || 0, sellDexData.liquidityUSD || 0);
         if (minLiquidity < 1000) return false;
 
+        // Safety check: prices must be valid positive numbers
+        if (!buyDexData.price || buyDexData.price <= 0 || !Number.isFinite(buyDexData.price)) {
+            return false;
+        }
+        if (!sellDexData.price || sellDexData.price <= 0 || !Number.isFinite(sellDexData.price)) {
+            return false;
+        }
+
         const buyFee = config.dex[buyDexData.dexName]?.fee || 0.003;
         const sellFee = config.dex[sellDexData.dexName]?.fee || 0.003;
         const totalFee = (buyFee + sellFee) * 100;
 
         // Simple spread check before expensive optimization
         const spreadPercent = ((sellDexData.price - buyDexData.price) / buyDexData.price) * 100;
-        return (spreadPercent - totalFee) >= this.minProfitPercentage;
+        return Number.isFinite(spreadPercent) && (spreadPercent - totalFee) >= this.minProfitPercentage;
     }
 
     /**
@@ -294,8 +302,8 @@ class ArbitrageDetector {
         const sellInRes = BigInt(sellDexData.reserveA);
         const sellOutRes = BigInt(sellDexData.reserveB);
 
-        const buyFee = config.dex[buyDexData.dexName].fee;
-        const sellFee = config.dex[sellDexData.dexName].fee;
+        const buyFee = config.dex[buyDexData.dexName]?.fee ?? 0.003;
+        const sellFee = config.dex[sellDexData.dexName]?.fee ?? 0.003;
 
         // Flash loan fee (0.25% = 0.0025)
         const flashLoanFee = config.execution?.flashLoanFee || 0.0025;
@@ -306,10 +314,18 @@ class ArbitrageDetector {
 
         const liquidityUSD = buyDexData.liquidityUSD;
         const reserveB_Float = Number(buyInRes) / Math.pow(10, tokenBDecimals);
-        const priceB_USD = (liquidityUSD / 2) / reserveB_Float || 1; // Approx price
 
-        // Safety check for very small pools
-        if (priceB_USD === 0) return { profitUSD: 0, optimalAmount: 0n, priceUSD: 0 };
+        // Safety check: prevent division by zero (Infinity || 1 does NOT work - Infinity is truthy!)
+        if (reserveB_Float <= 0 || !Number.isFinite(reserveB_Float)) {
+            return { profitUSD: 0, optimalAmount: 0n, priceUSD: 0 };
+        }
+
+        const priceB_USD = (liquidityUSD / 2) / reserveB_Float;
+
+        // Safety check for invalid price
+        if (!Number.isFinite(priceB_USD) || priceB_USD <= 0) {
+            return { profitUSD: 0, optimalAmount: 0n, priceUSD: 0 };
+        }
 
         const minAmount = BigInt(Math.floor((MIN_TRADE_USD / priceB_USD) * Math.pow(10, tokenBDecimals)));
         const maxAmount = BigInt(Math.floor((MAX_TRADE_USD / priceB_USD) * Math.pow(10, tokenBDecimals)));

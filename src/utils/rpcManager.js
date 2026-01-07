@@ -219,15 +219,18 @@ class RPCManager extends EventEmitter {
             } catch (error) {
                 lastError = error;
 
+                // Get the endpoint that was actually used for this failed request
+                const failedEndpoint = providerData?.endpoint;
+
                 log.rpc(`Request failed (attempt ${attempt + 1}/${maxRetries})`, {
-                    error: error.message
+                    error: error.message,
+                    endpoint: failedEndpoint ? this._maskEndpoint(failedEndpoint) : 'unknown',
                 });
 
-                // Check if it's a rate limit error
-                if (error.code === 429 || error.message.includes('429') || error.message.includes('rate limit')) {
-                    const providerData = this.getHttpProvider();
-                    this.markEndpointUnhealthy(providerData.endpoint);
-                    log.rpc(`Rate limit hit on ${providerData.endpoint}, marking unhealthy`);
+                // Check if it's a rate limit error - mark the ACTUAL failed endpoint as unhealthy
+                if (failedEndpoint && (error.code === 429 || error.message.includes('429') || error.message.includes('rate limit'))) {
+                    this.markEndpointUnhealthy(failedEndpoint);
+                    log.rpc(`Rate limit hit on ${this._maskEndpoint(failedEndpoint)}, marking unhealthy`);
                 }
 
                 // Exponential backoff

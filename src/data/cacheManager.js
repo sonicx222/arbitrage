@@ -319,13 +319,18 @@ class CacheManager {
      * Get cache statistics
      */
     getStats() {
+        const priceStats = this.priceCache.getStats();
+        const totalRequests = priceStats.hits + priceStats.misses;
+        const hitRate = totalRequests > 0
+            ? ((priceStats.hits / totalRequests) * 100).toFixed(2) + '%'
+            : '0.00%';
+
         return {
             prices: {
                 keys: this.priceCache.keys().length,
-                hits: this.priceCache.getStats().hits,
-                misses: this.priceCache.getStats().misses,
-                hitRate: (this.priceCache.getStats().hits /
-                    (this.priceCache.getStats().hits + this.priceCache.getStats().misses) * 100).toFixed(2) + '%',
+                hits: priceStats.hits,
+                misses: priceStats.misses,
+                hitRate,
             },
             pairAddresses: {
                 keys: this.pairAddressCache.keys().length,

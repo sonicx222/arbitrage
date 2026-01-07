@@ -258,8 +258,14 @@ class ExecutionManager {
 
             log.info('Transaction sent', { hash: response.hash });
 
-            // Wait for confirmation
-            const receipt = await response.wait(1);
+            // Wait for confirmation with timeout (2 minutes max to prevent hanging)
+            const txTimeout = config.execution?.txTimeoutMs || 120000;
+            const receipt = await Promise.race([
+                response.wait(1),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Transaction confirmation timeout')), txTimeout)
+                ),
+            ]);
 
             this.pendingTx = null;
 

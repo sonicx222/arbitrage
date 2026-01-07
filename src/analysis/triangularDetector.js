@@ -99,26 +99,16 @@ class TriangularDetector {
                 });
 
                 // Add reverse edge B -> A
-                // For AMM pools, reverse price must be calculated from reserves
-                // because the constant product formula k = x * y means:
-                // - Forward: dy = (y * dx) / (x + dx) => price ≈ y/x
-                // - Reverse: dx = (x * dy) / (y + dy) => price ≈ x/y
+                // For AMM pools, the reverse price is the inverse of the forward price.
+                // Note: priceData.price is already properly decimal-adjusted by priceFetcher,
+                // so we must use 1/price rather than raw reserves (which would ignore decimals).
                 if (!graph.has(tokenB)) {
                     graph.set(tokenB, new Map());
                 }
 
-                // Calculate reverse price from reserves for accuracy
-                let reversePrice;
-                const resA = priceData.reserveA ? BigInt(priceData.reserveA) : 0n;
-                const resB = priceData.reserveB ? BigInt(priceData.reserveB) : 0n;
-
-                if (resA > 0n && resB > 0n) {
-                    // Reverse price (B->A) = reserveA / reserveB
-                    reversePrice = Number(resA) / Number(resB);
-                } else {
-                    // Fallback to simple inverse if no reserves
-                    reversePrice = priceData.price > 0 ? 1 / priceData.price : 0;
-                }
+                // Calculate reverse price as inverse of forward price
+                // This is correct because priceData.price already accounts for token decimals
+                const reversePrice = priceData.price > 0 ? 1 / priceData.price : 0;
 
                 graph.get(tokenB).set(tokenA, {
                     price: reversePrice,
@@ -531,13 +521,10 @@ class TriangularDetector {
                 if (!neighborsA.has(tokenB)) neighborsA.set(tokenB, []);
                 if (!neighborsB.has(tokenA)) neighborsB.set(tokenA, []);
 
-                // Calculate reverse price from reserves
-                const resA = priceData.reserveA ? BigInt(priceData.reserveA) : 0n;
-                const resB = priceData.reserveB ? BigInt(priceData.reserveB) : 0n;
-                let reversePrice = priceData.price > 0 ? 1 / priceData.price : 0;
-                if (resA > 0n && resB > 0n) {
-                    reversePrice = Number(resA) / Number(resB);
-                }
+                // Calculate reverse price as inverse of forward price
+                // priceData.price is already decimal-adjusted by priceFetcher, so using
+                // 1/price is correct. Using raw reserves would ignore decimal differences.
+                const reversePrice = priceData.price > 0 ? 1 / priceData.price : 0;
 
                 // Add forward edge A -> B
                 neighborsA.get(tokenB).push({
