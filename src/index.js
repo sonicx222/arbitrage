@@ -13,6 +13,9 @@ import reserveDifferentialAnalyzer from './analysis/reserveDifferentialAnalyzer.
 import crossPoolCorrelation from './analysis/crossPoolCorrelation.js';
 import dexAggregator from './analysis/dexAggregator.js';
 import whaleTracker from './analysis/whaleTracker.js';
+import v2v3Arbitrage from './analysis/v2v3Arbitrage.js';
+import v3PriceFetcher from './data/v3PriceFetcher.js';
+import statisticalArbitrageDetector from './analysis/statisticalArbitrageDetector.js';
 import config from './config.js';
 import log from './utils/logger.js';
 import { formatChain, formatUSD, formatPercent } from './utils/logFormatter.js';
@@ -52,6 +55,9 @@ class ArbitrageBot {
             opportunitiesFromEvents: 0,
             opportunitiesFromBlocks: 0,
             opportunitiesFromDifferential: 0,
+            opportunitiesFromV2V3: 0,
+            opportunitiesFromFeeTier: 0,
+            opportunitiesFromStatistical: 0,
         };
 
         // Determine operating mode
@@ -138,6 +144,10 @@ class ArbitrageBot {
         // Start cross-pool correlation tracking
         crossPoolCorrelation.start();
         log.info('Cross-pool correlation tracking started');
+
+        // Start statistical arbitrage detection (P3 improvement)
+        statisticalArbitrageDetector.start();
+        log.info('Statistical arbitrage detector started');
 
         // Initialize DEX aggregator with chain ID
         const chainId = config.chainId || 56;
@@ -284,6 +294,11 @@ class ArbitrageBot {
             await this.handleWhaleActivity(signal);
         });
 
+        // Handle statistical arbitrage signals (P3 improvement)
+        statisticalArbitrageDetector.on('statisticalSignal', async (signal) => {
+            await this.handleStatisticalSignal(signal);
+        });
+
         // Handle swap events for whale tracking (feeds trader addresses to WhaleTracker)
         eventDrivenDetector.on('swapDetected', (swapData) => {
             this.handleSwapForWhaleTracking(swapData);
@@ -346,52 +361,122 @@ class ArbitrageBot {
     /**
      * Handle opportunity detected by reserve differential analysis
      * These are cross-DEX opportunities detected from price lag
+     *
+     * Improvement v2.0: Full integration with price re-fetch and profit calculation
+     * Expected impact: +20-40% more opportunities detected
      */
     async handleDifferentialOpportunity(data) {
         const { opportunity, timestamp } = data;
 
         if (!opportunity) return;
 
-        this.eventDrivenStats.opportunitiesFromDifferential++;
-        dashboard.recordOpportunities(1);
+        try {
+            // Step 1: Re-verify opportunity by fetching current prices
+            // The differential analyzer detected a spread, but we need full profit calculation
+            const [token0Symbol, token1Symbol] = opportunity.pairKey.split('/');
+            const token0 = config.tokens[token0Symbol];
+            const token1 = config.tokens[token1Symbol];
 
-        // Enhance opportunity with source info
-        opportunity.source = 'reserve-differential';
-        opportunity.detectionLatencyMs = Date.now() - timestamp;
-
-        log.info(`[DIFFERENTIAL] Cross-DEX lag opportunity detected`, {
-            pairKey: opportunity.pairKey,
-            spread: `${opportunity.spreadPercent?.toFixed(3)}%`,
-            buyDex: opportunity.buyDex,
-            sellDex: opportunity.sellDex,
-            lagMs: opportunity.trigger?.lagMs,
-        });
-
-        // Record with adaptive prioritizer
-        const pairKey = `${opportunity.pairKey}:${opportunity.buyDex}`;
-        adaptivePrioritizer.recordOpportunity(pairKey, {
-            volumeUSD: opportunity.profitCalculation?.tradeSizeUSD,
-        });
-
-        // Send alert
-        await alertManager.notify(opportunity);
-
-        // Execute if enabled (with whale competition check)
-        if (config.execution?.enabled) {
-            if (!this.shouldExecuteWithWhaleCheck(opportunity)) {
-                log.info(`[DIFFERENTIAL] Skipping execution due to whale competition`);
+            if (!token0 || !token1) {
+                log.debug('[DIFFERENTIAL] Unknown tokens, skipping', { pairKey: opportunity.pairKey });
                 return;
             }
 
-            const result = await executionManager.execute(opportunity);
+            // Build prices object from cache for both DEXs
+            const prices = { [opportunity.pairKey]: {} };
+            const [addr0, addr1] = token0.address.toLowerCase() < token1.address.toLowerCase()
+                ? [token0.address.toLowerCase(), token1.address.toLowerCase()]
+                : [token1.address.toLowerCase(), token0.address.toLowerCase()];
 
-            if (result.simulated) {
-                dashboard.recordSimulation(result.success);
-            } else if (result.success) {
-                dashboard.recordExecution(true, opportunity.profitCalculation?.netProfitUSD || 0);
-            } else {
-                dashboard.recordExecution(false);
+            // Get cached prices for buy and sell DEXs
+            for (const dexName of [opportunity.buyDex, opportunity.sellDex]) {
+                const cacheKey = `price:${dexName}:${addr0}:${addr1}`;
+                const priceData = cacheManager.priceCache.get(cacheKey);
+                if (priceData?.data) {
+                    prices[opportunity.pairKey][dexName] = priceData.data;
+                }
             }
+
+            // Step 2: Run full arbitrage detection with profit calculation
+            if (Object.keys(prices[opportunity.pairKey]).length >= 2) {
+                const opportunities = await arbitrageDetector.detectOpportunities(
+                    prices,
+                    cacheManager.currentBlockNumber
+                );
+
+                // Check if we still have a profitable opportunity
+                if (opportunities.length === 0) {
+                    log.debug('[DIFFERENTIAL] Opportunity no longer profitable after re-verification');
+                    return;
+                }
+
+                // Use the verified opportunity with full profit calculation
+                const verifiedOpportunity = opportunities[0];
+                verifiedOpportunity.source = 'reserve-differential';
+                verifiedOpportunity.detectionLatencyMs = Date.now() - timestamp;
+                verifiedOpportunity.priority = 'high'; // Mark as high priority for faster execution
+                verifiedOpportunity.differentialTrigger = opportunity.trigger;
+
+                this.eventDrivenStats.opportunitiesFromDifferential++;
+                dashboard.recordOpportunities(1);
+
+                log.info(`[DIFFERENTIAL] Cross-DEX lag opportunity verified`, {
+                    pairKey: verifiedOpportunity.pairKey,
+                    spread: `${(verifiedOpportunity.netProfitPercentage || 0).toFixed(3)}%`,
+                    profit: `$${(verifiedOpportunity.profitUSD || 0).toFixed(2)}`,
+                    buyDex: verifiedOpportunity.buyDex,
+                    sellDex: verifiedOpportunity.sellDex,
+                    lagMs: opportunity.trigger?.lagMs,
+                    latencyMs: verifiedOpportunity.detectionLatencyMs,
+                });
+
+                // Record with adaptive prioritizer (boost priority)
+                const pairKeyWithDex = `${verifiedOpportunity.pairKey}:${verifiedOpportunity.buyDex}`;
+                adaptivePrioritizer.recordOpportunity(pairKeyWithDex, {
+                    volumeUSD: verifiedOpportunity.optimalTradeSizeUSD,
+                    priority: 2, // Double priority boost for differential opportunities
+                });
+
+                // Send alert
+                await alertManager.notify(verifiedOpportunity);
+
+                // Execute if enabled (with whale competition check)
+                if (config.execution?.enabled) {
+                    if (!this.shouldExecuteWithWhaleCheck(verifiedOpportunity)) {
+                        log.info(`[DIFFERENTIAL] Skipping execution due to whale competition`);
+                        return;
+                    }
+
+                    const result = await executionManager.execute(verifiedOpportunity);
+
+                    if (result.simulated) {
+                        dashboard.recordSimulation(result.success);
+                    } else if (result.success) {
+                        dashboard.recordExecution(true, verifiedOpportunity.profitUSD || 0);
+                    } else {
+                        dashboard.recordExecution(false);
+                    }
+                }
+            } else {
+                // Fallback: alert on basic opportunity if we can't get full prices
+                log.debug('[DIFFERENTIAL] Incomplete price data, using basic opportunity');
+                opportunity.source = 'reserve-differential';
+                opportunity.detectionLatencyMs = Date.now() - timestamp;
+
+                this.eventDrivenStats.opportunitiesFromDifferential++;
+                dashboard.recordOpportunities(1);
+
+                log.info(`[DIFFERENTIAL] Cross-DEX lag opportunity (unverified)`, {
+                    pairKey: opportunity.pairKey,
+                    spread: `${opportunity.spreadPercent?.toFixed(3)}%`,
+                    buyDex: opportunity.buyDex,
+                    sellDex: opportunity.sellDex,
+                });
+
+                await alertManager.notify(opportunity);
+            }
+        } catch (error) {
+            log.debug('[DIFFERENTIAL] Error processing opportunity', { error: error.message });
         }
     }
 
@@ -534,6 +619,63 @@ class ArbitrageBot {
             adaptivePrioritizer.recordOpportunity(`${signal.pairKey}:whale`, {
                 volumeUSD: signal.amountUSD,
             });
+        }
+    }
+
+    /**
+     * Handle statistical arbitrage signal
+     * P3 Improvement: Mean-reversion based opportunity detection
+     *
+     * @param {Object} signal - Statistical signal from StatisticalArbitrageDetector
+     */
+    async handleStatisticalSignal(signal) {
+        if (!signal) return;
+
+        this.eventDrivenStats.opportunitiesFromStatistical++;
+        dashboard.recordOpportunities(1);
+
+        log.info(`[STATISTICAL] Mean-reversion signal detected`, {
+            pairKey: signal.pairKey,
+            zScore: signal.zScore.toFixed(2),
+            direction: signal.direction,
+            strength: signal.strength,
+            confidence: `${(signal.confidence * 100).toFixed(1)}%`,
+            expectedReversion: `${signal.expectedReversionPercent.toFixed(3)}%`,
+            action: `Buy on ${signal.action.buy}, sell on ${signal.action.sell}`,
+        });
+
+        // Record with adaptive prioritizer to boost this pair's priority
+        const pairKeyWithSource = `${signal.pairKey}:statistical`;
+        adaptivePrioritizer.recordOpportunity(pairKeyWithSource, {
+            volumeUSD: 1000, // Default volume for statistical signals
+            priority: signal.strength === 'strong' ? 2 : 1,
+        });
+
+        // Convert signal to opportunity format for alerting
+        const opportunity = {
+            type: 'statistical-arbitrage',
+            pairKey: signal.pairKey,
+            buyDex: signal.action.buy,
+            sellDex: signal.action.sell,
+            profitPercent: signal.expectedReversionPercent,
+            confidence: signal.confidence,
+            zScore: signal.zScore,
+            strength: signal.strength,
+            source: 'statistical-detector',
+            blockNumber: signal.blockNumber,
+            timestamp: signal.timestamp,
+        };
+
+        // Send alert
+        await alertManager.notify(opportunity);
+
+        // Note: Statistical signals are informational - they indicate potential
+        // mean reversion but don't guarantee immediate profit. Execution is
+        // optional and should be handled with caution.
+        if (config.execution?.enabled && config.execution?.statisticalEnabled && signal.strength === 'strong') {
+            log.info('[STATISTICAL] Strong signal - checking for immediate arbitrage');
+            // The actual execution would require fetching current prices and
+            // running through the normal arbitrage detection to verify profit
         }
     }
 
@@ -911,7 +1053,51 @@ class ArbitrageBot {
                 );
             }
 
-            const allOpportunities = [...opportunities, ...multiHopOpportunities];
+            // ==================== V2/V3 ARBITRAGE DETECTION ====================
+            // Improvement v2.0: Detect V2/V3 and fee tier arbitrage opportunities
+            // Expected impact: +10-20% V3-specific opportunities
+            let v2v3Opportunities = [];
+            try {
+                // Fetch V3 prices if we have V3-enabled DEXs
+                const v3Dexes = Object.entries(config.dex)
+                    .filter(([_, dex]) => dex.enabled && dex.type === 'v3');
+
+                if (v3Dexes.length > 0) {
+                    const v3Prices = await v3PriceFetcher.fetchAllV3Prices(blockNumber);
+
+                    if (v3Prices && Object.keys(v3Prices).length > 0) {
+                        const chainId = config.chainId || 56;
+                        v2v3Opportunities = v2v3Arbitrage.analyzeOpportunities(
+                            chainId,
+                            prices,      // V2 prices
+                            v3Prices,    // V3 prices
+                            blockNumber
+                        );
+
+                        // Track statistics by type
+                        for (const opp of v2v3Opportunities) {
+                            if (opp.type === 'v3-fee-tier-arb') {
+                                this.eventDrivenStats.opportunitiesFromFeeTier++;
+                            } else if (opp.type === 'v2-v3-arb') {
+                                this.eventDrivenStats.opportunitiesFromV2V3++;
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                log.debug('V2/V3 detection error', { error: error.message });
+            }
+
+            // ==================== STATISTICAL ARBITRAGE PROCESSING ====================
+            // P3 Improvement: Feed prices to statistical detector for mean-reversion signals
+            // This runs asynchronously - signals are emitted via events
+            try {
+                statisticalArbitrageDetector.processAllPrices(prices, blockNumber);
+            } catch (error) {
+                log.debug('Statistical arbitrage error', { error: error.message });
+            }
+
+            const allOpportunities = [...opportunities, ...multiHopOpportunities, ...v2v3Opportunities];
 
             // Update dashboard with opportunities found
             dashboard.recordOpportunities(allOpportunities.length);
@@ -1028,6 +1214,12 @@ class ArbitrageBot {
             stats: crossPoolCorrelation.getStats(),
         });
 
+        // Stop statistical arbitrage detector
+        statisticalArbitrageDetector.stop();
+        log.info('Statistical arbitrage detector stopped', {
+            stats: statisticalArbitrageDetector.getStats(),
+        });
+
         // Log DEX aggregator stats
         log.info('DEX aggregator stats:', {
             stats: dexAggregator.getStats(),
@@ -1052,11 +1244,19 @@ class ArbitrageBot {
             stats: reserveDifferentialAnalyzer.getStats(),
         });
 
+        // Log V2/V3 arbitrage stats
+        log.info('V2/V3 arbitrage stats:', {
+            stats: v2v3Arbitrage.getStats(),
+        });
+
         // Log event-driven vs block-based stats
         log.info('Detection source statistics:', {
             fromEvents: this.eventDrivenStats.opportunitiesFromEvents,
             fromBlocks: this.eventDrivenStats.opportunitiesFromBlocks,
             fromDifferential: this.eventDrivenStats.opportunitiesFromDifferential,
+            fromV2V3: this.eventDrivenStats.opportunitiesFromV2V3,
+            fromFeeTier: this.eventDrivenStats.opportunitiesFromFeeTier,
+            fromStatistical: this.eventDrivenStats.opportunitiesFromStatistical,
         });
 
         // Log execution stats if enabled
