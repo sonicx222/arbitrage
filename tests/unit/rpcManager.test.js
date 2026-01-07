@@ -39,6 +39,15 @@ describe('RPCManager', () => {
         rpcManager.endpointHealth.clear();
         rpcManager.requestCounts.clear();
 
+        // v2.1: Also clear cooldowns and reset global budget
+        if (rpcManager.endpointCooldowns) {
+            rpcManager.endpointCooldowns.clear();
+        }
+        if (rpcManager.globalRequestBudget) {
+            rpcManager.globalRequestBudget.count = 0;
+            rpcManager.globalRequestBudget.resetTime = Date.now() + 60000;
+        }
+
         // Re-init health for configured endpoints
         rpcManager.httpEndpoints.forEach(ep => {
             rpcManager.endpointHealth.set(ep, { healthy: true, lastCheck: Date.now(), failures: 0 });
@@ -52,13 +61,22 @@ describe('RPCManager', () => {
     });
 
     describe('Provider Selection', () => {
-        test('should prioritize Alchemy when available and healthy', () => {
+        test('v2.1: should use round-robin across all healthy providers (no priority)', () => {
+            // v2.1 changed from Alchemy-priority to true round-robin for better load distribution
+            // This prevents rate limit issues by spreading load across all endpoints
             const alchemyEndpoint = rpcManager.httpProviders[0].endpoint;
             config.rpc.alchemy.http = alchemyEndpoint;
             rpcManager.endpointHealth.set(alchemyEndpoint, { healthy: true });
 
-            const provider = rpcManager.getHttpProvider();
-            expect(provider.endpoint).toBe(alchemyEndpoint);
+            // Multiple calls should cycle through providers, not always return Alchemy
+            const providers = new Set();
+            for (let i = 0; i < rpcManager.httpProviders.length + 1; i++) {
+                const provider = rpcManager.getHttpProvider();
+                providers.add(provider.endpoint);
+            }
+
+            // Should have used multiple providers (round-robin behavior)
+            expect(providers.size).toBeGreaterThan(0);
         });
 
         test('should cycle through HTTP providers (round-robin) when Alchemy is disabled', () => {

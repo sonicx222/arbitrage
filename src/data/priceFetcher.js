@@ -13,10 +13,20 @@ import { NATIVE_TOKEN_PRICES, STABLECOINS, getFallbackPrice } from '../constants
  * - Cache-aware: Skips RPC calls for pairs with fresh event-driven data
  * - Priority-aware: Respects AdaptivePrioritizer tier frequencies
  * - Batch fetching: Uses Multicall for efficient RPC usage
+ *
+ * v2.1 Improvements for 24/7 Operation:
+ * - Reduced batch sizes to prevent rate limit hits
+ * - Inter-batch delays to spread RPC load
+ * - Configurable batch parameters via environment variables
  */
 class PriceFetcher {
     constructor() {
         this.dexes = Object.entries(config.dex).filter(([_, dexConfig]) => dexConfig.enabled);
+
+        // v2.1: Configurable batch settings for rate limit management
+        // Smaller batches = more requests but better load distribution
+        this.batchSize = parseInt(process.env.MULTICALL_BATCH_SIZE || '50'); // Reduced from 200
+        this.interBatchDelayMs = parseInt(process.env.MULTICALL_BATCH_DELAY || '100'); // Add delay between batches
 
         // Statistics for cache-aware fetching
         this.stats = {
@@ -24,12 +34,16 @@ class PriceFetcher {
             cacheHits: 0,
             rpcCalls: 0,
             skippedByPriority: 0,
+            batchesExecuted: 0,
         };
 
         // Lazy-loaded prioritizer reference (avoid circular dependency)
         this._prioritizer = null;
 
-        log.info(`Price Fetcher initialized for ${this.dexes.length} DEXs`);
+        log.info(`Price Fetcher initialized for ${this.dexes.length} DEXs`, {
+            batchSize: this.batchSize,
+            interBatchDelayMs: this.interBatchDelayMs,
+        });
     }
 
     /**
@@ -247,37 +261,57 @@ class PriceFetcher {
 
     /**
      * Batch fetch pair addresses via Multicall
+     * v2.1: Uses configurable batch sizes and inter-batch delays
      * @private
      */
     async _batchFetchAddresses(pairs) {
-        const BATCH_SIZE = 200;
         const fetched = [];
+        const totalBatches = Math.ceil(pairs.length / this.batchSize);
 
-        for (let i = 0; i < pairs.length; i += BATCH_SIZE) {
-            const batch = pairs.slice(i, i + BATCH_SIZE);
+        for (let i = 0; i < pairs.length; i += this.batchSize) {
+            const batch = pairs.slice(i, i + this.batchSize);
+            const batchNumber = Math.floor(i / this.batchSize) + 1;
             const calls = batch.map(c => ({
                 target: c.dexConfig.factory,
                 callData: new ethers.Interface(FACTORY_ABI).encodeFunctionData('getPair', [c.tokenA.address, c.tokenB.address])
             }));
 
-            const results = await rpcManager.withRetry(async (p) => {
-                return await new ethers.Contract(MULTICALL_ADDRESS, MULTICALL_ABI, p).tryAggregate(false, calls);
-            });
+            try {
+                const results = await rpcManager.withRetry(async (p) => {
+                    return await new ethers.Contract(MULTICALL_ADDRESS, MULTICALL_ABI, p).tryAggregate(false, calls);
+                });
 
-            batch.forEach((combo, idx) => {
-                const { success, returnData } = results[idx];
-                let address = ethers.ZeroAddress;
-                if (success && returnData !== '0x') {
-                    address = new ethers.Interface(FACTORY_ABI).decodeFunctionResult('getPair', returnData)[0];
+                batch.forEach((combo, idx) => {
+                    const { success, returnData } = results[idx];
+                    let address = ethers.ZeroAddress;
+                    if (success && returnData !== '0x') {
+                        address = new ethers.Interface(FACTORY_ABI).decodeFunctionResult('getPair', returnData)[0];
+                    }
+
+                    if (address !== ethers.ZeroAddress) {
+                        cacheManager.setPairAddress(combo.tokenA.address, combo.tokenB.address, combo.dexName, address);
+                        fetched.push({ ...combo, address });
+                    } else {
+                        cacheManager.setPairAddress(combo.tokenA.address, combo.tokenB.address, combo.dexName, null);
+                    }
+                });
+
+                // v2.1: Inter-batch delay to spread RPC load
+                if (i + this.batchSize < pairs.length && this.interBatchDelayMs > 0) {
+                    await new Promise(resolve => setTimeout(resolve, this.interBatchDelayMs));
                 }
 
-                if (address !== ethers.ZeroAddress) {
-                    cacheManager.setPairAddress(combo.tokenA.address, combo.tokenB.address, combo.dexName, address);
-                    fetched.push({ ...combo, address });
-                } else {
-                    cacheManager.setPairAddress(combo.tokenA.address, combo.tokenB.address, combo.dexName, null);
+            } catch (err) {
+                log.warn(`Address batch fetch failed (batch ${batchNumber}/${totalBatches})`, {
+                    error: err.message,
+                    batchSize: batch.length,
+                });
+
+                // v2.1: Add extra delay after failure
+                if (i + this.batchSize < pairs.length) {
+                    await new Promise(resolve => setTimeout(resolve, this.interBatchDelayMs * 3));
                 }
-            });
+            }
         }
 
         if (fetched.length > 0) {
@@ -289,15 +323,17 @@ class PriceFetcher {
 
     /**
      * Fetch reserves for all pairs using multicall batches
+     * v2.1: Uses configurable batch sizes and inter-batch delays
      * @private
      */
     async _fetchBatchedReserves(pairs) {
-        const BATCH_SIZE = 200; // Increased for Alchemy
         const allResults = [];
         const iface = new ethers.Interface(PAIR_ABI);
+        const totalBatches = Math.ceil(pairs.length / this.batchSize);
 
-        for (let i = 0; i < pairs.length; i += BATCH_SIZE) {
-            const batch = pairs.slice(i, i + BATCH_SIZE);
+        for (let i = 0; i < pairs.length; i += this.batchSize) {
+            const batch = pairs.slice(i, i + this.batchSize);
+            const batchNumber = Math.floor(i / this.batchSize) + 1;
             const calls = batch.map(p => ({
                 target: p.address,
                 callData: iface.encodeFunctionData('getReserves')
@@ -309,19 +345,31 @@ class PriceFetcher {
                     return await multicall.tryAggregate(false, calls);
                 });
                 allResults.push(...results);
+                this.stats.batchesExecuted++;
 
-                // Progress heartbeat for debug mode only
-                if (config.debugMode && (i + BATCH_SIZE) % 400 === 0) {
-                    log.debug(`Price fetch progress: ${i + batch.length}/${pairs.length} pairs`);
+                // Progress heartbeat for debug mode
+                if (config.debugMode && batchNumber % 4 === 0) {
+                    log.debug(`Price fetch progress: ${i + batch.length}/${pairs.length} pairs (batch ${batchNumber}/${totalBatches})`);
                 }
+
+                // v2.1: Inter-batch delay to spread RPC load and prevent rate limits
+                if (i + this.batchSize < pairs.length && this.interBatchDelayMs > 0) {
+                    await new Promise(resolve => setTimeout(resolve, this.interBatchDelayMs));
+                }
+
             } catch (err) {
                 // Log the error so it's not silently swallowed
-                log.warn(`Multicall batch failed (pairs ${i}-${i + batch.length})`, {
+                log.warn(`Multicall batch failed (batch ${batchNumber}/${totalBatches}, pairs ${i}-${i + batch.length})`, {
                     error: err.message,
                     batchSize: batch.length,
                 });
                 // Return failed results so indices stay aligned
                 batch.forEach(() => allResults.push({ success: false, returnData: '0x' }));
+
+                // v2.1: Add extra delay after failure to give RPC time to recover
+                if (i + this.batchSize < pairs.length) {
+                    await new Promise(resolve => setTimeout(resolve, this.interBatchDelayMs * 3));
+                }
             }
         }
         return allResults;

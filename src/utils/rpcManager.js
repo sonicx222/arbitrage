@@ -13,6 +13,12 @@ import { ResilientWebSocketManager } from './resilientWebSocketManager.js';
  * - Circuit breaker pattern
  * - Automatic failover between endpoints
  * - Connection health scoring
+ *
+ * v2.1 Improvements for 24/7 Operation:
+ * - Request budgeting across all endpoints
+ * - Smarter endpoint rotation (round-robin instead of priority)
+ * - Per-request throttling with configurable delays
+ * - Adaptive rate limiting based on endpoint health
  */
 class RPCManager extends EventEmitter {
     constructor() {
@@ -33,9 +39,27 @@ class RPCManager extends EventEmitter {
         this.wsProviders = [];
         this.currentWsIndex = 0;
 
-        // Rate limiting
+        // Rate limiting - v2.1: Enhanced with global budget
         this.requestCounts = new Map(); // endpoint -> { count, resetTime }
         this.maxRequestsPerMinute = config.rpc.maxRequestsPerMinute;
+
+        // v2.1: Global request budget to prevent aggregate overload
+        this.globalRequestBudget = {
+            count: 0,
+            resetTime: Date.now() + 60000,
+            // Conservative: 80% of sum of all endpoint limits, capped at 1000/min
+            maxPerMinute: Math.min(
+                Math.floor((config.rpc.maxRequestsPerMinute || 300) * (config.rpc.http?.length || 1) * 0.8),
+                1000
+            ),
+        };
+
+        // v2.1: Request throttling for burst prevention
+        this.lastRequestTime = 0;
+        this.minRequestIntervalMs = config.rpc.requestDelay || 50; // Min ms between requests
+
+        // v2.1: Cooldown tracking for rate-limited endpoints
+        this.endpointCooldowns = new Map(); // endpoint -> cooldownUntil timestamp
 
         // Health tracking (primarily for HTTP now, WS handled by manager)
         this.endpointHealth = new Map(); // endpoint -> { healthy, lastCheck, failures, unhealthySince }
@@ -55,6 +79,8 @@ class RPCManager extends EventEmitter {
             selfHealing: true,
             healingInterval: '5 minutes',
             resilientWebSocket: true,
+            globalBudget: `${this.globalRequestBudget.maxPerMinute}/min`,
+            throttling: `${this.minRequestIntervalMs}ms min interval`,
         });
     }
 
@@ -173,33 +199,68 @@ class RPCManager extends EventEmitter {
     }
 
     /**
-     * Get a healthy HTTP provider with priority for Alchemy
+     * Get a healthy HTTP provider with smart load distribution (v2.1)
+     *
+     * Strategy: Round-robin across ALL healthy providers to distribute load,
+     * instead of always prioritizing Alchemy which causes rate limit hits.
+     *
+     * Providers are filtered by:
+     * 1. Health status (not marked unhealthy)
+     * 2. Not in cooldown (recently rate-limited)
+     * 3. Under per-endpoint rate limit
      */
     getHttpProvider() {
-        // Priority for Alchemy
-        const alchemyUrl = config.rpc.alchemy.http;
-        if (alchemyUrl && this.endpointHealth.get(alchemyUrl)?.healthy) {
-            const providerData = this.httpProviders.find(p => p.endpoint === alchemyUrl);
-            if (providerData) return providerData;
-        }
+        const now = Date.now();
 
-        const healthyProviders = this.httpProviders.filter(p =>
-            this.endpointHealth.get(p.endpoint)?.healthy !== false
-        );
+        // Get all providers not in cooldown and healthy
+        const availableProviders = this.httpProviders.filter(p => {
+            const health = this.endpointHealth.get(p.endpoint);
+            const cooldownUntil = this.endpointCooldowns.get(p.endpoint) || 0;
 
-        if (healthyProviders.length === 0) {
-            // Reset all if none healthy
-            log.warn('All HTTP providers marked unhealthy, resetting...');
+            // Skip if unhealthy or in cooldown
+            if (health?.healthy === false) return false;
+            if (now < cooldownUntil) return false;
+
+            // Skip if at rate limit (but don't mark unhealthy yet)
+            if (!this.canMakeRequest(p.endpoint, false)) return false;
+
+            return true;
+        });
+
+        if (availableProviders.length === 0) {
+            // Try to find ANY provider that's at least healthy (ignore rate limits)
+            const healthyProviders = this.httpProviders.filter(p =>
+                this.endpointHealth.get(p.endpoint)?.healthy !== false
+            );
+
+            if (healthyProviders.length > 0) {
+                // Clear cooldowns and reset rate limits - emergency recovery
+                log.warn('All providers at rate limit, emergency reset...');
+                this.endpointCooldowns.clear();
+                this.requestCounts.clear();
+
+                // Return first healthy, will wait if needed via throttle
+                return healthyProviders[0];
+            }
+
+            // Last resort: reset all health status
+            log.warn('All HTTP providers marked unhealthy, resetting all...');
             this.httpProviders.forEach(p => {
                 const health = this.endpointHealth.get(p.endpoint);
-                if (health) health.healthy = true;
+                if (health) {
+                    health.healthy = true;
+                    health.failures = 0;
+                }
             });
+            this.endpointCooldowns.clear();
+            this.requestCounts.clear();
             return this.httpProviders[0];
         }
 
-        // Round-robin for non-priority providers
-        this.currentHttpIndex = (this.currentHttpIndex + 1) % healthyProviders.length;
-        return healthyProviders[this.currentHttpIndex];
+        // v2.1: True round-robin across ALL available providers
+        // This spreads load evenly instead of hammering Alchemy first
+        this.currentHttpIndex = (this.currentHttpIndex + 1) % availableProviders.length;
+        return availableProviders[this.currentHttpIndex];
     }
 
     /**
@@ -264,30 +325,61 @@ class RPCManager extends EventEmitter {
 
     /**
      * Check if we can make a request to an endpoint (rate limiting)
+     * v2.1: Enhanced with global budget tracking and optional increment
+     *
+     * @param {string} endpoint - The endpoint URL to check
+     * @param {boolean} incrementCount - Whether to increment the counter (default: true)
+     * @returns {boolean} - Whether the request can proceed
      */
-    canMakeRequest(endpoint) {
+    canMakeRequest(endpoint, incrementCount = true) {
         const now = Date.now();
+
+        // v2.1: Check global budget first
+        if (now > this.globalRequestBudget.resetTime) {
+            // Reset global budget
+            this.globalRequestBudget.count = 0;
+            this.globalRequestBudget.resetTime = now + 60000;
+        }
+
+        if (this.globalRequestBudget.count >= this.globalRequestBudget.maxPerMinute) {
+            log.rpc('Global request budget exhausted, throttling...', {
+                count: this.globalRequestBudget.count,
+                max: this.globalRequestBudget.maxPerMinute,
+            });
+            return false;
+        }
+
+        // Check per-endpoint rate limit
         const rateLimitData = this.requestCounts.get(endpoint);
 
         if (!rateLimitData) {
             // First request to this endpoint
-            this.requestCounts.set(endpoint, {
-                count: 1,
-                resetTime: now + 60000, // Reset after 1 minute
-            });
+            if (incrementCount) {
+                this.requestCounts.set(endpoint, {
+                    count: 1,
+                    resetTime: now + 60000, // Reset after 1 minute
+                });
+                this.globalRequestBudget.count++;
+            }
             return true;
         }
 
         // Check if reset time has passed
         if (now > rateLimitData.resetTime) {
-            rateLimitData.count = 1;
-            rateLimitData.resetTime = now + 60000;
+            if (incrementCount) {
+                rateLimitData.count = 1;
+                rateLimitData.resetTime = now + 60000;
+                this.globalRequestBudget.count++;
+            }
             return true;
         }
 
         // Check if under limit
         if (rateLimitData.count < this.maxRequestsPerMinute) {
-            rateLimitData.count++;
+            if (incrementCount) {
+                rateLimitData.count++;
+                this.globalRequestBudget.count++;
+            }
             return true;
         }
 
@@ -295,7 +387,39 @@ class RPCManager extends EventEmitter {
     }
 
     /**
+     * Set cooldown for an endpoint (v2.1)
+     * Used when rate limit errors are received
+     *
+     * @param {string} endpoint - The endpoint URL
+     * @param {number} cooldownMs - Cooldown duration in milliseconds
+     */
+    setEndpointCooldown(endpoint, cooldownMs = 60000) {
+        const cooldownUntil = Date.now() + cooldownMs;
+        this.endpointCooldowns.set(endpoint, cooldownUntil);
+        log.rpc(`Endpoint ${this._maskEndpoint(endpoint)} in cooldown for ${cooldownMs / 1000}s`);
+    }
+
+    /**
+     * Apply request throttling (v2.1)
+     * Ensures minimum time between requests to prevent bursts
+     *
+     * @returns {Promise<void>}
+     */
+    async throttle() {
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastRequestTime;
+
+        if (timeSinceLastRequest < this.minRequestIntervalMs) {
+            const waitTime = this.minRequestIntervalMs - timeSinceLastRequest;
+            await this.sleep(waitTime);
+        }
+
+        this.lastRequestTime = Date.now();
+    }
+
+    /**
      * Execute a function with retry logic and automatic failover
+     * v2.1: Enhanced with throttling and smarter rate limit handling
      */
     async withRetry(fn, maxRetries = config.rpc.retryAttempts) {
         let lastError = new Error('No successful RPC attempts');
@@ -303,14 +427,17 @@ class RPCManager extends EventEmitter {
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
+                // v2.1: Apply throttling between requests
+                await this.throttle();
+
                 currentProviderData = this.getHttpProvider();
                 const { provider, endpoint } = currentProviderData;
 
-                // Check rate limiting
+                // Check rate limiting (count already incremented via getHttpProvider check)
                 if (!this.canMakeRequest(endpoint)) {
-                    log.rpc(`Rate limit reached for ${endpoint}, switching provider`);
+                    log.rpc(`Rate limit reached for ${this._maskEndpoint(endpoint)}, switching provider`);
                     lastError = new Error(`Rate limit reached for ${endpoint}`);
-                    await this.sleep(config.rpc.requestDelay);
+                    await this.sleep(config.rpc.requestDelay * 2); // Longer wait on rate limit
                     continue;
                 }
 
@@ -337,19 +464,48 @@ class RPCManager extends EventEmitter {
                     endpoint: failedEndpoint ? this._maskEndpoint(failedEndpoint) : 'unknown',
                 });
 
-                // Check if it's a rate limit error - mark the ACTUAL failed endpoint as unhealthy
-                if (failedEndpoint && (error.code === 429 || error.message.includes('429') || error.message.includes('rate limit'))) {
+                // v2.1: Enhanced rate limit detection and handling
+                const isRateLimitError = this._isRateLimitError(error);
+
+                if (failedEndpoint && isRateLimitError) {
+                    // v2.1: Put endpoint in cooldown instead of just marking unhealthy
+                    // This allows recovery without full 5-minute healing cycle
+                    this.setEndpointCooldown(failedEndpoint, 60000); // 1 minute cooldown
                     this.markEndpointUnhealthy(failedEndpoint);
-                    log.rpc(`Rate limit hit on ${this._maskEndpoint(failedEndpoint)}, marking unhealthy`);
+                    log.rpc(`Rate limit hit on ${this._maskEndpoint(failedEndpoint)}, cooldown activated`);
+
+                    // Wait longer on rate limit errors
+                    const delay = config.rpc.retryDelay * Math.pow(2, attempt + 1);
+                    await this.sleep(delay);
+                    continue;
                 }
 
-                // Exponential backoff
+                // Exponential backoff for other errors
                 const delay = config.rpc.retryDelay * Math.pow(2, attempt);
                 await this.sleep(delay);
             }
         }
 
         throw new Error(`RPC request failed after ${maxRetries} attempts: ${lastError.message}`);
+    }
+
+    /**
+     * Check if an error is a rate limit error (v2.1)
+     * @private
+     */
+    _isRateLimitError(error) {
+        if (!error) return false;
+
+        // Check error code
+        if (error.code === 429) return true;
+
+        // Check error message
+        const msg = error.message?.toLowerCase() || '';
+        return msg.includes('429') ||
+               msg.includes('rate limit') ||
+               msg.includes('too many requests') ||
+               msg.includes('quota exceeded') ||
+               msg.includes('capacity exceeded');
     }
 
     /**

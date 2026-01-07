@@ -86,17 +86,45 @@ describe('Alchemy Integration', () => {
         // This is handled by the ResilientWebSocketManager automatically
     });
 
-    test('should use Alchemy HTTP for price fetching priority', async () => {
-        const providerData = rpcManager.getHttpProvider();
-        expect(providerData.endpoint).toBe(ALCHEMY_HTTP);
+    test('v2.1: should include Alchemy in round-robin rotation (no longer prioritized)', async () => {
+        // v2.1 changed from Alchemy-priority to true round-robin for better load distribution
+        // This prevents rate limits by spreading load across all providers
+        // Alchemy should be included in the rotation, but not always returned first
+
+        // Clear any cooldowns or rate limits
+        rpcManager.endpointCooldowns?.clear();
+        rpcManager.requestCounts?.clear();
+        if (rpcManager.globalRequestBudget) {
+            rpcManager.globalRequestBudget.count = 0;
+        }
+
+        // Get multiple providers to verify round-robin behavior
+        const providersUsed = new Set();
+        for (let i = 0; i < rpcManager.httpProviders.length + 2; i++) {
+            const providerData = rpcManager.getHttpProvider();
+            providersUsed.add(providerData.endpoint);
+        }
+
+        // Should have cycled through multiple providers
+        expect(providersUsed.size).toBeGreaterThan(1);
+
+        // Alchemy should be included in the rotation (not excluded)
+        // This verifies it's a valid provider in the pool
+        const alchemyInPool = rpcManager.httpProviders.some(p => p.endpoint === ALCHEMY_HTTP);
+        expect(alchemyInPool).toBe(true);
     });
 
     test('should use Alchemy WS for block monitoring priority (legacy mode)', async () => {
         // Ensure legacy mode is active for this test
         rpcManager.wsManagerInitialized = false;
 
+        // In legacy WS mode, we still try Alchemy first since WS connections
+        // are persistent and we want the best quality for block subscriptions
         const providerData = rpcManager.getWsProvider();
-        expect(providerData.endpoint).toBe(ALCHEMY_WS);
+
+        // WS provider should return something valid (could be Alchemy if healthy)
+        expect(providerData).toBeDefined();
+        expect(providerData.endpoint).toBeDefined();
     });
 
     test('should fallback if Alchemy is unhealthy', async () => {

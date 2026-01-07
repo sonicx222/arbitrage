@@ -6,19 +6,30 @@ import log from '../utils/logger.js';
 
 /**
  * Cache Manager with block-based invalidation and LRU eviction
+ *
+ * v2.1 Improvements for 24/7 Operation:
+ * - Extended cache TTL for better RPC rate limit tolerance
+ * - Configurable stale data acceptance for resilience
  */
 class CacheManager {
     constructor() {
         this.cacheDir = path.join(process.cwd(), 'data');
         this.pairCacheFile = path.join(this.cacheDir, 'pair-cache.json');
 
+        // v2.1: Extended price cache TTL for better RPC resilience
+        // Configurable via environment variable, default increased from 30s to 60s
+        const cacheTTL = parseInt(process.env.PRICE_CACHE_TTL || '60');
+
         // Price cache with TTL
         this.priceCache = new NodeCache({
-            stdTTL: 30,
+            stdTTL: cacheTTL,
             checkperiod: 10,
             useClones: false,
             maxKeys: config.monitoring.cacheSize,
         });
+
+        // v2.1: Default stale blocks acceptance (can use slightly old data during RPC issues)
+        this.defaultMaxStaleBlocks = parseInt(process.env.MAX_STALE_BLOCKS || '3');
 
         // Permanent caches
         this.pairAddressCache = new NodeCache({
@@ -37,7 +48,9 @@ class CacheManager {
 
         log.info('Cache Manager initialized', {
             maxSize: config.monitoring.cacheSize,
-            cachedPairs: this.pairAddressCache.keys().length
+            cachedPairs: this.pairAddressCache.keys().length,
+            priceCacheTTL: `${this.priceCache.options.stdTTL}s`,
+            maxStaleBlocks: this.defaultMaxStaleBlocks,
         });
     }
 
