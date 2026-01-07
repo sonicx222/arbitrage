@@ -36,6 +36,8 @@ export class ResilientWebSocketManager extends EventEmitter {
         // State
         this.isInitialized = false;
         this.healthCheckTimer = null;
+        this.isShuttingDown = false; // Shutdown flag to prevent reconnect during teardown
+        this.pendingFailoverTimers = []; // Track failover timers for cleanup
 
         // Statistics
         this.stats = {
@@ -101,6 +103,11 @@ export class ResilientWebSocketManager extends EventEmitter {
      * @private
      */
     async _connectToEndpoint(endpoint) {
+        // Don't create new connections during shutdown
+        if (this.isShuttingDown) {
+            return null;
+        }
+
         if (this.connections.has(endpoint)) {
             const existing = this.connections.get(endpoint);
             if (existing.isConnected()) {
@@ -191,6 +198,11 @@ export class ResilientWebSocketManager extends EventEmitter {
      * @private
      */
     _handlePrimaryFailover() {
+        // Don't attempt failover during shutdown
+        if (this.isShuttingDown) {
+            return;
+        }
+
         const oldPrimary = this.primaryEndpoint;
 
         // Find best healthy alternative
@@ -212,9 +224,20 @@ export class ResilientWebSocketManager extends EventEmitter {
             });
 
             // Try to reconnect old primary in background for future failback
-            setTimeout(() => {
-                this._connectToEndpoint(oldPrimary).catch(() => {});
+            // Track timer for cleanup during shutdown
+            const timer = setTimeout(() => {
+                // Remove from pending timers
+                const idx = this.pendingFailoverTimers.indexOf(timer);
+                if (idx !== -1) this.pendingFailoverTimers.splice(idx, 1);
+
+                // Only reconnect if not shutting down
+                if (!this.isShuttingDown) {
+                    this._connectToEndpoint(oldPrimary).catch(() => {});
+                }
             }, this.config.failoverDelayMs);
+
+            timer.unref();
+            this.pendingFailoverTimers.push(timer);
         } else {
             log.error('No healthy WebSocket endpoints available for failover');
             this.emit('allEndpointsDown');
@@ -289,6 +312,11 @@ export class ResilientWebSocketManager extends EventEmitter {
      * @private
      */
     async _performHealthChecks() {
+        // Skip health checks during shutdown
+        if (this.isShuttingDown) {
+            return;
+        }
+
         for (const [endpoint, ws] of this.connections) {
             if (!ws.isConnected()) continue;
 
@@ -318,7 +346,8 @@ export class ResilientWebSocketManager extends EventEmitter {
      * @private
      */
     _evaluatePrimarySwitch() {
-        if (!this.primaryEndpoint) return;
+        // Skip during shutdown
+        if (this.isShuttingDown || !this.primaryEndpoint) return;
 
         const currentScore = this.endpointScores.get(this.primaryEndpoint);
         const bestEndpoint = this._selectBestEndpoint();
@@ -449,19 +478,47 @@ export class ResilientWebSocketManager extends EventEmitter {
 
     /**
      * Disconnect all connections
+     * Sets shutdown flag FIRST to prevent reconnect/failover during teardown
      */
     async disconnect() {
+        // IMPORTANT: Set shutdown flag FIRST to prevent any reconnection attempts
+        this.isShuttingDown = true;
+
+        // Clear health check timer
         if (this.healthCheckTimer) {
             clearInterval(this.healthCheckTimer);
             this.healthCheckTimer = null;
         }
 
+        // Clear ALL pending failover timers
+        for (const timer of this.pendingFailoverTimers) {
+            clearTimeout(timer);
+        }
+        this.pendingFailoverTimers = [];
+
+        // Disconnect all connections with error handling
         const disconnectPromises = [];
         for (const ws of this.connections.values()) {
-            disconnectPromises.push(ws.disconnect());
+            disconnectPromises.push(
+                ws.disconnect().catch(e => {
+                    // Ignore disconnect errors during shutdown
+                    log.debug('Disconnect error during shutdown (ignored)', { error: e.message });
+                })
+            );
         }
 
-        await Promise.all(disconnectPromises);
+        // Wait for all disconnects with a timeout to prevent hanging
+        try {
+            await Promise.race([
+                Promise.all(disconnectPromises),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Disconnect timeout')), 5000)
+                ),
+            ]);
+        } catch (e) {
+            log.warn('Some connections did not disconnect cleanly', { error: e.message });
+        }
+
         this.connections.clear();
         this.primaryEndpoint = null;
         this.isInitialized = false;

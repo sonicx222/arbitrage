@@ -48,6 +48,9 @@ export class ResilientWebSocket extends EventEmitter {
         // Cleanup state flag to prevent race conditions
         this.isCleaningUp = false;
 
+        // Shutdown flag - prevents reconnection during graceful shutdown
+        this.isShuttingDown = false;
+
         // Metrics
         this.metrics = {
             connectionsEstablished: 0,
@@ -221,9 +224,9 @@ export class ResilientWebSocket extends EventEmitter {
      * Handle disconnection and trigger reconnect
      */
     _handleDisconnect(reason) {
-        // Prevent re-entry during cleanup or reconnection
-        if (this.state === 'reconnecting' || this.state === 'circuit_open' || this.isCleaningUp) {
-            return; // Already handling
+        // Prevent re-entry during cleanup, reconnection, or shutdown
+        if (this.state === 'reconnecting' || this.state === 'circuit_open' || this.isCleaningUp || this.isShuttingDown) {
+            return; // Already handling or shutting down
         }
 
         log.warn('ResilientWebSocket disconnected', { reason });
@@ -232,8 +235,10 @@ export class ResilientWebSocket extends EventEmitter {
         // Clean up current connection
         this._cleanup();
 
-        // Attempt reconnect
-        this._scheduleReconnect();
+        // Only attempt reconnect if not shutting down
+        if (!this.isShuttingDown) {
+            this._scheduleReconnect();
+        }
 
         this.emit('disconnected', reason);
     }
@@ -242,6 +247,11 @@ export class ResilientWebSocket extends EventEmitter {
      * Schedule reconnection with exponential backoff + jitter
      */
     _scheduleReconnect() {
+        // Don't schedule reconnects during shutdown
+        if (this.isShuttingDown) {
+            return;
+        }
+
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
         }
@@ -270,6 +280,11 @@ export class ResilientWebSocket extends EventEmitter {
         });
 
         this.reconnectTimer = setTimeout(async () => {
+            // Double-check shutdown flag in case it was set during delay
+            if (this.isShuttingDown) {
+                return;
+            }
+
             try {
                 await this.connect();
                 this.emit('reconnected');
@@ -303,6 +318,10 @@ export class ResilientWebSocket extends EventEmitter {
         // Schedule automatic recovery attempt (store reference for cleanup)
         this.circuitRecoveryTimer = setTimeout(() => {
             this.circuitRecoveryTimer = null;
+            // Don't attempt recovery if shutting down
+            if (this.isShuttingDown) {
+                return;
+            }
             if (this.state === 'circuit_open') {
                 log.info('Circuit breaker cooldown complete, attempting recovery');
                 this.reconnectAttempts = 0;
@@ -312,6 +331,11 @@ export class ResilientWebSocket extends EventEmitter {
                 });
             }
         }, this.config.circuitBreakerCooldownMs);
+
+        // Unref to not block process exit
+        if (this.circuitRecoveryTimer.unref) {
+            this.circuitRecoveryTimer.unref();
+        }
     }
 
     /**
@@ -323,7 +347,8 @@ export class ResilientWebSocket extends EventEmitter {
         }
 
         this.refreshTimer = setTimeout(async () => {
-            if (this.state !== 'connected') return;
+            // Don't refresh if shutting down or not connected
+            if (this.isShuttingDown || this.state !== 'connected') return;
 
             log.info('Proactive connection refresh', {
                 connectionAgeMs: Date.now() - this.connectionStartTime,
@@ -335,11 +360,14 @@ export class ResilientWebSocket extends EventEmitter {
             this._cleanup();
             this.state = 'disconnected';
 
-            try {
-                await this.connect();
-                this.emit('refreshed');
-            } catch (error) {
-                log.error('Proactive refresh failed', { error: error.message });
+            // Only reconnect if not shutting down
+            if (!this.isShuttingDown) {
+                try {
+                    await this.connect();
+                    this.emit('refreshed');
+                } catch (error) {
+                    log.error('Proactive refresh failed', { error: error.message });
+                }
             }
         }, this.config.proactiveRefreshMs);
 
@@ -368,8 +396,26 @@ export class ResilientWebSocket extends EventEmitter {
             if (this.provider) {
                 try {
                     this.provider.removeAllListeners();
-                    // Wrap destroy in try-catch to handle "WebSocket was closed before connection established" error
-                    this.provider.destroy();
+
+                    // Check WebSocket readyState before destroying to avoid errors
+                    // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
+                    const ws = this.provider.websocket || this.provider._websocket;
+                    const readyState = ws?.readyState;
+
+                    // Only call destroy if connection is established (OPEN) or closing
+                    // Skip if still CONNECTING (0) to avoid "closed before established" error
+                    if (readyState === undefined || readyState >= 1) {
+                        this.provider.destroy();
+                    } else {
+                        // For CONNECTING state, close the underlying WebSocket directly
+                        try {
+                            if (ws && typeof ws.close === 'function') {
+                                ws.close();
+                            }
+                        } catch (closeError) {
+                            // Ignore close errors on CONNECTING websockets
+                        }
+                    }
                 } catch (e) {
                     // Ignore cleanup errors - common during proactive refresh or connection issues
                     // "WebSocket was closed before the connection was established" is expected in some cases
@@ -383,21 +429,33 @@ export class ResilientWebSocket extends EventEmitter {
 
     /**
      * Graceful disconnect
+     * Sets shutdown flag FIRST to prevent any reconnection attempts during cleanup
      */
     async disconnect() {
+        // IMPORTANT: Set shutdown flag FIRST to prevent reconnection attempts
+        this.isShuttingDown = true;
+
         log.info('ResilientWebSocket disconnecting');
 
+        // Clear ALL pending timers
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
         }
 
-        // Clear circuit breaker recovery timer to prevent ghost reconnections
         if (this.circuitRecoveryTimer) {
             clearTimeout(this.circuitRecoveryTimer);
             this.circuitRecoveryTimer = null;
         }
 
+        if (this.refreshTimer) {
+            clearTimeout(this.refreshTimer);
+            this.refreshTimer = null;
+        }
+
+        this._stopHeartbeat();
+
+        // Now clean up the connection
         this._cleanup();
         this.state = 'disconnected';
     }
