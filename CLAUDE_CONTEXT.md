@@ -7,9 +7,9 @@ This document provides context for AI assistants working on this project. It cap
 **Name:** Multi-Chain Arbitrage Bot
 **Original Scope:** BSC-only arbitrage detection
 **Current Scope:** Multi-chain arbitrage detection across 6 blockchains
-**Version:** 2.3.0
-**Status:** Phase 11 complete - JIT Liquidity Detection implemented
-**Last Major Update:** 2026-01-07 - JIT liquidity detection, 831 tests passing
+**Version:** 2.4.0
+**Status:** Phase 12 complete - Contract Deployment Infrastructure
+**Last Major Update:** 2026-01-07 - Multi-chain deployment scripts, Hardhat tests, deployment guide
 
 ## Architecture
 
@@ -42,6 +42,28 @@ CrossChainDetector (Main Thread)
 ### Directory Structure
 
 ```
+contracts/
+├── FlashArbitrage.sol          # Flash arbitrage smart contract
+└── interfaces/
+    └── IPancakeV2Pair.sol      # DEX interfaces
+
+scripts/
+├── deploy.js                   # BSC-only deployment (legacy)
+└── deploy-multichain.js        # Multi-chain deployment script
+
+tests/
+├── contract/
+│   └── FlashArbitrage.test.cjs # Hardhat contract tests
+└── unit/                       # Unit tests (Jest)
+
+docs/
+├── ARCHITECTURE.md             # System architecture
+├── CHAINS.md                   # Per-chain configuration
+├── CONFIG.md                   # Environment variables
+├── DEPLOYMENT.md               # Contract deployment guide
+├── PROFIT_AND_GAS.md          # Profit calculation analysis
+└── MEMPOOL_ANALYSIS.md        # Mempool monitoring
+
 src/
 ├── index.js                    # Main entry point with ArbitrageBot class
 ├── config.js                   # Legacy BSC config (deprecated, use chains/)
@@ -180,7 +202,49 @@ src/
 - [x] **JIT Arbitrage Opportunities** - Find price discrepancies during JIT events
 - [x] **Comprehensive Tests** - 831 tests total (33 new tests added)
 
+#### Phase 12: Contract Deployment Infrastructure ✅ (2026-01-07)
+- [x] **Hardhat Contract Tests** - Comprehensive test suite for FlashArbitrage.sol
+- [x] **Multi-Chain Deployment Script** - Deploy to BSC, Ethereum, Polygon, Arbitrum, Base
+- [x] **Hardhat Configuration** - All 10 networks (5 mainnet + 5 testnet)
+- [x] **Deployment Documentation** - Complete guide with troubleshooting
+
 ### Recent Implementation Details
+
+#### Phase 12 Features (2026-01-07)
+
+**1. Hardhat Contract Tests (`tests/contract/FlashArbitrage.test.cjs`)**
+- Deployment verification tests (owner, routers, pause state)
+- Router whitelist management (add, remove, batch operations)
+- Pause/unpause functionality
+- Emergency withdraw (BNB and tokens)
+- Cross-DEX arbitrage validation (paths, routers, amounts)
+- Triangular arbitrage validation
+- Simulation tests
+- Integration tests (require forked mainnet)
+- Requires `RUN_HARDHAT_TESTS=true` to run
+
+**2. Multi-Chain Deployment Script (`scripts/deploy-multichain.js`)**
+- Supports 10 networks: BSC, Ethereum, Polygon, Arbitrum, Base (mainnet + testnet)
+- Chain-specific DEX router configurations
+- Automatic router whitelisting on deployment
+- Contract verification on block explorers (with API keys)
+- Detailed deployment output with transaction info
+- JSON deployment info for record keeping
+
+**3. Hardhat Configuration (`hardhat.config.cjs`)**
+- All 10 network configurations with RPC URLs
+- Etherscan API key support for all chains
+- Custom chain configurations for Base networks
+- Optimized compiler settings (0.8.19, optimizer, viaIR)
+
+**4. Deployment Documentation (`docs/DEPLOYMENT.md`)**
+- Prerequisites and environment setup
+- Testnet faucets and cost estimates
+- Step-by-step testnet deployment guide
+- Mainnet deployment guide with checklist
+- Post-deployment configuration
+- Contract verification instructions
+- Troubleshooting section
 
 #### Phase 11 Features (2026-01-07)
 
@@ -367,22 +431,34 @@ RUN_HARDHAT_TESTS=true npm test    # Include Hardhat integration tests
 
 When resuming work, read these files first:
 
+### Core System
 1. **Entry Point:** `src/index.js` - ArbitrageBot class, startup flow
 2. **Worker System:** `src/workers/WorkerCoordinator.js` - Multi-chain orchestration
 3. **Chain Base:** `src/chains/BaseChain.js` - Chain interface contract
 4. **Config Example:** `src/config/chains/bsc.js` - Chain configuration structure (includes V3)
+
+### Detection & Analysis
 5. **Detection:** `src/analysis/CrossChainDetector.js` - Cross-chain logic
 6. **V3 Pricing:** `src/data/v3PriceFetcher.js` - Uniswap V3 concentrated liquidity
 7. **Stablecoins:** `src/analysis/stablecoinDetector.js` - Depeg and stable arbitrage
-8. **Polling:** `src/monitoring/adaptivePoller.js` - Dynamic polling intervals
-9. **ABIs:** `src/contracts/abis.js` - All contract ABIs including V3
-10. **Scoring:** `src/analysis/opportunityScorer.js` - Opportunity prioritization
-11. **V2/V3 Arb:** `src/analysis/v2v3Arbitrage.js` - Cross-AMM arbitrage
-12. **Impact:** `src/analysis/priceImpactCalculator.js` - Price impact calculations
-13. **Simulation:** `src/execution/executionSimulator.js` - Advanced execution modeling
-14. **New Pairs:** `src/monitoring/newPairMonitor.js` - Factory event monitoring
-15. **Block Timing:** `src/execution/blockTimePredictor.js` - Optimal submission timing
-16. **JIT Detection:** `src/analysis/jitLiquidityDetector.js` - Just-in-time liquidity events
+8. **Scoring:** `src/analysis/opportunityScorer.js` - Opportunity prioritization
+9. **V2/V3 Arb:** `src/analysis/v2v3Arbitrage.js` - Cross-AMM arbitrage
+10. **Impact:** `src/analysis/priceImpactCalculator.js` - Price impact calculations
+11. **JIT Detection:** `src/analysis/jitLiquidityDetector.js` - Just-in-time liquidity events
+
+### Execution & Monitoring
+12. **Simulation:** `src/execution/executionSimulator.js` - Advanced execution modeling
+13. **Block Timing:** `src/execution/blockTimePredictor.js` - Optimal submission timing
+14. **Polling:** `src/monitoring/adaptivePoller.js` - Dynamic polling intervals
+15. **New Pairs:** `src/monitoring/newPairMonitor.js` - Factory event monitoring
+16. **ABIs:** `src/contracts/abis.js` - All contract ABIs including V3
+
+### Deployment (Phase 12)
+17. **Smart Contract:** `contracts/FlashArbitrage.sol` - Flash arbitrage contract
+18. **Deployment Script:** `scripts/deploy-multichain.js` - Multi-chain deployment
+19. **Contract Tests:** `tests/contract/FlashArbitrage.test.cjs` - Hardhat tests
+20. **Hardhat Config:** `hardhat.config.cjs` - Network configurations
+21. **Deployment Guide:** `docs/DEPLOYMENT.md` - Complete deployment instructions
 
 ## Environment Variables
 
@@ -423,11 +499,27 @@ These modules have `setInterval` timers with `.unref()`:
 
 See `docs/NEXT_IMPLEMENTATION_PLAN.md` for detailed roadmap.
 
-### Priority 1 (Next Implementation)
-- [x] ~~New pool/pair detection (factory event monitoring)~~ - Completed Phase 10
-- [x] ~~V2/V3 cross-arbitrage (same pair, different AMM type)~~ - Completed Phase 9
-- [x] ~~Block time prediction for optimal submission timing~~ - Completed Phase 10
-- [x] ~~Just-in-time liquidity detection~~ - Completed Phase 11
+### Priority 1 (Next Steps - Deployment)
+- [x] ~~Contract deployment infrastructure~~ - Completed Phase 12
+- [ ] **Deploy to BSC Testnet** - Requires network access to download Solidity compiler
+- [ ] **Run Hardhat Tests** - `RUN_HARDHAT_TESTS=true npx hardhat test`
+- [ ] **Deploy to BSC Mainnet** - After testnet verification
+- [ ] **Live Simulation Testing** - With real prices on mainnet
+
+### Deployment Commands (Ready to Run)
+```bash
+# 1. Compile contracts (requires network for compiler download)
+npx hardhat compile
+
+# 2. Run contract tests
+RUN_HARDHAT_TESTS=true npx hardhat test tests/contract/FlashArbitrage.test.cjs
+
+# 3. Deploy to testnet
+npx hardhat run scripts/deploy-multichain.js --network bscTestnet
+
+# 4. Deploy to mainnet
+npx hardhat run scripts/deploy-multichain.js --network bsc
+```
 
 ### Priority 2 (Medium-Term)
 - [ ] Flash loan integration for capital-efficient execution
@@ -722,6 +814,60 @@ Predicts likelihood of JIT for pending large trades based on:
 - Historical JIT frequency for the pool
 - Trade size (larger trades attract more JIT)
 - Number of unique JIT providers
+
+## Deployment Configuration
+
+### Supported Networks
+| Network | Chain ID | Type | Command |
+|---------|----------|------|---------|
+| BSC | 56 | Mainnet | `--network bsc` |
+| BSC Testnet | 97 | Testnet | `--network bscTestnet` |
+| Ethereum | 1 | Mainnet | `--network ethereum` |
+| Sepolia | 11155111 | Testnet | `--network sepolia` |
+| Polygon | 137 | Mainnet | `--network polygon` |
+| Mumbai | 80001 | Testnet | `--network mumbai` |
+| Arbitrum | 42161 | Mainnet | `--network arbitrum` |
+| Arbitrum Sepolia | 421614 | Testnet | `--network arbitrumSepolia` |
+| Base | 8453 | Mainnet | `--network base` |
+| Base Sepolia | 84532 | Testnet | `--network baseSepolia` |
+
+### DEX Routers Per Chain (Auto-Whitelisted)
+| Chain | DEXes Configured |
+|-------|------------------|
+| BSC | PancakeSwap, Biswap, ApeSwap, BabySwap, SushiSwap, THENA, NomiSwap |
+| Ethereum | Uniswap V2, Uniswap V3, SushiSwap |
+| Polygon | QuickSwap, SushiSwap, Uniswap V3, ApeSwap, Dystopia, MeshSwap, JetSwap |
+| Arbitrum | Uniswap V3, SushiSwap, Camelot, TraderJoe, Ramses, Zyberswap, ArbiDex |
+| Base | Uniswap V3, Aerodrome, BaseSwap, SushiSwap, AlienBase, SwapBased, RocketSwap, Uniswap V2 |
+
+### Required Environment Variables for Deployment
+```bash
+# Required
+PRIVATE_KEY=your_deployer_private_key
+
+# Optional - Custom RPC URLs
+BSC_RPC_URL=https://bsc-dataseed.binance.org
+ETH_RPC_URL=https://eth.llamarpc.com
+POLYGON_RPC_URL=https://polygon-rpc.com
+ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc
+BASE_RPC_URL=https://mainnet.base.org
+
+# Optional - Block explorer API keys (for verification)
+BSCSCAN_API_KEY=your_key
+ETHERSCAN_API_KEY=your_key
+POLYGONSCAN_API_KEY=your_key
+ARBISCAN_API_KEY=your_key
+BASESCAN_API_KEY=your_key
+```
+
+### Post-Deployment Environment Variables
+After deploying, add the contract addresses:
+```bash
+BSC_FLASH_CONTRACT=0x...
+POLYGON_FLASH_CONTRACT=0x...
+ARBITRUM_FLASH_CONTRACT=0x...
+BASE_FLASH_CONTRACT=0x...
+```
 
 ---
 
