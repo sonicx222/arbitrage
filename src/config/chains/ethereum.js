@@ -87,9 +87,41 @@ export default {
         curve: {
             name: 'Curve Finance',
             registry: '0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5',
-            enabled: false, // Requires custom implementation
+            router: '0x99a58482BD75cbab83b27EC03CA68fF489b5788f', // Curve Router
+            enabled: true, // Enabled - huge stablecoin liquidity
             type: 'curve',
             tvlRank: 3,
+            // Curve pools have variable fees, typically 0.04% for stables
+            fee: 0.0004,
+        },
+        balancer: {
+            name: 'Balancer V2',
+            vault: '0xBA12222222228d8Ba445958a75a0704d566BF2C8',
+            router: '0xBA12222222228d8Ba445958a75a0704d566BF2C8', // Vault is the router
+            enabled: true,
+            type: 'balancer',
+            tvlRank: 4,
+            fee: 0.003, // Variable per pool, using average
+        },
+        maverick: {
+            name: 'Maverick',
+            router: '0x4a585E0f7c18E2C414221D6402652d5e0990E5F8',
+            factory: '0xd27A93fBec62ECA3A7fAda7528E220ad5a5eA35B',
+            quoter: '0x0B2C639c533813f4Aa9D7837CAf62653d097Ff85',
+            enabled: true,
+            type: 'maverick',
+            tvlRank: 5,
+            fee: 0.003, // Variable per bin
+        },
+        kyberswap: {
+            name: 'KyberSwap Elastic',
+            router: '0xC1e7dFE73E1598E3910EF4C7845B68A9Ab6F4c83',
+            factory: '0x5F1dddbf348aC2fbe22a163e30F99F9ECE3DD50a',
+            quoter: '0x0D125c15D54cA1F8a813C74A81aEe34ebB508C1f',
+            enabled: true,
+            type: 'uniswapV3', // Kyber Elastic is V3-style
+            feeTiers: [8, 10, 40, 300, 1000], // Different fee structure
+            tvlRank: 6,
         },
     },
 
@@ -209,6 +241,27 @@ export default {
             address: '0xBe9895146f7AF43049ca1c1AE358B0541Ea49704',
             decimals: 18,
         },
+        // Additional liquid staking tokens - price deviations common
+        sfrxETH: {
+            symbol: 'sfrxETH',
+            address: '0xac3E018457B222d93114458476f3E3416Abbe38F',
+            decimals: 18,
+        },
+        swETH: {
+            symbol: 'swETH',
+            address: '0xf951E335afb289353dc249e82926178EaC7DEd78',
+            decimals: 18,
+        },
+        osETH: {
+            symbol: 'osETH',
+            address: '0xf1C9acDc66974dFB6dEcB12aA385b9cD01190E38',
+            decimals: 18,
+        },
+        ankrETH: {
+            symbol: 'ankrETH',
+            address: '0xE95A203B1a91a908F9B9CE46459d101078c2c3cb',
+            decimals: 18,
+        },
         // Meme tokens (high volatility = more opportunities)
         SHIB: {
             symbol: 'SHIB',
@@ -222,8 +275,8 @@ export default {
         },
     },
 
-    // Base tokens - Expanded for more triangular paths
-    baseTokens: ['WETH', 'USDT', 'USDC', 'DAI', 'WBTC', 'FRAX', 'wstETH'],
+    // Base tokens - Expanded for more triangular paths including liquid staking
+    baseTokens: ['WETH', 'USDT', 'USDC', 'DAI', 'WBTC', 'FRAX', 'wstETH', 'rETH', 'cbETH'],
 
     // Trading parameters
     trading: {

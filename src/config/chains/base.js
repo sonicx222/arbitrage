@@ -130,6 +130,44 @@ export default {
             type: 'uniswapV2',
             tvlRank: 2,
         },
+        // Balancer V2 - zero fee flash loans
+        balancer: {
+            name: 'Balancer V2',
+            vault: '0xBA12222222228d8Ba445958a75a0704d566BF2C8',
+            router: '0xBA12222222228d8Ba445958a75a0704d566BF2C8',
+            enabled: true,
+            type: 'balancer',
+            tvlRank: 4,
+            fee: 0.003,
+        },
+        // Maverick - novel AMM design
+        maverick: {
+            name: 'Maverick',
+            router: '0x32AED3Bce901DA12ca8489788F3A99fCe1056e14',
+            factory: '0xB2855783a346735e4AAe0c1eb894DEf861Fa9b45',
+            enabled: true,
+            type: 'maverick',
+            tvlRank: 5,
+            fee: 0.003,
+        },
+        // Curve Finance
+        curve: {
+            name: 'Curve Finance',
+            router: '0x4f37A9d177470499A2dD084621020b023fcffc1F',
+            enabled: true,
+            type: 'curve',
+            tvlRank: 6,
+            fee: 0.0004,
+        },
+        // WooFi - Cross-chain DEX with low fees
+        woofi: {
+            name: 'WooFi',
+            router: '0x4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7',
+            enabled: true,
+            type: 'woofi',
+            tvlRank: 7,
+            fee: 0.00025,
+        },
     },
 
     // Token configuration
@@ -283,8 +321,8 @@ export default {
         },
     },
 
-    // Base tokens (including stables for better triangular arbitrage)
-    baseTokens: ['WETH', 'USDC', 'USDbC', 'DAI', 'axlUSDC', 'EURC'],
+    // Base tokens (including stables and LSTs for better triangular arbitrage)
+    baseTokens: ['WETH', 'USDC', 'USDbC', 'DAI', 'axlUSDC', 'cbETH', 'wstETH', 'rETH'],
 
     // Trading parameters - Optimized for L2 ultra-low gas costs
     trading: {

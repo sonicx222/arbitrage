@@ -112,13 +112,13 @@ export default {
             type: 'uniswapV2',
             tvlRank: 5,
         },
-        // Tier 3: Lower liquidity (disabled by default)
+        // Tier 3: Lower liquidity but still viable
         knightswap: {
             name: 'KnightSwap',
             router: '0x05E61E0cDcD2170a76F9568a110CEe3AFdD6c46f',
             factory: '0xf0bc2E21a76513aa7CC2730C7A1D6deE0790751f',
             fee: 0.002,
-            enabled: false,
+            enabled: true, // Enabled for additional arbitrage paths
             type: 'uniswapV2',
             tvlRank: 6,
         },
@@ -170,6 +170,37 @@ export default {
             enabled: true,
             type: 'uniswapV3',
             tvlRank: 1,
+        },
+        // Ellipsis Finance - Curve fork for BSC (stablecoin specialist)
+        ellipsis: {
+            name: 'Ellipsis Finance',
+            router: '0x160CAed03795365F3A589f10C379FfA7d75d4E76', // StableSwap router
+            factory: '0xf65BEd27e96a367c61e0E06C54e14B16b84a5870',
+            enabled: true,
+            type: 'curve', // Uses Curve-style stable pools
+            tvlRank: 5,
+            fee: 0.0004, // 0.04% typical stable fee
+        },
+        // Kyberswap on BSC
+        kyberswap: {
+            name: 'KyberSwap Elastic',
+            router: '0xC1e7dFE73E1598E3910EF4C7845B68A9Ab6F4c83',
+            factory: '0x5F1dddbf348aC2fbe22a163e30F99F9ECE3DD50a',
+            quoter: '0x0D125c15D54cA1F8a813C74A81aEe34ebB508C1f',
+            enabled: true,
+            type: 'uniswapV3',
+            feeTiers: [8, 10, 40, 300, 1000],
+            tvlRank: 8,
+        },
+        // Dodo - PMM (Proactive Market Maker)
+        dodo: {
+            name: 'DODO',
+            router: '0x8F8Dd7DB1bDA5eD3da8C9daf3bfa471c12d58486',
+            factory: '0xafe0a75dffb395eaabd0a7e1bbbd0b11f8609eef',
+            enabled: true,
+            type: 'dodo',
+            tvlRank: 7,
+            fee: 0.003,
         },
     },
 

@@ -121,6 +121,57 @@ export default {
             type: 'uniswapV2',
             tvlRank: 7,
         },
+        // GMX - Unique pricing model, high volume
+        gmx: {
+            name: 'GMX',
+            router: '0xaBBc5F99639c9B6bCb58544ddf04EFA6802F4064', // GMX Router
+            vault: '0x489ee077994B6658eAfA855C308275EAd8097C4A',
+            reader: '0x22199a49A999c351eF7927602CFB187ec3cae489',
+            enabled: true,
+            type: 'gmx',
+            tvlRank: 2, // Very high TVL
+            fee: 0.003, // 0.3% swap fee
+        },
+        // Balancer V2 - Zero flash loan fees
+        balancer: {
+            name: 'Balancer V2',
+            vault: '0xBA12222222228d8Ba445958a75a0704d566BF2C8',
+            router: '0xBA12222222228d8Ba445958a75a0704d566BF2C8',
+            enabled: true,
+            type: 'balancer',
+            tvlRank: 4,
+            fee: 0.003,
+        },
+        // KyberSwap Elastic
+        kyberswap: {
+            name: 'KyberSwap Elastic',
+            router: '0xC1e7dFE73E1598E3910EF4C7845B68A9Ab6F4c83',
+            factory: '0x5F1dddbf348aC2fbe22a163e30F99F9ECE3DD50a',
+            quoter: '0x0D125c15D54cA1F8a813C74A81aEe34ebB508C1f',
+            enabled: true,
+            type: 'uniswapV3',
+            feeTiers: [8, 10, 40, 300, 1000],
+            tvlRank: 8,
+        },
+        // Chronos - ve(3,3) DEX
+        chronos: {
+            name: 'Chronos',
+            router: '0xE708aA9E887980750C040a6A2Cb901c37Aa34f3b',
+            factory: '0xCe9240869391928253Ed9cc9Bcb8cb98CB5B0722',
+            fee: 0.003,
+            enabled: true,
+            type: 'solidly',
+            tvlRank: 9,
+        },
+        // Woofi - Cross-chain DEX
+        woofi: {
+            name: 'WooFi',
+            router: '0x4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7',
+            enabled: true,
+            type: 'woofi',
+            tvlRank: 10,
+            fee: 0.00025, // Very low fees
+        },
     },
 
     // Token configuration

@@ -95,12 +95,13 @@ export default {
         },
         // High-volume DEXes for better arbitrage detection
         balancer: {
-            name: 'Balancer',
+            name: 'Balancer V2',
             router: '0xBA12222222228d8Ba445958a75a0704d566BF2C8', // Vault acts as router
             vault: '0xBA12222222228d8Ba445958a75a0704d566BF2C8',
-            enabled: false, // Disabled until Balancer integration is complete
+            enabled: true, // Enabled - zero fee flash loans
             type: 'balancer',
             tvlRank: 2,
+            fee: 0.003,
         },
         dystopia: {
             name: 'Dystopia',
@@ -128,6 +129,37 @@ export default {
             enabled: true,
             type: 'uniswapV2',
             tvlRank: 6,
+        },
+        // Curve - huge stablecoin liquidity
+        curve: {
+            name: 'Curve Finance',
+            router: '0x0DCDED3545D565bA3B19E683431381007245d983',
+            registry: '0x094d12e5b541784701FD8d65F11fc0598FBC6332',
+            enabled: true,
+            type: 'curve',
+            tvlRank: 3,
+            fee: 0.0004, // 0.04% typical stable fee
+        },
+        // KyberSwap Elastic
+        kyberswap: {
+            name: 'KyberSwap Elastic',
+            router: '0xC1e7dFE73E1598E3910EF4C7845B68A9Ab6F4c83',
+            factory: '0x5F1dddbf348aC2fbe22a163e30F99F9ECE3DD50a',
+            quoter: '0x0D125c15D54cA1F8a813C74A81aEe34ebB508C1f',
+            enabled: true,
+            type: 'uniswapV3',
+            feeTiers: [8, 10, 40, 300, 1000],
+            tvlRank: 7,
+        },
+        // Retro - ve(3,3) DEX on Polygon
+        retro: {
+            name: 'Retro',
+            router: '0xcCAB3E4B0B58F85a06e43Cd30c0DE0B4F1903295',
+            factory: '0x91e1B99072f238352f59e58de875691e20Dc19c1',
+            fee: 0.003,
+            enabled: true,
+            type: 'solidly',
+            tvlRank: 8,
         },
     },
 
