@@ -7,6 +7,9 @@ import cacheManager from './data/cacheManager.js';
 import rpcManager from './utils/rpcManager.js';
 import dashboard from './monitoring/dashboard.js';
 import executionManager from './execution/executionManager.js';
+import eventDrivenDetector from './monitoring/eventDrivenDetector.js';
+import adaptivePrioritizer from './analysis/adaptivePrioritizer.js';
+import reserveDifferentialAnalyzer from './analysis/reserveDifferentialAnalyzer.js';
 import config from './config.js';
 import log from './utils/logger.js';
 import { formatChain, formatUSD, formatPercent } from './utils/logFormatter.js';
@@ -33,12 +36,20 @@ class ArbitrageBot {
     constructor() {
         this.isRunning = false;
         this.processingBlock = false;
+        this.processingEvent = false; // For event-driven detection
 
         // Multi-chain components (initialized if multi-chain mode)
         this.workerCoordinator = null;
         this.crossChainDetector = null;
         this.multiHopDetector = null;
         this.mempoolMonitor = null;
+
+        // Event-driven detection stats
+        this.eventDrivenStats = {
+            opportunitiesFromEvents: 0,
+            opportunitiesFromBlocks: 0,
+            opportunitiesFromDifferential: 0,
+        };
 
         // Determine operating mode
         this.multiChainMode = this.determineMode();
@@ -98,6 +109,7 @@ class ArbitrageBot {
             executionEnabled: config.execution?.enabled || false,
             executionMode: config.execution?.mode || 'detection-only',
             triangularEnabled: config.triangular?.enabled !== false,
+            eventDrivenEnabled: config.eventDriven?.enabled !== false,
         });
 
         // Set up event handlers
@@ -113,8 +125,23 @@ class ArbitrageBot {
         dashboard.start(this);
         log.info(`Dashboard available at http://localhost:${dashboard.port}`);
 
-        // Start block monitoring
+        // Start block monitoring (still needed for fallback and block number tracking)
         await blockMonitor.start();
+
+        // Start adaptive pair prioritization
+        adaptivePrioritizer.start();
+        log.info('Adaptive pair prioritization started');
+
+        // Start event-driven detection (real-time Sync event monitoring)
+        if (config.eventDriven?.enabled !== false) {
+            const eventDrivenStarted = await eventDrivenDetector.start();
+            if (eventDrivenStarted) {
+                log.info('Event-driven detection started (real-time Sync events)');
+                this.setupEventDrivenHandlers();
+            } else {
+                log.warn('Event-driven detection failed to start, falling back to block-only mode');
+            }
+        }
 
         log.info(`Monitoring ${Object.keys(config.tokens).length} tokens across ${Object.keys(config.dex).filter(d => config.dex[d].enabled).length} DEXs`);
     }
@@ -196,6 +223,206 @@ class ArbitrageBot {
         rpcManager.on('endpointUnhealthy', (endpoint) => {
             log.warn(`RPC endpoint unhealthy: ${endpoint}`);
         });
+    }
+
+    /**
+     * Set up event handlers for event-driven detection
+     * Processes Sync events in real-time for faster opportunity detection
+     */
+    setupEventDrivenHandlers() {
+        // Handle real-time reserve updates from Sync events
+        eventDrivenDetector.on('reserveUpdate', async (data) => {
+            // First, run reserve differential analysis (detects cross-DEX lag opportunities)
+            const differentialResult = reserveDifferentialAnalyzer.processReserveUpdate(data);
+
+            // Then run standard arbitrage detection
+            await this.handleReserveUpdate(data);
+        });
+
+        // Handle correlated opportunities from differential analysis
+        reserveDifferentialAnalyzer.on('correlatedOpportunity', async (data) => {
+            await this.handleDifferentialOpportunity(data);
+        });
+
+        // Log price changes at debug level
+        eventDrivenDetector.on('priceChange', (data) => {
+            log.debug(`Sync event: ${data.pairKey} on ${data.dexName}`, {
+                blockNumber: data.blockNumber,
+            });
+        });
+
+        // Periodic cleanup of old differential history
+        setInterval(() => {
+            reserveDifferentialAnalyzer.cleanup();
+        }, 60000); // Every minute
+    }
+
+    /**
+     * Handle opportunity detected by reserve differential analysis
+     * These are cross-DEX opportunities detected from price lag
+     */
+    async handleDifferentialOpportunity(data) {
+        const { opportunity, timestamp } = data;
+
+        if (!opportunity) return;
+
+        this.eventDrivenStats.opportunitiesFromDifferential++;
+        dashboard.recordOpportunities(1);
+
+        // Enhance opportunity with source info
+        opportunity.source = 'reserve-differential';
+        opportunity.detectionLatencyMs = Date.now() - timestamp;
+
+        log.info(`[DIFFERENTIAL] Cross-DEX lag opportunity detected`, {
+            pairKey: opportunity.pairKey,
+            spread: `${opportunity.spreadPercent?.toFixed(3)}%`,
+            buyDex: opportunity.buyDex,
+            sellDex: opportunity.sellDex,
+            lagMs: opportunity.trigger?.lagMs,
+        });
+
+        // Record with adaptive prioritizer
+        const pairKey = `${opportunity.pairKey}:${opportunity.buyDex}`;
+        adaptivePrioritizer.recordOpportunity(pairKey, {
+            volumeUSD: opportunity.profitCalculation?.tradeSizeUSD,
+        });
+
+        // Send alert
+        await alertManager.notify(opportunity);
+
+        // Execute if enabled
+        if (config.execution?.enabled) {
+            const result = await executionManager.execute(opportunity);
+
+            if (result.simulated) {
+                dashboard.recordSimulation(result.success);
+            } else if (result.success) {
+                dashboard.recordExecution(true, opportunity.profitCalculation?.netProfitUSD || 0);
+            } else {
+                dashboard.recordExecution(false);
+            }
+        }
+    }
+
+    /**
+     * Handle real-time reserve update from Sync event
+     * This runs arbitrage detection immediately without waiting for next block
+     */
+    async handleReserveUpdate(data) {
+        const { pairKey, dexName, blockNumber, timestamp } = data;
+
+        // Skip if already processing an event (prevent queue buildup)
+        if (this.processingEvent) {
+            return;
+        }
+
+        this.processingEvent = true;
+        const startTime = Date.now();
+
+        try {
+            // Get all current prices from cache (includes the just-updated pair)
+            const prices = {};
+            const cacheStats = cacheManager.getStats();
+
+            // Build prices object from cache for affected pair and related pairs
+            // This is faster than fetching all prices via RPC
+            const affectedPairs = this.getRelatedPairs(pairKey);
+
+            for (const pair of affectedPairs) {
+                const cacheKey = `price:${pair.dexName}:${pair.token0}:${pair.token1}`;
+                const priceData = cacheManager.priceCache.get(cacheKey);
+                if (priceData && priceData.data) {
+                    if (!prices[pair.pairKey]) {
+                        prices[pair.pairKey] = {};
+                    }
+                    prices[pair.pairKey][pair.dexName] = priceData.data;
+                }
+            }
+
+            // If we have prices for the affected pair across multiple DEXs, check for arbitrage
+            if (prices[pairKey] && Object.keys(prices[pairKey]).length >= 2) {
+                // Run quick cross-DEX check on this pair only
+                const opportunities = await arbitrageDetector.detectOpportunities(prices, blockNumber);
+
+                if (opportunities.length > 0) {
+                    this.eventDrivenStats.opportunitiesFromEvents += opportunities.length;
+                    dashboard.recordOpportunities(opportunities.length);
+
+                    for (const opportunity of opportunities) {
+                        opportunity.source = 'sync-event';
+                        opportunity.detectionLatencyMs = Date.now() - timestamp;
+
+                        // Log with special indicator for event-driven detection
+                        log.info(`[EVENT] Opportunity detected via Sync event`, {
+                            type: opportunity.type,
+                            pairKey: opportunity.pairKey,
+                            profit: `${opportunity.profitPercent?.toFixed(3)}%`,
+                            latencyMs: opportunity.detectionLatencyMs,
+                        });
+
+                        await alertManager.notify(opportunity);
+
+                        // Execute if enabled
+                        if (config.execution?.enabled) {
+                            const result = await executionManager.execute(opportunity);
+                            if (result.simulated) {
+                                dashboard.recordSimulation(result.success);
+                            } else if (result.success) {
+                                dashboard.recordExecution(true, opportunity.profitCalculation?.netProfitUSD || 0);
+                            } else {
+                                dashboard.recordExecution(false);
+                            }
+                        }
+                    }
+                }
+            }
+
+            const duration = Date.now() - startTime;
+            if (duration > 100) {
+                log.debug(`Event processing took ${duration}ms for ${pairKey}`);
+            }
+
+        } catch (error) {
+            log.error('Error processing reserve update', { error: error.message, pairKey });
+            dashboard.recordError();
+        } finally {
+            this.processingEvent = false;
+        }
+    }
+
+    /**
+     * Get related pairs for a given pair key (same tokens, different DEXs)
+     * @private
+     */
+    getRelatedPairs(pairKey) {
+        const [token0Symbol, token1Symbol] = pairKey.split('/');
+        const related = [];
+
+        // Get token addresses
+        const token0 = config.tokens[token0Symbol];
+        const token1 = config.tokens[token1Symbol];
+
+        if (!token0 || !token1) {
+            return related;
+        }
+
+        const [addr0, addr1] = token0.address.toLowerCase() < token1.address.toLowerCase()
+            ? [token0.address.toLowerCase(), token1.address.toLowerCase()]
+            : [token1.address.toLowerCase(), token0.address.toLowerCase()];
+
+        // Find this pair on all enabled DEXs
+        for (const [dexName, dexConfig] of Object.entries(config.dex)) {
+            if (!dexConfig.enabled) continue;
+
+            related.push({
+                pairKey,
+                dexName,
+                token0: addr0,
+                token1: addr1,
+            });
+        }
+
+        return related;
     }
 
     /**
@@ -356,9 +583,18 @@ class ArbitrageBot {
             dashboard.recordOpportunities(allOpportunities.length);
 
             if (allOpportunities.length > 0) {
+                this.eventDrivenStats.opportunitiesFromBlocks += allOpportunities.length;
+
                 // Note: Opportunity details are already logged by arbitrageDetector
                 // Process each opportunity for alerts and execution
                 for (const opportunity of allOpportunities) {
+                    // Record with adaptive prioritizer to boost this pair's priority
+                    const pairKey = `${opportunity.pairKey}:${opportunity.buyDex}`;
+                    adaptivePrioritizer.recordOpportunity(pairKey, {
+                        volumeUSD: opportunity.profitCalculation?.tradeSizeUSD,
+                        liquidityUSD: opportunity.liquidityUSD,
+                    });
+
                     // Send alert
                     await alertManager.notify(opportunity);
 
@@ -433,6 +669,20 @@ class ArbitrageBot {
      * Stop single-chain mode components
      */
     async stopSingleChain() {
+        // Stop event-driven detector
+        if (eventDrivenDetector.isActive()) {
+            await eventDrivenDetector.stop();
+            log.info('Event-driven detector stopped', {
+                stats: eventDrivenDetector.getStats(),
+            });
+        }
+
+        // Stop adaptive prioritizer
+        adaptivePrioritizer.stop();
+        log.info('Adaptive prioritizer stopped', {
+            stats: adaptivePrioritizer.getStats(),
+        });
+
         // Stop block monitor
         await blockMonitor.stop();
 
@@ -441,6 +691,18 @@ class ArbitrageBot {
 
         // Cleanup performance tracker
         performanceTracker.cleanup();
+
+        // Log differential analyzer stats
+        log.info('Reserve differential analyzer stats:', {
+            stats: reserveDifferentialAnalyzer.getStats(),
+        });
+
+        // Log event-driven vs block-based stats
+        log.info('Detection source statistics:', {
+            fromEvents: this.eventDrivenStats.opportunitiesFromEvents,
+            fromBlocks: this.eventDrivenStats.opportunitiesFromBlocks,
+            fromDifferential: this.eventDrivenStats.opportunitiesFromDifferential,
+        });
 
         // Log execution stats if enabled
         if (config.execution?.enabled) {
@@ -504,6 +766,10 @@ class ArbitrageBot {
                 blockMonitor: blockMonitor.getStatus(),
                 rpc: rpcManager.getStats(),
                 cache: cacheManager.getStats(),
+                eventDriven: eventDrivenDetector.getStats(),
+                prioritizer: adaptivePrioritizer.getStats(),
+                differential: reserveDifferentialAnalyzer.getStats(),
+                detectionStats: this.eventDrivenStats,
             };
 
             // Include execution stats if enabled

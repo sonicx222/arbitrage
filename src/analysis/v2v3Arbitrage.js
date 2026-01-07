@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import log from '../utils/logger.js';
 import v3PriceFetcher from '../data/v3PriceFetcher.js';
+import v3LiquidityAnalyzer from './v3LiquidityAnalyzer.js';
 
 /**
  * V2/V3 Cross-Arbitrage Detector
@@ -50,6 +51,7 @@ class V2V3Arbitrage extends EventEmitter {
             opportunitiesFound: 0,
             v2ToBetter: 0,
             v3ToV2Better: 0,
+            feeTierArbitrages: 0,
         };
 
         log.info('V2/V3 Arbitrage detector initialized', {
@@ -109,6 +111,13 @@ class V2V3Arbitrage extends EventEmitter {
             if (v3ToV2Opp) {
                 opportunities.push(v3ToV2Opp);
                 this.stats.v3ToV2Better++;
+            }
+
+            // Check for V3 fee tier arbitrage (same pair, different tiers)
+            const feeTierOpp = this._checkFeeTierArbitrage(pairKey, v3PairPrices, blockNumber);
+            if (feeTierOpp) {
+                opportunities.push(feeTierOpp);
+                this.stats.feeTierArbitrages++;
             }
         }
 
@@ -345,6 +354,52 @@ class V2V3Arbitrage extends EventEmitter {
     }
 
     /**
+     * Check for V3 fee tier arbitrage opportunity
+     * Buy on lower fee tier, sell on higher fee tier for same pair
+     *
+     * @private
+     */
+    _checkFeeTierArbitrage(pairKey, v3PairPrices, blockNumber) {
+        // Use v3LiquidityAnalyzer to detect fee tier arbitrage
+        const feeTierOpp = v3LiquidityAnalyzer.detectFeeTierArbitrage(v3PairPrices);
+
+        if (!feeTierOpp) return null;
+
+        // Only report if spread exceeds minimum
+        if (feeTierOpp.spreadPercent < this.minSpreadPercent) return null;
+
+        // Calculate estimated profit
+        const tradeSize = Math.min(this.targetTradeSizeUSD, feeTierOpp.minLiquidity * 0.02);
+        const estimatedProfitUSD = tradeSize * (feeTierOpp.spreadPercent / 100);
+
+        const [tokenA, tokenB] = pairKey.split('/');
+
+        return {
+            type: 'v3-fee-tier-arb',
+            pairKey,
+            tokenA,
+            tokenB,
+            buyDex: feeTierOpp.buyTier,
+            buyDexType: 'V3',
+            sellDex: feeTierOpp.sellTier,
+            sellDexType: 'V3',
+            buyPrice: feeTierOpp.buyPrice,
+            sellPrice: feeTierOpp.sellPrice,
+            spreadPercent: feeTierOpp.spreadPercent,
+            estimatedProfitUSD,
+            tradeSizeUSD: tradeSize,
+            minLiquidityUSD: feeTierOpp.minLiquidity,
+            fees: {
+                buy: feeTierOpp.buyFee,
+                sell: feeTierOpp.sellFee,
+                total: feeTierOpp.buyFee + feeTierOpp.sellFee,
+            },
+            blockNumber,
+            timestamp: Date.now(),
+        };
+    }
+
+    /**
      * Find best fee tier for a given trade size
      *
      * For concentrated liquidity, different fee tiers have different
@@ -469,6 +524,7 @@ class V2V3Arbitrage extends EventEmitter {
             opportunitiesFound: 0,
             v2ToBetter: 0,
             v3ToV2Better: 0,
+            feeTierArbitrages: 0,
         };
     }
 

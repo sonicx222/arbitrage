@@ -211,6 +211,25 @@ export default {
     maxTradeSizeUSD: parseInt(process.env.TRIANGULAR_MAX_TRADE || '5000'),
   },
 
+  // Event-Driven Detection Configuration
+  // Subscribes to DEX Sync events for real-time price updates (~10-50x faster than polling)
+  eventDriven: {
+    // Enable event-driven detection (requires WebSocket connection)
+    enabled: process.env.EVENT_DRIVEN_ENABLED !== 'false',
+
+    // Maximum pairs to subscribe to (more pairs = more WebSocket traffic)
+    maxPairs: parseInt(process.env.EVENT_DRIVEN_MAX_PAIRS || '100'),
+
+    // Batch size for subscription (to avoid filter size limits)
+    batchSize: parseInt(process.env.EVENT_DRIVEN_BATCH_SIZE || '50'),
+
+    // Debounce time in ms (prevent processing same pair multiple times per block)
+    debounceMs: parseInt(process.env.EVENT_DRIVEN_DEBOUNCE_MS || '100'),
+
+    // Run arbitrage detection on every event (true) or batch with block (false)
+    immediateDetection: process.env.EVENT_DRIVEN_IMMEDIATE !== 'false',
+  },
+
   // Environment
   env: process.env.NODE_ENV || 'development',
   isDevelopment: process.env.NODE_ENV !== 'production',
