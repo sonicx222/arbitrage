@@ -229,8 +229,8 @@ export default {
         blockTime: bscConfig.blockTime,
     },
 
-    // DEX (use BSC dexes for backward compatibility)
-    dex: bscConfig.dexes,
+    // DEX (use BSC dex for backward compatibility)
+    dex: bscConfig.dex,
 
     // Tokens
     tokens: bscConfig.tokens,

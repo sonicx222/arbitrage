@@ -28,8 +28,8 @@ export default class MempoolMonitor extends EventEmitter {
 
         // Router addresses to monitor (DEX routers)
         this.routerAddresses = new Set();
-        if (config.dexes) {
-            for (const dex of Object.values(config.dexes)) {
+        if (config.dex) {
+            for (const dex of Object.values(config.dex)) {
                 if (dex.router && dex.enabled) {
                     this.routerAddresses.add(dex.router.toLowerCase());
                 }

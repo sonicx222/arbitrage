@@ -1,0 +1,120 @@
+{
+  "_format": "hh-sol-cache-2",
+  "files": {
+    "C:\\Users\\kj2bn8f\\OneDrive - Allianz\\14 Repo\\arbitrage\\contracts\\FlashArbitrage.sol": {
+      "lastModificationDate": 1767791270821,
+      "contentHash": "e8200e1a9d047393e742d95e39bb9dc0",
+      "sourceName": "contracts/FlashArbitrage.sol",
+      "solcConfig": {
+        "version": "0.8.19",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "./interfaces/IPancakeV2Pair.sol",
+        "./interfaces/IERC20.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.19"
+      ],
+      "artifacts": [
+        "FlashArbitrage"
+      ]
+    },
+    "C:\\Users\\kj2bn8f\\OneDrive - Allianz\\14 Repo\\arbitrage\\contracts\\interfaces\\IPancakeV2Pair.sol": {
+      "lastModificationDate": 1767790488808,
+      "contentHash": "c66d8c7daea41e0dfbe6b8fcde29e1d7",
+      "sourceName": "contracts/interfaces/IPancakeV2Pair.sol",
+      "solcConfig": {
+        "version": "0.8.19",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.19"
+      ],
+      "artifacts": [
+        "IPancakeV2Callee",
+        "IPancakeV2Factory",
+        "IPancakeV2Pair",
+        "IPancakeV2Router"
+      ]
+    },
+    "C:\\Users\\kj2bn8f\\OneDrive - Allianz\\14 Repo\\arbitrage\\contracts\\interfaces\\IERC20.sol": {
+      "lastModificationDate": 1767790488809,
+      "contentHash": "1fc37e05feb165d8b998a59e9667a470",
+      "sourceName": "contracts/interfaces/IERC20.sol",
+      "solcConfig": {
+        "version": "0.8.19",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.19"
+      ],
+      "artifacts": [
+        "IERC20",
+        "IWBNB"
+      ]
+    }
+  }
+}

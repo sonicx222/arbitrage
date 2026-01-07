@@ -22,7 +22,7 @@ const ADDRESSES = {
 
     // DEX Routers
     PANCAKESWAP_ROUTER: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
-    BISWAP_ROUTER: "0x3a6d8CA2b07540D826A7E02798e0964253350dD8",
+    BISWAP_ROUTER: "0x3a6d8CA2b07040D826A7E02798e0964253350dD8",
     APESWAP_ROUTER: "0xcF0feBd3f17CEf5b47b0cD257aCf6025c5BFf3b7",
 
     // PancakeSwap Factory
@@ -31,6 +31,12 @@ const ADDRESSES = {
     // Common pairs
     WBNB_USDT_PAIR: "0x16b9a82891338f9bA80E2D6970FddA79D1eb0daE",
     WBNB_BUSD_PAIR: "0x58F876857a02D6762E0101bb5C46A8c1ED44Dc16",
+};
+
+// Chain-specific configuration for BSC
+const CHAIN_CONFIG = {
+    wrappedNative: ADDRESSES.WBNB,
+    flashLoanFeeBps: 25, // PancakeSwap: 0.25%
 };
 
 // Helper to get pair address from factory
@@ -81,9 +87,13 @@ describe("FlashArbitrage Contract", function () {
 
         [owner, otherAccount] = await ethers.getSigners();
 
-        // Deploy contract
+        // Deploy contract with chain-specific configuration
         const FlashArbitrage = await ethers.getContractFactory("FlashArbitrage");
-        flashArbitrage = await FlashArbitrage.deploy(ROUTERS);
+        flashArbitrage = await FlashArbitrage.deploy(
+            ROUTERS,
+            CHAIN_CONFIG.wrappedNative,
+            CHAIN_CONFIG.flashLoanFeeBps
+        );
         await flashArbitrage.waitForDeployment();
     });
 
@@ -102,8 +112,14 @@ describe("FlashArbitrage Contract", function () {
             expect(await flashArbitrage.paused()).to.be.false;
         });
 
-        it("should have correct WBNB address", async function () {
-            expect(await flashArbitrage.WBNB()).to.equal(ADDRESSES.WBNB);
+        it("should have correct wrapped native address", async function () {
+            expect(await flashArbitrage.wrappedNative()).to.equal(CHAIN_CONFIG.wrappedNative);
+            // WBNB() should return same value for backward compatibility
+            expect(await flashArbitrage.WBNB()).to.equal(CHAIN_CONFIG.wrappedNative);
+        });
+
+        it("should have correct flash loan fee", async function () {
+            expect(await flashArbitrage.flashLoanFeeBps()).to.equal(CHAIN_CONFIG.flashLoanFeeBps);
         });
 
         it("should have correct MIN_PROFIT_WEI", async function () {
@@ -429,7 +445,11 @@ describe("FlashArbitrage Integration Tests", function () {
         [owner] = await ethers.getSigners();
 
         const FlashArbitrage = await ethers.getContractFactory("FlashArbitrage");
-        flashArbitrage = await FlashArbitrage.deploy(ROUTERS);
+        flashArbitrage = await FlashArbitrage.deploy(
+            ROUTERS,
+            CHAIN_CONFIG.wrappedNative,
+            CHAIN_CONFIG.flashLoanFeeBps
+        );
         await flashArbitrage.waitForDeployment();
     });
 

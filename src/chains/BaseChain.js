@@ -64,7 +64,7 @@ export default class BaseChain extends EventEmitter {
      * @returns {Object} DEX configuration object
      */
     getDexConfig() {
-        return this.config.dexes || {};
+        return this.config.dex || {};
     }
 
     /**
@@ -72,7 +72,7 @@ export default class BaseChain extends EventEmitter {
      * @returns {Array} Array of enabled DEX names
      */
     getEnabledDexes() {
-        return Object.entries(this.config.dexes || {})
+        return Object.entries(this.config.dex || {})
             .filter(([, dex]) => dex.enabled)
             .map(([name]) => name);
     }

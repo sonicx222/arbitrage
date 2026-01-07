@@ -56,14 +56,14 @@ describe('Chain Configurations', () => {
         });
 
         test.each(allConfigs)('$name config has DEX configurations', ({ config }) => {
-            expect(config.dexes).toBeDefined();
-            expect(typeof config.dexes).toBe('object');
+            expect(config.dex).toBeDefined();
+            expect(typeof config.dex).toBe('object');
 
-            const dexNames = Object.keys(config.dexes);
+            const dexNames = Object.keys(config.dex);
             expect(dexNames.length).toBeGreaterThan(0);
 
             // Check at least one DEX is enabled
-            const enabledDexes = Object.values(config.dexes).filter(dex => dex.enabled);
+            const enabledDexes = Object.values(config.dex).filter(dex => dex.enabled);
             expect(enabledDexes.length).toBeGreaterThan(0);
         });
 
@@ -108,7 +108,7 @@ describe('Chain Configurations', () => {
 
     describe('DEX Configuration Validity', () => {
         test.each(allConfigs)('$name DEXes have valid router/factory addresses', ({ config }) => {
-            for (const [name, dex] of Object.entries(config.dexes)) {
+            for (const [name, dex] of Object.entries(config.dex)) {
                 if (!dex.enabled) continue;
 
                 // All enabled DEXes should have a router address

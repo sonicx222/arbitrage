@@ -6,8 +6,8 @@ import "./interfaces/IERC20.sol";
 
 /**
  * @title FlashArbitrage
- * @author BSC Arbitrage Bot
- * @notice Executes atomic arbitrage trades using PancakeSwap V2 flash swaps
+ * @author Multi-Chain Arbitrage Bot
+ * @notice Executes atomic arbitrage trades using Uniswap V2 style flash swaps
  * @dev Zero-capital arbitrage: borrow tokens, execute arbitrage, repay with profit
  *
  * SECURITY FEATURES:
@@ -17,24 +17,30 @@ import "./interfaces/IERC20.sol";
  * - Emergency pause and withdraw
  * - No stored token approvals (approve-and-swap in same tx)
  * - Reentrancy protection via state checks
+ *
+ * MULTI-CHAIN SUPPORT:
+ * - Wrapped native token address is chain-configurable
+ * - Flash loan fee is chain-configurable (PancakeSwap: 25bps, Uniswap: 30bps)
  */
 contract FlashArbitrage is IPancakeV2Callee {
     // ============ Constants ============
 
-    /// @notice WBNB address on BSC mainnet
-    address public constant WBNB = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c;
-
-    /// @notice PancakeSwap V2 fee numerator (0.25% = 25/10000)
-    uint256 private constant PANCAKE_FEE_NUMERATOR = 25;
-    uint256 private constant PANCAKE_FEE_DENOMINATOR = 10000;
+    /// @notice Fee denominator for basis points calculation
+    uint256 private constant FEE_DENOMINATOR = 10000;
 
     /// @notice Minimum profit in wei (anti-dust protection)
     uint256 public constant MIN_PROFIT_WEI = 1e15; // 0.001 token units
 
-    // ============ State Variables ============
+    // ============ Immutable State Variables ============
 
     /// @notice Contract owner (immutable for security)
     address public immutable owner;
+
+    /// @notice Wrapped native token address (WBNB on BSC, WETH on Ethereum, etc.)
+    address public immutable wrappedNative;
+
+    /// @notice Flash loan fee in basis points (25 = 0.25% for PancakeSwap, 30 = 0.30% for Uniswap V2)
+    uint256 public immutable flashLoanFeeBps;
 
     /// @notice Whitelisted DEX routers
     mapping(address => bool) public whitelistedRouters;
@@ -93,15 +99,28 @@ contract FlashArbitrage is IPancakeV2Callee {
     /**
      * @notice Deploy the FlashArbitrage contract
      * @param _routers Initial list of whitelisted DEX routers
+     * @param _wrappedNative Wrapped native token address (WBNB, WETH, WMATIC, etc.)
+     * @param _flashLoanFeeBps Flash loan fee in basis points (25 for PancakeSwap, 30 for Uniswap)
      */
-    constructor(address[] memory _routers) {
+    constructor(address[] memory _routers, address _wrappedNative, uint256 _flashLoanFeeBps) {
+        require(_wrappedNative != address(0), "Invalid wrapped native");
+        require(_flashLoanFeeBps <= 100, "Fee too high"); // Max 1%
+
         owner = msg.sender;
+        wrappedNative = _wrappedNative;
+        flashLoanFeeBps = _flashLoanFeeBps;
 
         // Whitelist initial routers
         for (uint256 i = 0; i < _routers.length; i++) {
             whitelistedRouters[_routers[i]] = true;
             emit RouterWhitelisted(_routers[i], true);
         }
+    }
+
+    /// @notice Backward compatibility: returns wrappedNative address
+    /// @dev DEPRECATED: Use wrappedNative instead
+    function WBNB() external view returns (address) {
+        return wrappedNative;
     }
 
     // ============ External Functions ============
@@ -237,8 +256,8 @@ contract FlashArbitrage is IPancakeV2Callee {
             uint256 minProfit
         ) = abi.decode(data, (uint8, address, uint256, address[], address[], uint256));
 
-        // Calculate repayment amount (borrowed + 0.25% fee)
-        uint256 repayAmount = borrowAmount + ((borrowAmount * PANCAKE_FEE_NUMERATOR) / PANCAKE_FEE_DENOMINATOR) + 1;
+        // Calculate repayment amount (borrowed + flash loan fee)
+        uint256 repayAmount = borrowAmount + ((borrowAmount * flashLoanFeeBps) / FEE_DENOMINATOR) + 1;
 
         // Execute the arbitrage swaps
         uint256 finalAmount = _executeSwaps(path, routers, borrowAmount);
@@ -399,7 +418,7 @@ contract FlashArbitrage is IPancakeV2Callee {
         }
 
         expectedOut = currentAmount;
-        flashFee = (amountIn * PANCAKE_FEE_NUMERATOR) / PANCAKE_FEE_DENOMINATOR + 1;
+        flashFee = (amountIn * flashLoanFeeBps) / FEE_DENOMINATOR + 1;
         netProfit = int256(expectedOut) - int256(amountIn + flashFee);
     }
 

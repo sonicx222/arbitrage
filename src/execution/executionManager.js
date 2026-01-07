@@ -6,7 +6,7 @@ import cacheManager from '../data/cacheManager.js';
 import blockMonitor from '../monitoring/blockMonitor.js';
 import config from '../config.js';
 import log from '../utils/logger.js';
-import { FACTORY_ABI, PANCAKE_FACTORY_ADDRESS } from '../contracts/abis.js';
+import { FACTORY_ABI } from '../contracts/abis.js';
 
 /**
  * Execution Manager
@@ -362,10 +362,20 @@ class ExecutionManager {
             return { ...opportunity, flashPair: cachedPair };
         }
 
-        // Fetch from factory
+        // Fetch from factory - use preferred flash loan provider's factory
         try {
+            // Get factory address from chain config (prefer pancakeswap on BSC, uniswapV2 elsewhere)
+            const preferredDex = config.flashLoan?.preferredProvider || 'pancakeswap';
+            const factoryAddress = config.dex[preferredDex]?.factory
+                || config.dex.pancakeswap?.factory
+                || config.dex.uniswapV2?.factory;
+
+            if (!factoryAddress) {
+                throw new Error('No factory address configured for flash loan provider');
+            }
+
             const pairAddress = await rpcManager.withRetry(async (provider) => {
-                const factory = new ethers.Contract(PANCAKE_FACTORY_ADDRESS, FACTORY_ABI, provider);
+                const factory = new ethers.Contract(factoryAddress, FACTORY_ABI, provider);
                 return await factory.getPair(tokenA, tokenB);
             });
 

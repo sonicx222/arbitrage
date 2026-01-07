@@ -54,8 +54,8 @@ export default {
         flashLoanProvider: process.env.ETH_FLASH_CONTRACT || null,
     },
 
-    // DEX Configurations
-    dexes: {
+    // DEX Configurations (use 'dex' for backward compatibility with legacy code)
+    dex: {
         uniswapV2: {
             name: 'Uniswap V2',
             router: '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D',

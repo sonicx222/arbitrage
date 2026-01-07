@@ -22,13 +22,15 @@
 
 const hre = require("hardhat");
 
-// Chain configurations with DEX routers
+// Chain configurations with DEX routers and wrapped native tokens
 const CHAIN_CONFIGS = {
   // BSC Mainnet
   bsc: {
     name: "BSC Mainnet",
     chainId: 56,
     nativeToken: "BNB",
+    wrappedNative: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", // WBNB
+    flashLoanFeeBps: 25, // PancakeSwap: 0.25%
     routers: {
       pancakeswap: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
       biswap: "0x3a6d8CA2b07040D826A7E02798e0964253350dD8",
@@ -46,6 +48,8 @@ const CHAIN_CONFIGS = {
     name: "BSC Testnet",
     chainId: 97,
     nativeToken: "BNB",
+    wrappedNative: "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd", // WBNB Testnet
+    flashLoanFeeBps: 25, // PancakeSwap: 0.25%
     routers: {
       pancakeswap: "0xD99D1c33F9fC3444f8101754aBC46c52416550D1",
     },
@@ -57,6 +61,8 @@ const CHAIN_CONFIGS = {
     name: "Ethereum Mainnet",
     chainId: 1,
     nativeToken: "ETH",
+    wrappedNative: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH
+    flashLoanFeeBps: 30, // Uniswap V2: 0.30%
     routers: {
       uniswapV2: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
       uniswapV3: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
@@ -70,6 +76,8 @@ const CHAIN_CONFIGS = {
     name: "Sepolia Testnet",
     chainId: 11155111,
     nativeToken: "ETH",
+    wrappedNative: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14", // WETH Sepolia
+    flashLoanFeeBps: 30, // Uniswap V2: 0.30%
     routers: {
       uniswapV2: "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008",
     },
@@ -81,6 +89,8 @@ const CHAIN_CONFIGS = {
     name: "Polygon Mainnet",
     chainId: 137,
     nativeToken: "MATIC",
+    wrappedNative: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270", // WMATIC
+    flashLoanFeeBps: 30, // QuickSwap/Uniswap: 0.30%
     routers: {
       quickswap: "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff",
       sushiswap: "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
@@ -98,6 +108,8 @@ const CHAIN_CONFIGS = {
     name: "Mumbai Testnet",
     chainId: 80001,
     nativeToken: "MATIC",
+    wrappedNative: "0x9c3C9283D3e44854697Cd22D3Faa240Cfb032889", // WMATIC Mumbai
+    flashLoanFeeBps: 30,
     routers: {
       quickswap: "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff",
     },
@@ -109,6 +121,8 @@ const CHAIN_CONFIGS = {
     name: "Arbitrum One",
     chainId: 42161,
     nativeToken: "ETH",
+    wrappedNative: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", // WETH
+    flashLoanFeeBps: 30, // Uniswap: 0.30%
     routers: {
       uniswapV3: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
       sushiswap: "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
@@ -126,6 +140,8 @@ const CHAIN_CONFIGS = {
     name: "Arbitrum Sepolia",
     chainId: 421614,
     nativeToken: "ETH",
+    wrappedNative: "0x980B62Da83eFf3D4576C647993b0c1D7faf17c73", // WETH Arbitrum Sepolia
+    flashLoanFeeBps: 30,
     routers: {
       uniswapV3: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
     },
@@ -137,6 +153,8 @@ const CHAIN_CONFIGS = {
     name: "Base Mainnet",
     chainId: 8453,
     nativeToken: "ETH",
+    wrappedNative: "0x4200000000000000000000000000000000000006", // WETH
+    flashLoanFeeBps: 30, // Uniswap: 0.30%
     routers: {
       uniswapV3: "0x2626664c2603336E57B271c5C0b26F421741e481",
       aerodrome: "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
@@ -155,6 +173,8 @@ const CHAIN_CONFIGS = {
     name: "Base Sepolia",
     chainId: 84532,
     nativeToken: "ETH",
+    wrappedNative: "0x4200000000000000000000000000000000000006", // WETH Base Sepolia
+    flashLoanFeeBps: 30,
     routers: {
       uniswapV3: "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4",
     },
@@ -199,12 +219,20 @@ async function main() {
     console.log(`  - ${name.padEnd(15)} ${address}`);
   });
 
-  // Deploy contract
+  console.log(`\nChain-specific configuration:`);
+  console.log(`  - Wrapped Native:  ${chainConfig.wrappedNative}`);
+  console.log(`  - Flash Loan Fee:  ${chainConfig.flashLoanFeeBps} bps (${chainConfig.flashLoanFeeBps / 100}%)`);
+
+  // Deploy contract with chain-specific parameters
   console.log("\nDeploying FlashArbitrage contract...");
   const startTime = Date.now();
 
   const FlashArbitrage = await hre.ethers.getContractFactory("FlashArbitrage");
-  const flashArbitrage = await FlashArbitrage.deploy(routerAddresses);
+  const flashArbitrage = await FlashArbitrage.deploy(
+    routerAddresses,
+    chainConfig.wrappedNative,
+    chainConfig.flashLoanFeeBps
+  );
 
   await flashArbitrage.waitForDeployment();
   const contractAddress = await flashArbitrage.getAddress();
@@ -225,11 +253,13 @@ async function main() {
   console.log("\nVerifying deployment...");
   const owner = await flashArbitrage.owner();
   const paused = await flashArbitrage.paused();
-  const wbnb = await flashArbitrage.WBNB();
+  const wrappedNative = await flashArbitrage.wrappedNative();
+  const flashLoanFeeBps = await flashArbitrage.flashLoanFeeBps();
 
-  console.log(`  Owner:      ${owner}`);
-  console.log(`  Paused:     ${paused}`);
-  console.log(`  WBNB:       ${wbnb}`);
+  console.log(`  Owner:           ${owner}`);
+  console.log(`  Paused:          ${paused}`);
+  console.log(`  Wrapped Native:  ${wrappedNative}`);
+  console.log(`  Flash Loan Fee:  ${flashLoanFeeBps} bps`);
 
   // Verify router whitelist
   console.log("\nVerifying router whitelist:");
@@ -264,7 +294,7 @@ async function main() {
     try {
       await hre.run("verify:verify", {
         address: contractAddress,
-        constructorArguments: [routerAddresses],
+        constructorArguments: [routerAddresses, chainConfig.wrappedNative, chainConfig.flashLoanFeeBps],
       });
       console.log("Contract verified successfully!");
     } catch (error) {

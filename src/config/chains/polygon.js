@@ -54,8 +54,8 @@ export default {
         flashLoanProvider: process.env.POLYGON_FLASH_CONTRACT || null,
     },
 
-    // DEX Configurations
-    dexes: {
+    // DEX Configurations (use 'dex' for backward compatibility with legacy code)
+    dex: {
         quickswap: {
             name: 'QuickSwap',
             router: '0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff',

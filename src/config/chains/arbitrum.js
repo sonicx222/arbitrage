@@ -54,8 +54,8 @@ export default {
         flashLoanProvider: process.env.ARBITRUM_FLASH_CONTRACT || null,
     },
 
-    // DEX Configurations
-    dexes: {
+    // DEX Configurations (use 'dex' for backward compatibility with legacy code)
+    dex: {
         uniswapV3: {
             name: 'Uniswap V3',
             router: '0xE592427A0AEce92De3Edee1F18E0157C05861564',

@@ -63,8 +63,8 @@ export default {
         flashLoanProvider: process.env.BSC_FLASH_CONTRACT || process.env.FLASH_CONTRACT_ADDRESS || null,
     },
 
-    // DEX Configurations
-    dexes: {
+    // DEX Configurations (use 'dex' for backward compatibility with legacy code)
+    dex: {
         // Tier 1: Highest liquidity DEXs
         pancakeswap: {
             name: 'PancakeSwap',

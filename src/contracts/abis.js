@@ -93,13 +93,28 @@ export const FLASH_ARBITRAGE_ABI = [
 
 // ============ Contract Addresses ============
 
-// BSC Multicall3 Contract
+// Multicall3 Contract (same address on all EVM chains)
 export const MULTICALL_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11';
 
-// WBNB Address
+// Wrapped Native Token Addresses by Chain ID
+export const WRAPPED_NATIVE_ADDRESSES = {
+    1: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',     // Ethereum - WETH
+    56: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',    // BSC - WBNB
+    137: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270',   // Polygon - WMATIC
+    42161: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // Arbitrum - WETH
+    8453: '0x4200000000000000000000000000000000000006',  // Base - WETH
+    43114: '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7', // Avalanche - WAVAX
+};
+
+// Helper function to get wrapped native token address for a chain
+export function getWrappedNativeAddress(chainId) {
+    return WRAPPED_NATIVE_ADDRESSES[chainId] || WRAPPED_NATIVE_ADDRESSES[56];
+}
+
+// WBNB Address (DEPRECATED: Use WRAPPED_NATIVE_ADDRESSES[56] or getWrappedNativeAddress(chainId) instead)
 export const WBNB_ADDRESS = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
 
-// PancakeSwap V2 Factory
+// PancakeSwap V2 Factory (BSC only)
 export const PANCAKE_FACTORY_ADDRESS = '0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73';
 
 // Flash loan fee constants
@@ -161,6 +176,8 @@ export default {
     FLASH_ARBITRAGE_ABI,
     MULTICALL_ADDRESS,
     WBNB_ADDRESS,
+    WRAPPED_NATIVE_ADDRESSES,
+    getWrappedNativeAddress,
     PANCAKE_FACTORY_ADDRESS,
     FLASH_LOAN_FEE,
     // V3 exports

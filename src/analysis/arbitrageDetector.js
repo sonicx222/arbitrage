@@ -90,7 +90,7 @@ class ArbitrageDetector {
         } else {
             // Log every 10th block with no opportunities to show the bot is alive
             if (blockNumber % 10 === 0) {
-                log.info(`📡 Block ${blockNumber} scanned | ${pairs.length} pairs | ${formatDuration(duration)} | No opportunities`);
+                log.debug(`📡 Block ${blockNumber} scanned | ${pairs.length} pairs | ${formatDuration(duration)} | No opportunities`);
             }
         }
 

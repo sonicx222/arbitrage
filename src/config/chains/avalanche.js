@@ -54,8 +54,8 @@ export default {
         flashLoanProvider: process.env.AVALANCHE_FLASH_CONTRACT || null,
     },
 
-    // DEX Configurations
-    dexes: {
+    // DEX Configurations (use 'dex' for backward compatibility with legacy code)
+    dex: {
         traderjoe: {
             name: 'TraderJoe',
             router: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',

@@ -1,7 +1,7 @@
 import { ethers, parseUnits } from 'ethers';
 import config from '../config.js';
 import log from '../utils/logger.js';
-import { FLASH_ARBITRAGE_ABI, WBNB_ADDRESS } from '../contracts/abis.js';
+import { FLASH_ARBITRAGE_ABI, getWrappedNativeAddress } from '../contracts/abis.js';
 import cacheManager from '../data/cacheManager.js';
 import gasPriceManager from '../utils/gasPriceManager.js';
 
@@ -330,9 +330,12 @@ class TransactionBuilder {
         // In production, this would be fetched from cacheManager
         // Default to a common pair if not found
 
-        // If one token is WBNB, use the WBNB pair
-        if (tokenA.toLowerCase() === WBNB_ADDRESS.toLowerCase() ||
-            tokenB.toLowerCase() === WBNB_ADDRESS.toLowerCase()) {
+        // Get wrapped native address for current chain
+        const wrappedNative = getWrappedNativeAddress(this.chainId);
+
+        // If one token is the wrapped native token, use that pair
+        if (tokenA.toLowerCase() === wrappedNative.toLowerCase() ||
+            tokenB.toLowerCase() === wrappedNative.toLowerCase()) {
             // Return placeholder - will be resolved by executionManager
             return 'RESOLVE_PAIR';
         }
