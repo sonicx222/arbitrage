@@ -14,7 +14,9 @@
       "Bash(timeout 15 node:*)",
       "Bash(timeout 30 node:*)",
       "Bash(timeout 25 node:*)",
-      "Bash(node --check:*)"
+      "Bash(node --check:*)",
+      "Bash(wc -l \"c:\\\\Users\\\\kj2bn8f\\\\OneDrive - Allianz\\\\14 Repo\\\\arbitrage\\\\src\"/**/*.js)",
+      "Bash(npm list:*)"
     ]
   }
 }

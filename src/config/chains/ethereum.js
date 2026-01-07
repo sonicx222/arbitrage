@@ -248,6 +248,14 @@ export default {
         maxTradeSizeUSD: parseInt(process.env.ETH_TRIANGULAR_MAX_TRADE || '10000'),
     },
 
+    // V3 (concentrated liquidity) settings
+    v3: {
+        enabled: process.env.ETH_V3_ENABLED !== 'false',
+        feeTiers: [100, 500, 3000, 10000],
+        minLiquidityUSD: parseInt(process.env.ETH_V3_MIN_LIQUIDITY || '20000'),
+        minProfitPercent: parseFloat(process.env.ETH_V3_MIN_PROFIT || '0.15'),
+    },
+
     // Execution
     execution: {
         enabled: process.env.ETH_EXECUTION_ENABLED === 'true',

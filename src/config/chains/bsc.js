@@ -159,6 +159,18 @@ export default {
             type: 'uniswapV2',
             tvlRank: 6,
         },
+        // Uniswap V3 style DEXes (concentrated liquidity)
+        'pancakeswap-v3': {
+            name: 'PancakeSwap V3',
+            factory: '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865',
+            quoter: '0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997',
+            router: '0x1b81D678ffb9C0263b24A97847620C99d213eB14',
+            // V3 has multiple fee tiers, fees handled per-pool
+            feeTiers: [100, 500, 2500, 10000], // 0.01%, 0.05%, 0.25%, 1%
+            enabled: true,
+            type: 'uniswapV3',
+            tvlRank: 1,
+        },
     },
 
     // Token configuration
@@ -195,6 +207,15 @@ export default {
         maxPathLength: 4,
         minLiquidityUSD: parseInt(process.env.BSC_TRIANGULAR_MIN_LIQUIDITY || process.env.TRIANGULAR_MIN_LIQUIDITY || '5000'),
         maxTradeSizeUSD: parseInt(process.env.BSC_TRIANGULAR_MAX_TRADE || process.env.TRIANGULAR_MAX_TRADE || '5000'),
+    },
+
+    // V3 (concentrated liquidity) settings
+    v3: {
+        enabled: process.env.BSC_V3_ENABLED !== 'false' && process.env.V3_ENABLED !== 'false',
+        feeTiers: [100, 500, 2500, 10000], // Check these fee tiers
+        minLiquidityUSD: parseInt(process.env.BSC_V3_MIN_LIQUIDITY || process.env.V3_MIN_LIQUIDITY || '3000'),
+        // Lower min profit for V3 due to lower fees
+        minProfitPercent: parseFloat(process.env.BSC_V3_MIN_PROFIT || process.env.V3_MIN_PROFIT || '0.2'),
     },
 
     // Execution settings

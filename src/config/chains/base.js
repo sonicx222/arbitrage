@@ -309,6 +309,14 @@ export default {
         maxTradeSizeUSD: parseInt(process.env.BASE_TRIANGULAR_MAX_TRADE || '5000'),
     },
 
+    // V3 (concentrated liquidity) settings - Optimized for L2
+    v3: {
+        enabled: process.env.BASE_V3_ENABLED !== 'false',
+        feeTiers: [100, 500, 3000, 10000],
+        minLiquidityUSD: parseInt(process.env.BASE_V3_MIN_LIQUIDITY || '3000'),
+        minProfitPercent: parseFloat(process.env.BASE_V3_MIN_PROFIT || '0.08'),
+    },
+
     // Execution - Optimized for L2 ultra-low gas costs
     execution: {
         enabled: process.env.BASE_EXECUTION_ENABLED === 'true',

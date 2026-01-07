@@ -313,6 +313,14 @@ export default {
         maxTradeSizeUSD: parseInt(process.env.POLYGON_TRIANGULAR_MAX_TRADE || '5000'),
     },
 
+    // V3 (concentrated liquidity) settings
+    v3: {
+        enabled: process.env.POLYGON_V3_ENABLED !== 'false',
+        feeTiers: [100, 500, 3000, 10000],
+        minLiquidityUSD: parseInt(process.env.POLYGON_V3_MIN_LIQUIDITY || '3000'),
+        minProfitPercent: parseFloat(process.env.POLYGON_V3_MIN_PROFIT || '0.1'),
+    },
+
     // Execution - Optimized for low gas costs
     execution: {
         enabled: process.env.POLYGON_EXECUTION_ENABLED === 'true',

@@ -310,6 +310,14 @@ export default {
         maxTradeSizeUSD: parseInt(process.env.ARBITRUM_TRIANGULAR_MAX_TRADE || '10000'),
     },
 
+    // V3 (concentrated liquidity) settings - Optimized for L2
+    v3: {
+        enabled: process.env.ARBITRUM_V3_ENABLED !== 'false',
+        feeTiers: [100, 500, 3000, 10000],
+        minLiquidityUSD: parseInt(process.env.ARBITRUM_V3_MIN_LIQUIDITY || '5000'),
+        minProfitPercent: parseFloat(process.env.ARBITRUM_V3_MIN_PROFIT || '0.08'),
+    },
+
     // Execution - Optimized for L2 low gas costs
     execution: {
         enabled: process.env.ARBITRUM_EXECUTION_ENABLED === 'true',
