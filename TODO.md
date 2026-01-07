@@ -81,7 +81,38 @@ See `docs/IMPLEMENTATION_ROADMAP.md` for detailed analysis and rationale.
   - Base: Added AlienBase, SwapBased, RocketSwap, Uniswap V2 (now 8 DEXes, 21 tokens)
   - Polygon: Added Dystopia, MeshSwap, JetSwap (now 7 DEXes, 21 tokens)
 
-### Priority 1: High (Week 2-3)
+### Phase 8: Enhanced Detection ✅ (Completed 2026-01-07)
+- [x] Uniswap V3 Price Fetching (src/data/v3PriceFetcher.js) - 25 tests
+- [x] Stablecoin Depeg Detector (src/analysis/stablecoinDetector.js) - 24 tests
+- [x] Adaptive Polling (src/monitoring/adaptivePoller.js) - 29 tests
+- [x] V3 ABIs and factory addresses added to src/contracts/abis.js
+
+### Phase 9: Profitability Optimization ✅ (Completed 2026-01-07)
+- [x] Opportunity Scorer (src/analysis/opportunityScorer.js) - 43 tests
+- [x] V2/V3 Cross-Arbitrage (src/analysis/v2v3Arbitrage.js) - 27 tests
+- [x] Price Impact Calculator (src/analysis/priceImpactCalculator.js) - 30 tests
+- [x] Execution Simulator (src/execution/executionSimulator.js) - 33 tests
+
+### Phase 10: Advanced Monitoring ✅ (Completed 2026-01-07)
+- [x] New Pool/Pair Detection (src/monitoring/newPairMonitor.js) - 21 tests
+  - Monitors DEX factory PairCreated events
+  - Tracks new pairs for 24 hours
+  - Emits newPairOpportunity events when arbitrage detected
+- [x] Block Time Prediction (src/execution/blockTimePredictor.js) - 31 tests
+  - Tracks block timestamps to predict next block
+  - Calculates optimal submission window (200-500ms before block)
+  - Confidence levels based on variance analysis
+
+### Phase 11: JIT Liquidity Detection ✅ (Completed 2026-01-07)
+- [x] JIT Liquidity Detector (src/analysis/jitLiquidityDetector.js) - 33 tests
+  - Detects just-in-time liquidity additions/removals
+  - Tracks Mint events and matches with Burn events within block window
+  - Calculates fees earned by JIT providers
+  - Pool analysis: JIT frequency, unique providers, activity levels
+  - JIT prediction based on historical data and trade size
+  - JIT arbitrage detection for price discrepancies
+
+### Priority 1: High (Next)
 - [ ] Flash arbitrage smart contract (Solidity)
 - [ ] Deploy to BSC testnet
 - [ ] Deploy to BSC mainnet
@@ -118,7 +149,7 @@ See `docs/IMPLEMENTATION_ROADMAP.md` for detailed analysis and rationale.
 
 ## Notes
 
-- All 409 tests passing
+- All 831 tests passing
 - ES Modules throughout (no CommonJS)
 - Winston for logging
 - Joi for config validation
@@ -126,4 +157,4 @@ See `docs/IMPLEMENTATION_ROADMAP.md` for detailed analysis and rationale.
 
 ---
 
-*Last updated: 2026-01-06*
+*Last updated: 2026-01-07*

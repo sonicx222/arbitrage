@@ -7,9 +7,9 @@ This document provides context for AI assistants working on this project. It cap
 **Name:** Multi-Chain Arbitrage Bot
 **Original Scope:** BSC-only arbitrage detection
 **Current Scope:** Multi-chain arbitrage detection across 6 blockchains
-**Version:** 2.0.0
-**Status:** Phase 8 complete - Enhanced detection features implemented
-**Last Major Update:** 2026-01-07 - V3 support, stablecoin detector, adaptive polling
+**Version:** 2.3.0
+**Status:** Phase 11 complete - JIT Liquidity Detection implemented
+**Last Major Update:** 2026-01-07 - JIT liquidity detection, 831 tests passing
 
 ## Architecture
 
@@ -53,7 +53,12 @@ src/
 │   ├── CrossChainDetector.js   # Cross-chain price discrepancies
 │   ├── MultiHopDetector.js     # 4+ token paths
 │   ├── MempoolMonitor.js       # Pending transaction analysis
-│   └── stablecoinDetector.js   # [NEW] Stablecoin depeg & arbitrage detection
+│   ├── stablecoinDetector.js   # Stablecoin depeg & arbitrage detection
+│   ├── opportunityScorer.js    # [NEW] Weighted scoring for opportunity prioritization
+│   ├── v2v3Arbitrage.js        # [NEW] V2/V3 cross-arbitrage detection
+│   ├── priceImpactCalculator.js # [NEW] Precise price impact using reserves
+│   ├── jitLiquidityDetector.js # [NEW] Just-in-time liquidity detection
+│   └── profitCalculator.js     # Enhanced profit calculation
 ├── chains/
 │   ├── BaseChain.js            # Abstract base class for all chains
 │   ├── ChainFactory.js         # Creates chain instances
@@ -87,12 +92,14 @@ src/
 │       └── UniswapV3.js        # Uniswap V3 concentrated liquidity
 ├── execution/
 │   ├── executionManager.js     # Trade execution
+│   ├── executionSimulator.js   # [NEW] Advanced execution simulation with MEV analysis
+│   ├── blockTimePredictor.js   # [NEW] Block time tracking and prediction
 │   ├── gasOptimizer.js         # Gas price optimization
-│   ├── l2GasCalculator.js      # L2-specific gas calculations
-│   └── profitCalculator.js     # Profit/loss calculations
+│   └── l2GasCalculator.js      # L2-specific gas calculations
 ├── monitoring/
 │   ├── blockMonitor.js         # Block event subscription
 │   ├── adaptivePoller.js       # [NEW] Dynamic polling based on volatility
+│   ├── newPairMonitor.js       # [NEW] Factory event monitoring for new pairs
 │   └── performanceTracker.js   # System metrics
 ├── utils/
 │   ├── logger.js               # Winston logging
@@ -155,7 +162,96 @@ src/
 - [x] **Adaptive Polling** - Dynamic intervals based on market volatility
 - [x] **Comprehensive Tests** - 613 tests total (78 new tests added)
 
+#### Phase 9: Profitability Optimization ✅ (2026-01-07)
+- [x] **Opportunity Scorer** - Weighted scoring system for prioritization
+- [x] **V2/V3 Cross-Arbitrage** - Detect price discrepancies between AMM versions
+- [x] **Price Impact Calculator** - Precise impact using reserves and AMM formulas
+- [x] **Execution Simulator** - Advanced simulation with MEV risk analysis
+- [x] **Comprehensive Tests** - 746 tests total (133 new tests added)
+
+#### Phase 10: Advanced Monitoring ✅ (2026-01-07)
+- [x] **New Pair Monitor** - DEX factory event monitoring for arbitrage on new listings
+- [x] **Block Time Predictor** - Optimal transaction submission timing
+- [x] **Comprehensive Tests** - 798 tests total (52 new tests added)
+
+#### Phase 11: JIT Liquidity Detection ✅ (2026-01-07)
+- [x] **JIT Liquidity Detector** - Detect just-in-time liquidity additions/removals
+- [x] **JIT Pattern Recognition** - Identify mint/burn patterns within block windows
+- [x] **JIT Arbitrage Opportunities** - Find price discrepancies during JIT events
+- [x] **Comprehensive Tests** - 831 tests total (33 new tests added)
+
 ### Recent Implementation Details
+
+#### Phase 11 Features (2026-01-07)
+
+**1. JIT Liquidity Detector (`src/analysis/jitLiquidityDetector.js`)**
+- Detects Just-In-Time liquidity events (add liquidity → trade → remove liquidity)
+- Tracks Mint events and matches with Burn events within configurable block window
+- Identifies concentrated liquidity positions (narrow tick ranges)
+- Calculates fees earned by JIT providers
+- Emits `potentialJIT` for concentrated mints and `jitDetected` for confirmed patterns
+- Pool analysis: JIT frequency, unique providers, activity levels
+- JIT prediction: estimates likelihood based on historical data and trade size
+- JIT arbitrage detection: finds price discrepancies during JIT events
+- 33 unit tests
+
+#### Phase 10 Features (2026-01-07)
+
+**1. New Pair Monitor (`src/monitoring/newPairMonitor.js`)**
+- Monitors DEX factory contracts for PairCreated events
+- Tracks new pairs for 24-hour monitoring window
+- Emits `newPairDetected` when any new pair found
+- Emits `newPairOpportunity` when known token paired with unknown token
+- Configurable: minLiquidityUSD, minSpreadPercent, monitoringWindow
+- Per-chain factory address configuration
+- Known token registry for opportunity flagging
+- 21 unit tests
+
+**2. Block Time Predictor (`src/execution/blockTimePredictor.js`)**
+- Tracks block timestamps per chain to predict next block arrival
+- Expected block times: ETH 12s, BSC 3s, Polygon 2s, Arbitrum 250ms, Base 2s
+- Calculates average block time from rolling sample window
+- Standard deviation for confidence assessment
+- Optimal submission window: 200-500ms before predicted block
+- Confidence levels: high (low variance), medium, low (high variance)
+- `waitForOptimalWindow()` method with maxWait timeout
+- Event emission for block recording
+- 31 unit tests
+
+#### Phase 9 Features (2026-01-07)
+
+**1. Opportunity Scorer (`src/analysis/opportunityScorer.js`)**
+- Weighted multi-factor scoring: profit (40%), liquidity (25%), execution (20%), time (10%), token quality (5%)
+- Tier classification: S/A/B/C/D with corresponding recommendations
+- Dynamic weight adjustment
+- Integration with profitCalculator for consistent scoring
+- 43 unit tests
+
+**2. V2/V3 Cross-Arbitrage (`src/analysis/v2v3Arbitrage.js`)**
+- Detects price discrepancies between V2 pools and V3 fee tiers
+- Supports all 6 chains with V2/V3 DEX mappings
+- Fee tier optimization (finds best V3 tier for execution)
+- Calculates optimal trade size considering both pool types
+- 27 unit tests
+
+**3. Price Impact Calculator (`src/analysis/priceImpactCalculator.js`)**
+- V2 constant product formula: `2 * amountIn / (reserveIn + amountIn)`
+- V3 concentrated liquidity impact estimation
+- Multi-hop cumulative impact calculation
+- Optimal trade size finder via binary search
+- Severity classification: minimal/low/moderate/high/extreme
+- Trade viability analysis
+- 30 unit tests
+
+**4. Execution Simulator (`src/execution/executionSimulator.js`)**
+- Comprehensive simulation beyond simple eth_call
+- MEV risk analysis (frontrunning, backrunning, sandwich)
+- Competition modeling with gas price strategy
+- Block timing and staleness tracking
+- Risk-adjusted expected value calculation
+- Action recommendations: EXECUTE/EXECUTE_WITH_CAUTION/EVALUATE/SKIP
+- Historical tracking for learning
+- 33 unit tests
 
 #### Phase 8 Features (2026-01-07)
 
@@ -238,12 +334,25 @@ RUN_HARDHAT_TESTS=true npm test    # Include Hardhat integration tests
 ```
 
 ### Test Status
-- **Total Tests:** 613
-- **Passing:** 612
+- **Total Tests:** 831
+- **Passing:** 831
 - **Skipped:** 1 (Hardhat flash loan test - requires RUN_HARDHAT_TESTS=true)
-- **Test Suites:** 27
+- **Test Suites:** 34
 
-### New Test Files (Phase 8)
+### New Test Files (Phase 11)
+- `tests/unit/jitLiquidityDetector.test.js` - 33 tests for JIT liquidity detection
+
+### New Test Files (Phase 10)
+- `tests/unit/newPairMonitor.test.js` - 21 tests for new pair detection
+- `tests/unit/blockTimePredictor.test.js` - 31 tests for block time prediction
+
+### New Test Files (Phase 9)
+- `tests/unit/opportunityScorer.test.js` - 43 tests for opportunity scoring
+- `tests/unit/v2v3Arbitrage.test.js` - 27 tests for V2/V3 cross-arbitrage
+- `tests/unit/priceImpactCalculator.test.js` - 30 tests for price impact
+- `tests/unit/executionSimulator.test.js` - 33 tests for execution simulation
+
+### Test Files (Phase 8)
 - `tests/unit/v3PriceFetcher.test.js` - 25 tests for V3 price fetching
 - `tests/unit/stablecoinDetector.test.js` - 24 tests for stablecoin detection
 - `tests/unit/adaptivePoller.test.js` - 29 tests for adaptive polling
@@ -267,6 +376,13 @@ When resuming work, read these files first:
 7. **Stablecoins:** `src/analysis/stablecoinDetector.js` - Depeg and stable arbitrage
 8. **Polling:** `src/monitoring/adaptivePoller.js` - Dynamic polling intervals
 9. **ABIs:** `src/contracts/abis.js` - All contract ABIs including V3
+10. **Scoring:** `src/analysis/opportunityScorer.js` - Opportunity prioritization
+11. **V2/V3 Arb:** `src/analysis/v2v3Arbitrage.js` - Cross-AMM arbitrage
+12. **Impact:** `src/analysis/priceImpactCalculator.js` - Price impact calculations
+13. **Simulation:** `src/execution/executionSimulator.js` - Advanced execution modeling
+14. **New Pairs:** `src/monitoring/newPairMonitor.js` - Factory event monitoring
+15. **Block Timing:** `src/execution/blockTimePredictor.js` - Optimal submission timing
+16. **JIT Detection:** `src/analysis/jitLiquidityDetector.js` - Just-in-time liquidity events
 
 ## Environment Variables
 
@@ -308,10 +424,10 @@ These modules have `setInterval` timers with `.unref()`:
 See `docs/NEXT_IMPLEMENTATION_PLAN.md` for detailed roadmap.
 
 ### Priority 1 (Next Implementation)
-- [ ] New pool/pair detection (factory event monitoring)
-- [ ] V2/V3 cross-arbitrage (same pair, different AMM type)
-- [ ] Block time prediction for optimal submission timing
-- [ ] Just-in-time liquidity detection
+- [x] ~~New pool/pair detection (factory event monitoring)~~ - Completed Phase 10
+- [x] ~~V2/V3 cross-arbitrage (same pair, different AMM type)~~ - Completed Phase 9
+- [x] ~~Block time prediction for optimal submission timing~~ - Completed Phase 10
+- [x] ~~Just-in-time liquidity detection~~ - Completed Phase 11
 
 ### Priority 2 (Medium-Term)
 - [ ] Flash loan integration for capital-efficient execution
@@ -422,6 +538,190 @@ V3_FACTORY_ADDRESSES = {
 | Arbitrum | 0.25s | 125ms |
 | Base | 2s | 1000ms |
 | Avalanche | 2s | 1000ms |
+
+## Opportunity Scorer Configuration
+
+### Scoring Weights (Default)
+| Factor | Weight | Description |
+|--------|--------|-------------|
+| Profit | 40% | Net profit potential |
+| Liquidity | 25% | Pool liquidity sufficiency |
+| Execution | 20% | Success probability |
+| Time | 10% | Freshness/staleness |
+| Token Quality | 5% | Token characteristics |
+
+### Tier Classification
+| Tier | Score Range | Recommendation |
+|------|-------------|----------------|
+| S | ≥0.85 | Execute immediately |
+| A | ≥0.70 | High priority |
+| B | ≥0.55 | Consider execution |
+| C | ≥0.40 | Low priority |
+| D | <0.40 | Skip |
+
+## Price Impact Calculator
+
+### V2 Constant Product Formula
+```javascript
+// Price impact = 2 * amountIn / (reserveIn + amountIn)
+// For 1% of pool, impact ≈ 2%
+
+calculateV2Impact(amountIn, reserveIn, reserveOut, fee = 0.003) {
+    const amountInWithFee = amountIn * (1 - fee);
+    const amountOut = (amountInWithFee * reserveOut) /
+                      (reserveIn + amountInWithFee);
+    const spotPrice = reserveOut / reserveIn;
+    const executionPrice = amountOut / amountIn;
+    return (spotPrice - executionPrice) / spotPrice;
+}
+```
+
+### Impact Severity Thresholds
+| Severity | Impact Range | Recommendation |
+|----------|--------------|----------------|
+| Minimal | ≤0.1% | Full trade OK |
+| Low | ≤0.5% | Acceptable |
+| Moderate | ≤1.0% | Consider splitting |
+| High | ≤2.0% | Reduce size |
+| Extreme | >5.0% | Avoid trade |
+
+## Execution Simulator
+
+### MEV Risk Types
+| Type | Trigger | Risk Factor |
+|------|---------|-------------|
+| Frontrunning | Profit > $5 | 40% |
+| Backrunning | Trade > $500 | 30% |
+| Sandwich | Trade > $1000 & Profit > $10 | 50% |
+
+### Success Probability Factors
+| Component | Weight | Description |
+|-----------|--------|-------------|
+| Timing | 15% | Block age and staleness |
+| Competition | 25% | Other bots racing |
+| MEV | 20% | Extraction risk |
+| Price Stability | 15% | Volatility |
+| Slippage | 15% | Impact risk |
+| Profit | 10% | Higher profit = more reliable |
+
+### Recommendation Actions
+- **EXECUTE**: High probability (≥70%), acceptable MEV risk
+- **EXECUTE_WITH_CAUTION**: Moderate probability (≥50%), high profit
+- **EVALUATE**: Borderline - manual review recommended
+- **SKIP**: Low probability (<30%), high competition, or extreme MEV
+
+## V2/V3 Cross-Arbitrage
+
+### Supported Chain Mappings
+| Chain | V2 DEXes | V3 DEXes |
+|-------|----------|----------|
+| BSC | PancakeSwap, Biswap | PancakeSwap V3 |
+| Ethereum | Uniswap V2, SushiSwap | Uniswap V3 |
+| Polygon | QuickSwap, SushiSwap | Uniswap V3 |
+| Arbitrum | SushiSwap, Camelot | Uniswap V3 |
+| Base | Aerodrome, BaseSwap | Uniswap V3 |
+| Avalanche | TraderJoe, Pangolin | Uniswap V3 |
+
+### Detection Logic
+1. Get best V2 price across all V2 DEXes
+2. Get best V3 price across all fee tiers
+3. Compare effective prices (including fees)
+4. If spread > minSpreadPercent (default 0.15%), flag opportunity
+5. Calculate optimal trade size considering both pool types
+
+## New Pair Monitor Configuration
+
+### Default Settings
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| minLiquidityUSD | $1,000 | Minimum liquidity to consider |
+| minSpreadPercent | 0.5% | Minimum spread for opportunity |
+| monitoringWindow | 24 hours | How long to track new pairs |
+| maxRecentPairs | 500 | Max pairs to keep in memory |
+
+### Events Emitted
+| Event | Trigger | Data |
+|-------|---------|------|
+| `newPairDetected` | Any new pair found | chainId, dexName, token0, token1, pairAddress |
+| `newPairOpportunity` | Known token + unknown token | pairInfo, knownToken, spread |
+
+### Factory Addresses (Set via `setFactories()`)
+Configure per-chain factory addresses for event subscription.
+
+## Block Time Predictor Configuration
+
+### Expected Block Times
+| Chain | Chain ID | Block Time |
+|-------|----------|------------|
+| Ethereum | 1 | 12,000ms |
+| BSC | 56 | 3,000ms |
+| Polygon | 137 | 2,000ms |
+| Arbitrum | 42161 | 250ms |
+| Base | 8453 | 2,000ms |
+| Avalanche | 43114 | 2,000ms |
+
+### Default Settings
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| sampleSize | 50 | Block history to keep |
+| optimalLeadTime | 400ms | Target time before block |
+| minConfidenceSamples | 10 | Min samples for high confidence |
+
+### Confidence Levels
+| Level | Criteria | Description |
+|-------|----------|-------------|
+| High | StdDev < 10% of avg | Very consistent blocks |
+| Medium | StdDev < 25% of avg | Normal variance |
+| Low | Insufficient data | Need more samples |
+
+### Optimal Submission Logic
+1. Predict next block time from average
+2. Calculate time until predicted block
+3. Return delay to achieve 200-500ms lead time
+4. If block too close/far, submit immediately
+
+## JIT Liquidity Detector Configuration
+
+### What is JIT Liquidity?
+Just-In-Time (JIT) liquidity is when liquidity providers add concentrated liquidity immediately before a large trade to capture fees, then remove it afterward. This creates:
+- Better execution prices during JIT (lower slippage)
+- Arbitrage opportunities between JIT-affected and unaffected pools
+- Predictive patterns for trading
+
+### Default Settings
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| jitWindowBlocks | 2 | Max blocks between mint and burn |
+| minLiquidityUSD | $10,000 | Minimum liquidity to track |
+| minAddRemoveRatio | 0.8 | Min ratio of liquidity removed vs added |
+| maxTickRange | 200 | Max tick range for "concentrated" |
+| maxRecentEvents | 100 | Recent JIT events to keep |
+
+### Events Emitted
+| Event | Trigger | Data |
+|-------|---------|------|
+| `potentialJIT` | Large concentrated mint | mint details, confidence |
+| `jitDetected` | Confirmed mint+burn pattern | full JIT record with fees |
+
+### JIT Detection Logic
+1. Track all Mint events with sufficient liquidity
+2. When Burn event occurs, search for matching Mint within window
+3. Match criteria: same pool, owner, tick range
+4. Validate: block duration ≤ window, liquidity ratio ≥ threshold
+5. Calculate fees earned = tokens removed - tokens added
+
+### JIT Frequency Classification
+| Level | JIT Count | Recommendation |
+|-------|-----------|----------------|
+| High | > 10 | Expect better execution during JIT windows |
+| Medium | > 3 | Monitor for JIT opportunities |
+| Low | ≤ 3 | Standard execution expected |
+
+### JIT Prediction
+Predicts likelihood of JIT for pending large trades based on:
+- Historical JIT frequency for the pool
+- Trade size (larger trades attract more JIT)
+- Number of unique JIT providers
 
 ---
 
