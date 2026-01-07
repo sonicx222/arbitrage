@@ -67,9 +67,25 @@ class ChainWorker {
             this.sendMessage(MessageType.OPPORTUNITIES, data);
         });
 
-        // Forward errors
+        // Forward errors - ensure Error objects are serialized properly
         this.chain.on('error', (data) => {
-            this.sendMessage(MessageType.ERROR, data);
+            // Error objects have non-enumerable properties that get lost in postMessage
+            // Convert to plain object with extracted properties
+            const errorData = data instanceof Error
+                ? {
+                    chainId: this.chainId,
+                    error: data.message,
+                    stack: data.stack,
+                    code: data.code,
+                }
+                : {
+                    chainId: this.chainId,
+                    ...data,
+                    // Also extract error/message if data contains an Error object
+                    error: data?.error instanceof Error ? data.error.message : (data?.error || data?.message),
+                    stack: data?.error instanceof Error ? data.error.stack : data?.stack,
+                };
+            this.sendMessage(MessageType.ERROR, errorData);
         });
     }
 
@@ -165,11 +181,23 @@ class ChainWorker {
 
         switch (type) {
             case MessageType.START:
-                this.start();
+                // Use .catch() to handle async errors since handleMessage is sync
+                this.start().catch(error => {
+                    this.sendMessage(MessageType.ERROR, {
+                        chainId: this.chainId,
+                        error: `Start failed: ${error.message}`,
+                        stack: error.stack,
+                    });
+                });
                 break;
 
             case MessageType.STOP:
-                this.stop();
+                // Use .catch() to handle async errors
+                this.stop().catch(error => {
+                    console.error('Stop error:', error);
+                    // Still send stopped message even on error
+                    this.sendMessage(MessageType.STOPPED, { chainId: this.chainId });
+                });
                 break;
 
             case MessageType.GET_STATUS:

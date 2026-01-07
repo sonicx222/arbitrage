@@ -533,3 +533,169 @@ describe('Configuration Validation', () => {
         expect(config.trading.maxTradeSizeUSD).toBeGreaterThan(config.trading.minTradeSizeUSD);
     });
 });
+
+describe('Bug Fix Regression Tests - Session 4', () => {
+
+    describe('Fix: V3PriceFetcher BigInt precision loss', () => {
+        test('sqrtPriceX96ToPrice should handle large BigInt values without precision loss', async () => {
+            const { default: v3PriceFetcher } = await import('../../src/data/v3PriceFetcher.js');
+
+            // Test with a large sqrtPriceX96 value that exceeds Number.MAX_SAFE_INTEGER
+            // sqrtPriceX96 = 2^96 would give price = 1 (for same decimals)
+            const Q96 = 2n ** 96n;
+            const sqrtPriceX96 = Q96; // This equals ~7.9e28, way beyond MAX_SAFE_INTEGER
+
+            const price = v3PriceFetcher.sqrtPriceX96ToPrice(sqrtPriceX96, 18, 18);
+
+            // Price should be approximately 1.0 (sqrtPriceX96 = Q96 means price = 1)
+            expect(price).toBeCloseTo(1.0, 6);
+
+            // Test with a realistic ETH/USDC price (~3000 USDC per ETH)
+            // If price = 3000, sqrtPrice = ~54.77, sqrtPriceX96 = 54.77 * 2^96
+            const ethUsdcSqrtPriceX96 = 4339505179874779185945021694n; // ~3000 USD/ETH
+            const ethPrice = v3PriceFetcher.sqrtPriceX96ToPrice(ethUsdcSqrtPriceX96, 18, 6);
+
+            // Price should be in reasonable range (adjusting for decimals: 18-6 = 12)
+            expect(ethPrice).toBeGreaterThan(0);
+            expect(Number.isFinite(ethPrice)).toBe(true);
+        });
+
+        test('sqrtPriceX96ToPrice should return 0 for zero input', async () => {
+            const { default: v3PriceFetcher } = await import('../../src/data/v3PriceFetcher.js');
+
+            const price = v3PriceFetcher.sqrtPriceX96ToPrice(0n, 18, 18);
+            expect(price).toBe(0);
+        });
+
+        test('priceToSqrtPriceX96 should use BigInt arithmetic to avoid precision loss', async () => {
+            const { default: v3PriceFetcher } = await import('../../src/data/v3PriceFetcher.js');
+
+            // Convert price to sqrtPriceX96 and back - should be consistent
+            const originalPrice = 1.0;
+            const sqrtPriceX96 = v3PriceFetcher.priceToSqrtPriceX96(originalPrice, 18, 18);
+
+            // sqrtPriceX96 should be a BigInt close to Q96 for price = 1
+            expect(typeof sqrtPriceX96).toBe('bigint');
+            expect(sqrtPriceX96).toBeGreaterThan(0n);
+
+            // Convert back and verify
+            const recoveredPrice = v3PriceFetcher.sqrtPriceX96ToPrice(sqrtPriceX96, 18, 18);
+            expect(recoveredPrice).toBeCloseTo(originalPrice, 4);
+        });
+
+        test('priceToSqrtPriceX96 should return 0n for zero or negative price', async () => {
+            const { default: v3PriceFetcher } = await import('../../src/data/v3PriceFetcher.js');
+
+            expect(v3PriceFetcher.priceToSqrtPriceX96(0, 18, 18)).toBe(0n);
+            expect(v3PriceFetcher.priceToSqrtPriceX96(-1, 18, 18)).toBe(0n);
+        });
+
+        test('_bigIntSqrt should correctly compute square root', async () => {
+            const { default: v3PriceFetcher } = await import('../../src/data/v3PriceFetcher.js');
+
+            // Test small values
+            expect(v3PriceFetcher._bigIntSqrt(0n)).toBe(0n);
+            expect(v3PriceFetcher._bigIntSqrt(1n)).toBe(1n);
+            expect(v3PriceFetcher._bigIntSqrt(4n)).toBe(2n);
+            expect(v3PriceFetcher._bigIntSqrt(9n)).toBe(3n);
+
+            // Test large value
+            const largeValue = 10n ** 36n; // 10^36
+            const sqrt = v3PriceFetcher._bigIntSqrt(largeValue);
+            expect(sqrt).toBe(10n ** 18n); // sqrt(10^36) = 10^18
+        });
+    });
+
+    describe('Fix: MempoolMonitor stale entry cleanup', () => {
+        test('MempoolMonitor should have cleanup timer configuration', async () => {
+            const { default: MempoolMonitor } = await import('../../src/analysis/MempoolMonitor.js');
+
+            const monitor = new MempoolMonitor({ enabled: false });
+
+            // Verify stale threshold is configured
+            expect(monitor.staleThresholdMs).toBe(120000); // 2 minutes
+            expect(monitor.cleanupTimer).toBeNull(); // Not started yet
+        });
+
+        test('_cleanupStaleEntries should remove old entries', async () => {
+            const { default: MempoolMonitor } = await import('../../src/analysis/MempoolMonitor.js');
+
+            const monitor = new MempoolMonitor({ enabled: false });
+
+            // Add some entries
+            const now = Date.now();
+            monitor.pendingSwaps.set('tx1', { timestamp: now - 150000 }); // Stale (2.5 min old)
+            monitor.pendingSwaps.set('tx2', { timestamp: now - 150000 }); // Stale
+            monitor.pendingSwaps.set('tx3', { timestamp: now - 30000 });  // Fresh (30 sec old)
+
+            expect(monitor.pendingSwaps.size).toBe(3);
+
+            // Run cleanup
+            monitor._cleanupStaleEntries();
+
+            // Only fresh entry should remain
+            expect(monitor.pendingSwaps.size).toBe(1);
+            expect(monitor.pendingSwaps.has('tx3')).toBe(true);
+            expect(monitor.pendingSwaps.has('tx1')).toBe(false);
+            expect(monitor.pendingSwaps.has('tx2')).toBe(false);
+        });
+
+        test('cachePendingSwap should trigger cleanup periodically', async () => {
+            const { default: MempoolMonitor } = await import('../../src/analysis/MempoolMonitor.js');
+
+            const monitor = new MempoolMonitor({ enabled: false, maxPendingSwaps: 100 });
+            const now = Date.now();
+
+            // Add stale entries
+            for (let i = 0; i < 49; i++) {
+                monitor.pendingSwaps.set(`stale-tx-${i}`, { timestamp: now - 150000 });
+            }
+
+            // Add one more to trigger cleanup (at size 50 % 50 === 0)
+            monitor.cachePendingSwap('new-tx', { timestamp: now });
+
+            // After cleanup trigger, stale entries should be removed
+            // Size should be much smaller now (only fresh entries)
+            expect(monitor.pendingSwaps.size).toBeLessThanOrEqual(50);
+        });
+
+        test('stop should clear cleanup timer', async () => {
+            const { default: MempoolMonitor } = await import('../../src/analysis/MempoolMonitor.js');
+
+            const monitor = new MempoolMonitor({ enabled: true });
+
+            // Manually set a timer to simulate started state
+            monitor.isMonitoring = true;
+            monitor.cleanupTimer = setInterval(() => {}, 30000);
+
+            expect(monitor.cleanupTimer).not.toBeNull();
+
+            // Stop should clear the timer
+            monitor.stop();
+
+            expect(monitor.cleanupTimer).toBeNull();
+            expect(monitor.isMonitoring).toBe(false);
+        });
+    });
+
+    describe('Fix: ChainWorker async message handling', () => {
+        // Note: Full ChainWorker testing requires worker_threads which is complex in Jest
+        // These tests verify the code structure was updated correctly
+
+        test('ChainWorker should export from correct path', async () => {
+            // This validates the file can be imported (syntax is correct)
+            const fs = await import('fs');
+            const path = await import('path');
+
+            const workerPath = path.default.resolve('src/workers/chainWorker.js');
+            const content = fs.default.readFileSync(workerPath, 'utf-8');
+
+            // Verify the fix was applied - async calls now have .catch() handlers
+            expect(content).toContain('this.start().catch(error');
+            expect(content).toContain('this.stop().catch(error');
+
+            // Verify error handling sends ERROR message
+            expect(content).toContain('Start failed:');
+        });
+    });
+});

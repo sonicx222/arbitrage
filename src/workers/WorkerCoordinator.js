@@ -36,6 +36,7 @@ export default class WorkerCoordinator extends EventEmitter {
         // State
         this.isRunning = false;
         this.heartbeatTimer = null;
+        this.pendingRestarts = new Set(); // Track workers being intentionally restarted
 
         // Statistics
         this.stats = {
@@ -88,6 +89,14 @@ export default class WorkerCoordinator extends EventEmitter {
         // Handle worker exit
         worker.on('exit', (code) => {
             log.info(`Worker ${chainId} exited with code ${code}`);
+
+            // Check if this was an intentional restart (terminate() was called)
+            if (this.pendingRestarts.has(chainId)) {
+                // Intentional restart - don't schedule another one
+                this.pendingRestarts.delete(chainId);
+                log.debug(`Worker ${chainId} terminated for intentional restart`);
+                return;
+            }
 
             if (code !== 0 && this.isRunning) {
                 log.warn(`Worker ${chainId} crashed, scheduling restart...`);
@@ -220,6 +229,8 @@ export default class WorkerCoordinator extends EventEmitter {
             // Terminate old worker if exists
             const oldWorker = this.workers.get(chainId);
             if (oldWorker) {
+                // Mark as intentional restart to prevent exit handler from scheduling another restart
+                this.pendingRestarts.add(chainId);
                 try {
                     await oldWorker.terminate();
                 } catch (e) {

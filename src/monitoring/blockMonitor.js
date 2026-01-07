@@ -5,27 +5,35 @@ import config from '../config.js';
 
 /**
  * Block Monitor using WebSocket subscription for real-time block updates
+ *
+ * Now integrates with ResilientWebSocketManager through rpcManager:
+ * - Subscribes to rpcManager's forwarded 'block' events
+ * - Automatically benefits from connection resilience and failover
+ * - Falls back to HTTP polling only when all WS endpoints are down
  */
 class BlockMonitor extends EventEmitter {
     constructor() {
         super();
 
-        this.provider = null;
         this.isRunning = false;
-        this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 10;
-        this.reconnectDelay = 1000; // Start with 1 second
+        this.mode = 'disconnected'; // 'websocket', 'polling', 'disconnected'
         this.lastBlockNumber = 0;
         this.lastBlockTime = Date.now();
         this.pollingInterval = null; // For HTTP polling fallback
         this.staleCheckInterval = null; // For stale block detection
 
-        log.info('Block Monitor initialized');
+        // Bound handlers for event subscription
+        this._boundHandleBlock = this._handleBlockFromManager.bind(this);
+        this._boundHandleAllDown = this._handleAllWsDown.bind(this);
+        this._boundHandleRecovery = this._handleWsRecovery.bind(this);
+
+        log.info('Block Monitor initialized (resilient mode)');
     }
 
     /**
-   * Start monitoring blocks
-   */
+     * Start monitoring blocks
+     * Uses rpcManager's resilient WebSocket events with HTTP polling fallback
+     */
     async start() {
         if (this.isRunning) {
             log.warn('Block Monitor already running');
@@ -33,22 +41,37 @@ class BlockMonitor extends EventEmitter {
         }
 
         try {
-            // Try WebSocket first
-            try {
-                await this.connect();
-                this.isRunning = true;
-                this.reconnectAttempts = 0;
-                log.info('✅ Block Monitor started successfully (WebSocket mode)');
-                return;
-            } catch (wsError) {
-                log.warn('WebSocket connection failed, falling back to HTTP polling', { error: wsError.message });
-                // Fall through to HTTP polling
-            }
+            // Ensure WebSocket manager is ready
+            const wsReady = await rpcManager.ensureWsReady();
 
-            // Fallback to HTTP polling
-            await this.startHttpPolling();
-            this.isRunning = true;
-            log.info('✅ Block Monitor started successfully (HTTP polling mode)');
+            if (wsReady) {
+                // Subscribe to rpcManager's forwarded block events
+                rpcManager.on('block', this._boundHandleBlock);
+                rpcManager.on('wsAllDown', this._boundHandleAllDown);
+                rpcManager.on('endpointRecovered', this._boundHandleRecovery);
+
+                // Get initial block number
+                const initialBlock = await rpcManager.withRetry(async (provider) => {
+                    return await provider.getBlockNumber();
+                });
+
+                this.lastBlockNumber = initialBlock;
+                this.lastBlockTime = Date.now();
+                this.mode = 'websocket';
+                this.isRunning = true;
+
+                // Start stale block detection as safety net
+                this._setupStaleBlockDetection();
+
+                log.info('✅ Block Monitor started (resilient WebSocket mode)', {
+                    initialBlock,
+                });
+            } else {
+                // WebSocket not available, use HTTP polling
+                log.warn('WebSocket not available, using HTTP polling mode');
+                await this.startHttpPolling();
+                this.isRunning = true;
+            }
 
         } catch (error) {
             log.error('Failed to start Block Monitor', { error: error.message });
@@ -60,6 +83,11 @@ class BlockMonitor extends EventEmitter {
      * Start HTTP polling mode as fallback
      */
     async startHttpPolling() {
+        // Stop any existing polling
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+        }
+
         log.info('Starting HTTP polling mode (polling every 3 seconds)');
 
         // Get initial block
@@ -69,6 +97,7 @@ class BlockMonitor extends EventEmitter {
 
         this.lastBlockNumber = initialBlock;
         this.lastBlockTime = Date.now();
+        this.mode = 'polling';
 
         // Poll for new blocks (unref to not block process exit)
         this.pollingInterval = setInterval(async () => {
@@ -89,53 +118,56 @@ class BlockMonitor extends EventEmitter {
     }
 
     /**
-     * Connect to WebSocket provider
+     * Handle block event from rpcManager (forwarded from ResilientWebSocketManager)
+     * @private
      */
-    async connect() {
-        const wsData = rpcManager.getWsProvider();
-        if (!wsData) throw new Error('No WebSocket providers available');
+    _handleBlockFromManager(blockNumber) {
+        if (!this.isRunning || this.mode !== 'websocket') return;
+        this.handleNewBlock(blockNumber);
+    }
 
-        this.provider = wsData.provider;
+    /**
+     * Handle all WebSocket endpoints down event
+     * @private
+     */
+    async _handleAllWsDown() {
+        if (!this.isRunning) return;
 
-        // Set up listeners with automatic reconnection
-        this.provider.on('block', (n) => this.handleNewBlock(n));
+        log.warn('All WebSocket endpoints down, falling back to HTTP polling');
 
-        // Handle WebSocket errors - trigger reconnection
-        this.provider.on('error', (e) => {
-            log.warn('WebSocket error detected, triggering reconnection', { error: e.message });
-            this.handleReconnect();
-        });
-
-        // Handle WebSocket close events - trigger reconnection
-        // Access underlying websocket if available (ethers v6)
-        if (this.provider.websocket) {
-            this.provider.websocket.on('close', () => {
-                log.warn('WebSocket connection closed, triggering reconnection');
-                this.handleReconnect();
-            });
-        }
-
-        // Set up stale block detection - if no new blocks for 30 seconds, reconnect
-        this._setupStaleBlockDetection();
-
-        // Initialize last block with 5s timeout
-        let timeoutId;
+        // Switch to HTTP polling
         try {
-            this.lastBlockNumber = await Promise.race([
-                this.provider.getBlockNumber(),
-                new Promise((_, reject) => {
-                    timeoutId = setTimeout(() => reject(new Error('getBlockNumber timeout')), 5000);
-                })
-            ]);
-            log.ws(`Connected to WS, current block: ${this.lastBlockNumber}`);
-        } finally {
-            if (timeoutId) clearTimeout(timeoutId);
+            await this.startHttpPolling();
+            this.emit('fallbackToPolling');
+        } catch (error) {
+            log.error('Failed to start HTTP polling fallback', { error: error.message });
+            this.emit('error', new Error('All connection methods failed'));
         }
     }
 
     /**
+     * Handle WebSocket recovery - switch back from polling to WebSocket
+     * @private
+     */
+    _handleWsRecovery() {
+        if (!this.isRunning || this.mode !== 'polling') return;
+
+        log.info('WebSocket recovered, switching back from HTTP polling');
+
+        // Stop polling
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
+
+        this.mode = 'websocket';
+        this.emit('recoveredToWebSocket');
+    }
+
+
+    /**
      * Set up detection for stale blocks (no updates in 30+ seconds)
-     * This catches silent connection failures
+     * This is a safety net - the resilient WebSocket manager should handle most cases
      * @private
      */
     _setupStaleBlockDetection() {
@@ -144,9 +176,9 @@ class BlockMonitor extends EventEmitter {
             clearInterval(this.staleCheckInterval);
         }
 
-        // Check every 10 seconds if we've received blocks recently
-        this.staleCheckInterval = setInterval(() => {
-            if (!this.isRunning) return;
+        // Check every 15 seconds if we've received blocks recently
+        this.staleCheckInterval = setInterval(async () => {
+            if (!this.isRunning || this.mode !== 'websocket') return;
 
             const timeSinceLastBlock = Date.now() - this.lastBlockTime;
             const staleThreshold = 30000; // 30 seconds (BSC blocks are ~3s)
@@ -155,10 +187,14 @@ class BlockMonitor extends EventEmitter {
                 log.warn(`No new blocks for ${Math.round(timeSinceLastBlock / 1000)}s, connection may be stale`, {
                     lastBlock: this.lastBlockNumber,
                     lastBlockTime: new Date(this.lastBlockTime).toISOString(),
+                    mode: this.mode,
                 });
-                this.handleReconnect();
+
+                // Fall back to HTTP polling as safety net
+                // The ResilientWebSocketManager should recover, but this ensures we don't miss blocks
+                await this._handleAllWsDown();
             }
-        }, 10000);
+        }, 15000);
 
         // Don't prevent process exit
         this.staleCheckInterval.unref();
@@ -174,6 +210,7 @@ class BlockMonitor extends EventEmitter {
         // Log block info
         log.debug(`📦 New block: ${blockNumber}`, {
             timeSinceLastBlock: `${(timeSinceLastBlock / 1000).toFixed(1)}s`,
+            mode: this.mode,
         });
 
         // Emit event for listeners
@@ -186,53 +223,8 @@ class BlockMonitor extends EventEmitter {
         // Update tracking
         this.lastBlockNumber = blockNumber;
         this.lastBlockTime = now;
-
-        // Reset reconnect attempts on successful block
-        this.reconnectAttempts = 0;
     }
 
-    /**
-     * Handle reconnection with exponential backoff
-     * Uses iterative approach to avoid stack overflow from recursive calls
-     */
-    async handleReconnect() {
-        // Use while loop instead of recursion to prevent stack overflow
-        while (this.isRunning) {
-            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-                log.error(`Max reconnection attempts (${this.maxReconnectAttempts}) reached`);
-                this.emit('error', new Error('Max reconnection attempts reached'));
-                return;
-            }
-
-            this.reconnectAttempts++;
-            const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-
-            log.ws(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-
-            await this.sleep(delay);
-
-            // Check again after sleep in case stop() was called
-            if (!this.isRunning) {
-                return;
-            }
-
-            try {
-                // Clean up old provider
-                if (this.provider) {
-                    this.provider.removeAllListeners();
-                }
-
-                // Reconnect
-                await this.connect();
-                log.ws('✅ Reconnected successfully');
-                return; // Success - exit the loop
-
-            } catch (error) {
-                log.error('Reconnection failed', { error: error.message });
-                // Loop continues to next attempt
-            }
-        }
-    }
 
     /**
      * Stop monitoring blocks
@@ -243,6 +235,8 @@ class BlockMonitor extends EventEmitter {
         }
 
         this.isRunning = false;
+        const previousMode = this.mode;
+        this.mode = 'disconnected';
 
         try {
             // Stop stale block detection
@@ -257,13 +251,12 @@ class BlockMonitor extends EventEmitter {
                 this.pollingInterval = null;
             }
 
-            // Close WebSocket if active
-            if (this.provider) {
-                this.provider.removeAllListeners();
-                await this.provider.destroy();
-            }
+            // Unsubscribe from rpcManager events
+            rpcManager.off('block', this._boundHandleBlock);
+            rpcManager.off('wsAllDown', this._boundHandleAllDown);
+            rpcManager.off('endpointRecovered', this._boundHandleRecovery);
 
-            log.info('Block Monitor stopped');
+            log.info('Block Monitor stopped', { previousMode });
         } catch (error) {
             log.error('Error stopping Block Monitor', { error: error.message });
         }
@@ -282,18 +275,11 @@ class BlockMonitor extends EventEmitter {
     getStatus() {
         return {
             isRunning: this.isRunning,
+            mode: this.mode,
             lastBlockNumber: this.lastBlockNumber,
             lastBlockTime: this.lastBlockTime,
             timeSinceLastBlock: Date.now() - this.lastBlockTime,
-            reconnectAttempts: this.reconnectAttempts,
         };
-    }
-
-    /**
-     * Sleep utility
-     */
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }
 

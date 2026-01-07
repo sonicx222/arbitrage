@@ -87,7 +87,9 @@ src/
 │
 ├── utils/                    # Utilities
 │   ├── logger.js             # Winston logging
-│   └── rpcManager.js         # RPC connection management
+│   ├── rpcManager.js         # RPC connection management
+│   ├── resilientWebSocket.js # Single WS with heartbeat & circuit breaker
+│   └── resilientWebSocketManager.js # Multi-endpoint WS failover
 │
 ├── workers/                  # Worker thread infrastructure
 │   ├── ChainWorker.js        # Worker entry point
@@ -127,11 +129,12 @@ Each worker thread runs independently:
 
 ### 3. BlockMonitor (`src/monitoring/blockMonitor.js`)
 
-Per-chain block monitoring:
-- WebSocket subscription for new blocks
-- HTTP polling fallback
-- Block processing timeout handling
-- Reconnection logic
+Per-chain block monitoring with resilient WebSocket integration:
+- Subscribes to rpcManager's forwarded 'block' events
+- Benefits from ResilientWebSocketManager's automatic failover
+- HTTP polling fallback when all WS endpoints are down
+- Stale block detection as safety net (30s threshold)
+- Automatic recovery to WebSocket when endpoints recover
 
 ### 4. PriceFetcher (`src/data/priceFetcher.js`)
 
@@ -171,6 +174,7 @@ Real-time price monitoring via Sync events:
 - Sub-100ms detection latency (vs ~3s polling)
 - Block update tracking for cache coordination
 - Debouncing to prevent duplicate processing
+- Automatic re-subscription on WebSocket failover
 
 ### 9. AdaptivePrioritizer (`src/analysis/adaptivePrioritizer.js`)
 
@@ -212,6 +216,58 @@ Free mempool monitoring alternative:
 - Assesses competition before execution
 - Emits `whaleActivity` signals for prioritization
 - Import/export whale data for persistence
+
+### 14. WebSocket Resilience Layer
+
+The WebSocket infrastructure provides robust, self-healing connections:
+
+#### ResilientWebSocket (`src/utils/resilientWebSocket.js`)
+
+Single WebSocket connection with comprehensive resilience:
+- **Application-level heartbeats**: Uses `eth_blockNumber` calls every 15s
+- **Connection state machine**: disconnected → connecting → connected → reconnecting → circuit_open
+- **Circuit breaker pattern**: Opens after 10 failed reconnection attempts
+- **Exponential backoff with jitter**: Prevents thundering herd on reconnection
+- **Proactive refresh**: Reconnects every 30 minutes to prevent stale connections
+
+#### ResilientWebSocketManager (`src/utils/resilientWebSocketManager.js`)
+
+Multi-endpoint management with automatic failover:
+- **Health-based endpoint scoring**: Tracks latency and error rates
+- **Automatic failover**: Switches to best endpoint when primary fails
+- **Parallel connections**: Maintains backup connections for instant failover
+- **Event forwarding**: Aggregates block events from all connections
+- **Proactive primary switching**: Upgrades to better endpoint when available
+
+```
+WebSocket Architecture:
+┌─────────────────────────────────────────────────────────────────┐
+│                         rpcManager                               │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │           ResilientWebSocketManager                       │  │
+│  │  ┌──────────────────┐ ┌──────────────────┐               │  │
+│  │  │ ResilientWebSocket│ │ ResilientWebSocket│ (backup)    │  │
+│  │  │  (primary)       │ │                  │               │  │
+│  │  │  - Heartbeat     │ │  - Heartbeat     │               │  │
+│  │  │  - Circuit Breaker│ │  - Circuit Breaker│              │  │
+│  │  │  - Auto-reconnect │ │  - Auto-reconnect │              │  │
+│  │  └────────┬─────────┘ └────────┬─────────┘               │  │
+│  │           │                    │                          │  │
+│  │           └──────────┬─────────┘                          │  │
+│  │                      │ (failover)                         │  │
+│  │                      ▼                                    │  │
+│  │              Event Aggregation                            │  │
+│  │              (block, wsFailover, wsAllDown)               │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                             │                                    │
+│                             ▼                                    │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  Consumers: BlockMonitor, EventDrivenDetector, etc.       │  │
+│  │  - Subscribe to rpcManager events                          │  │
+│  │  - Automatic re-subscription on failover                   │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -353,7 +409,30 @@ rpc: {
         'https://public-rpc.com',     // Fallback 1
         'https://backup-rpc.com',     // Fallback 2
     ],
+    ws: [
+        process.env.ALCHEMY_WS_URL,  // Primary WebSocket
+        'wss://public-ws.com',        // Fallback WebSocket
+    ],
 }
+```
+
+### WebSocket Resilience
+
+ResilientWebSocketManager provides comprehensive failover:
+```
+Connection Lifecycle:
+1. Connect to primary endpoint
+2. Start heartbeat monitoring (15s interval)
+3. On heartbeat failure → attempt reconnection
+4. After 10 failures → circuit breaker opens (2min cooldown)
+5. Failover to backup endpoint
+6. Continue monitoring, proactively switch to better endpoint
+
+Events emitted by rpcManager:
+- 'block' → new block from primary endpoint
+- 'wsFailover' → switched to different endpoint
+- 'wsAllDown' → all endpoints failed (consumers should use HTTP)
+- 'endpointRecovered' → previously failed endpoint is healthy
 ```
 
 ### Graceful Degradation
@@ -418,4 +497,4 @@ const results = await multicall.aggregate([
 
 ---
 
-*Last Updated: 2026-01-07*
+*Last Updated: 2026-01-07 (Added WebSocket Resilience Layer)*

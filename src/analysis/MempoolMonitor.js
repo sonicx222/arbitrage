@@ -59,6 +59,10 @@ export default class MempoolMonitor extends EventEmitter {
         this.wsProvider = null;
         this.isMonitoring = false;
 
+        // Stale entry cleanup timer
+        this.cleanupTimer = null;
+        this.staleThresholdMs = 120000; // 2 minutes
+
         // Statistics
         this.stats = {
             txsProcessed: 0,
@@ -112,6 +116,14 @@ export default class MempoolMonitor extends EventEmitter {
             this.wsProvider.on('pending', async (txHash) => {
                 await this.processPendingTransaction(txHash);
             });
+
+            // Start periodic cleanup to prevent unbounded growth
+            // Runs every 30 seconds to remove stale entries
+            this.cleanupTimer = setInterval(() => {
+                this._cleanupStaleEntries();
+            }, 30000);
+            // Unref to not block process exit
+            this.cleanupTimer.unref?.();
 
             this.isMonitoring = true;
             log.info('Mempool monitoring started');
@@ -252,6 +264,11 @@ export default class MempoolMonitor extends EventEmitter {
      * @param {Object} swapInfo - Swap information
      */
     cachePendingSwap(txHash, swapInfo) {
+        // Clean stale entries periodically (every ~50 inserts)
+        if (this.pendingSwaps.size > 0 && this.pendingSwaps.size % 50 === 0) {
+            this._cleanupStaleEntries();
+        }
+
         // Evict old entries if cache is full
         if (this.pendingSwaps.size >= this.maxPendingSwaps) {
             // Remove oldest entry
@@ -260,6 +277,26 @@ export default class MempoolMonitor extends EventEmitter {
         }
 
         this.pendingSwaps.set(txHash, swapInfo);
+    }
+
+    /**
+     * Clean up stale entries from the pending swaps cache
+     * @private
+     */
+    _cleanupStaleEntries() {
+        const now = Date.now();
+        let cleaned = 0;
+
+        for (const [txHash, swap] of this.pendingSwaps) {
+            if (now - swap.timestamp > this.staleThresholdMs) {
+                this.pendingSwaps.delete(txHash);
+                cleaned++;
+            }
+        }
+
+        if (cleaned > 0) {
+            log.debug(`Mempool cache cleanup: removed ${cleaned} stale entries, ${this.pendingSwaps.size} remaining`);
+        }
     }
 
     /**
@@ -338,6 +375,12 @@ export default class MempoolMonitor extends EventEmitter {
      */
     stop() {
         if (!this.isMonitoring) return;
+
+        // Clear cleanup timer
+        if (this.cleanupTimer) {
+            clearInterval(this.cleanupTimer);
+            this.cleanupTimer = null;
+        }
 
         if (this.wsProvider) {
             this.wsProvider.removeAllListeners('pending');

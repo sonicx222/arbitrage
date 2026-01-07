@@ -98,7 +98,11 @@ class EventDrivenDetector extends EventEmitter {
         this.v3Enabled = config.eventDriven?.v3Enabled !== false; // Enabled by default
         this.maxV3PoolsToSubscribe = config.eventDriven?.maxV3Pools || 50;
 
-        log.info('EventDrivenDetector initialized', {
+        // Bound handlers for rpcManager events (for reconnection handling)
+        this._boundHandleWsFailover = this._handleWsFailover.bind(this);
+        this._boundHandleWsRecovery = this._handleWsRecovery.bind(this);
+
+        log.info('EventDrivenDetector initialized (resilient mode)', {
             enabled: this.enabled,
             maxPairs: this.maxPairsToSubscribe,
             swapEventsEnabled: this.swapEventsEnabled,
@@ -145,24 +149,15 @@ class EventDrivenDetector extends EventEmitter {
                 return false;
             }
 
-            // Subscribe to Sync events (for price updates)
-            await this.subscribeToSyncEvents();
+            // Subscribe to rpcManager events for reconnection handling
+            rpcManager.on('wsFailover', this._boundHandleWsFailover);
+            rpcManager.on('endpointRecovered', this._boundHandleWsRecovery);
 
-            // Subscribe to Swap events (for whale tracking)
-            if (this.swapEventsEnabled) {
-                await this.subscribeToSwapEvents();
-            }
-
-            // Subscribe to V3 Swap events (includes price data!)
-            if (this.v3Enabled) {
-                await this.buildV3PoolRegistry();
-                if (this.v3PoolRegistry.size > 0) {
-                    await this.subscribeToV3SwapEvents();
-                }
-            }
+            // Subscribe to all events
+            await this._subscribeToAllEvents();
 
             this.isRunning = true;
-            log.info('EventDrivenDetector started', {
+            log.info('EventDrivenDetector started (resilient mode)', {
                 pairsSubscribed: this.addressToPairInfo.size,
                 v3PoolsSubscribed: this.addressToV3PoolInfo.size,
                 swapEventsEnabled: this.swapEventsEnabled,
@@ -175,6 +170,80 @@ class EventDrivenDetector extends EventEmitter {
             log.error('Failed to start EventDrivenDetector', { error: error.message });
             this.stats.errors++;
             return false;
+        }
+    }
+
+    /**
+     * Subscribe to all events (Sync, Swap V2, V3)
+     * Called on start and when reconnecting
+     * @private
+     */
+    async _subscribeToAllEvents() {
+        // Subscribe to Sync events (for price updates)
+        await this.subscribeToSyncEvents();
+
+        // Subscribe to Swap events (for whale tracking)
+        if (this.swapEventsEnabled) {
+            await this.subscribeToSwapEvents();
+        }
+
+        // Subscribe to V3 Swap events (includes price data!)
+        if (this.v3Enabled) {
+            await this.buildV3PoolRegistry();
+            if (this.v3PoolRegistry.size > 0) {
+                await this.subscribeToV3SwapEvents();
+            }
+        }
+    }
+
+    /**
+     * Handle WebSocket failover event - update provider reference
+     * @private
+     */
+    async _handleWsFailover(data) {
+        if (!this.isRunning) return;
+
+        log.info('EventDrivenDetector handling WebSocket failover', {
+            from: data.from,
+            to: data.to,
+        });
+
+        // Get the new provider after failover
+        const wsData = rpcManager.getWsProvider();
+        if (wsData) {
+            this.wsProvider = wsData.provider;
+            // Re-subscribe to all events on the new provider
+            try {
+                await this._subscribeToAllEvents();
+                log.info('EventDrivenDetector re-subscribed to events after failover');
+            } catch (error) {
+                log.error('Failed to re-subscribe after failover', { error: error.message });
+                this.stats.errors++;
+            }
+        }
+    }
+
+    /**
+     * Handle WebSocket recovery event - re-subscribe if needed
+     * @private
+     */
+    async _handleWsRecovery(endpoint) {
+        if (!this.isRunning) return;
+
+        log.info('EventDrivenDetector handling WebSocket recovery');
+
+        // Get the recovered provider
+        const wsData = rpcManager.getWsProvider();
+        if (wsData && wsData.provider !== this.wsProvider) {
+            this.wsProvider = wsData.provider;
+            // Re-subscribe to all events on the recovered provider
+            try {
+                await this._subscribeToAllEvents();
+                log.info('EventDrivenDetector re-subscribed to events after recovery');
+            } catch (error) {
+                log.error('Failed to re-subscribe after recovery', { error: error.message });
+                this.stats.errors++;
+            }
         }
     }
 
@@ -1240,6 +1309,10 @@ class EventDrivenDetector extends EventEmitter {
         this.isRunning = false;
 
         try {
+            // Unsubscribe from rpcManager events
+            rpcManager.off('wsFailover', this._boundHandleWsFailover);
+            rpcManager.off('endpointRecovered', this._boundHandleWsRecovery);
+
             if (this.wsProvider) {
                 // Remove all listeners for Sync, Swap V2, and V3 events
                 this.wsProvider.removeAllListeners();

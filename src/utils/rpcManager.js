@@ -2,10 +2,17 @@ import { ethers } from 'ethers';
 import { EventEmitter } from 'events';
 import config from '../config.js';
 import log from './logger.js';
+import { ResilientWebSocketManager } from './resilientWebSocketManager.js';
 
 /**
  * Smart RPC Manager with automatic failover, rate limiting, health checking,
  * and self-healing recovery for temporarily failed endpoints.
+ *
+ * Now uses ResilientWebSocketManager for WebSocket connections with:
+ * - Application-level heartbeats
+ * - Circuit breaker pattern
+ * - Automatic failover between endpoints
+ * - Connection health scoring
  */
 class RPCManager extends EventEmitter {
     constructor() {
@@ -18,7 +25,11 @@ class RPCManager extends EventEmitter {
         this.httpProviders = [];
         this.currentHttpIndex = 0;
 
-        // WebSocket providers pool
+        // WebSocket management via ResilientWebSocketManager
+        this.wsManager = null;
+        this.wsManagerInitialized = false;
+
+        // Legacy: Keep wsProviders for backward compatibility during transition
         this.wsProviders = [];
         this.currentWsIndex = 0;
 
@@ -26,7 +37,7 @@ class RPCManager extends EventEmitter {
         this.requestCounts = new Map(); // endpoint -> { count, resetTime }
         this.maxRequestsPerMinute = config.rpc.maxRequestsPerMinute;
 
-        // Health tracking
+        // Health tracking (primarily for HTTP now, WS handled by manager)
         this.endpointHealth = new Map(); // endpoint -> { healthy, lastCheck, failures, unhealthySince }
 
         // Self-healing configuration
@@ -40,9 +51,10 @@ class RPCManager extends EventEmitter {
         // Start self-healing background task
         this.startSelfHealing();
 
-        log.info(`RPC Manager initialized with ${this.httpProviders.length} HTTP and ${this.wsProviders.length} WebSocket endpoints`, {
+        log.info(`RPC Manager initialized with ${this.httpProviders.length} HTTP and ${this.wsEndpoints.length} WebSocket endpoints`, {
             selfHealing: true,
             healingInterval: '5 minutes',
+            resilientWebSocket: true,
         });
     }
 
@@ -62,12 +74,77 @@ class RPCManager extends EventEmitter {
             }
         });
 
-        // WebSocket Providers - with error handling
+        // Initialize ResilientWebSocketManager for WebSocket connections
+        // This is done lazily on first getWsProvider() call to avoid blocking constructor
+        this._initWsManagerAsync();
+    }
+
+    /**
+     * Initialize WebSocket manager asynchronously
+     * @private
+     */
+    async _initWsManagerAsync() {
+        if (this.wsManagerInitialized || this.wsEndpoints.length === 0) {
+            return;
+        }
+
+        try {
+            this.wsManager = new ResilientWebSocketManager({
+                maxConcurrentConnections: Math.min(2, this.wsEndpoints.length),
+                wsOptions: {
+                    heartbeatIntervalMs: 15000,
+                    heartbeatTimeoutMs: 5000,
+                    reconnectBaseDelayMs: 1000,
+                    reconnectMaxDelayMs: 30000,
+                    maxReconnectAttempts: 10,
+                    circuitBreakerCooldownMs: 120000,
+                    proactiveRefreshMs: 30 * 60 * 1000, // Refresh every 30 min
+                },
+            });
+
+            // Forward events from WS manager
+            this.wsManager.on('block', (blockNumber) => {
+                this.emit('block', blockNumber);
+            });
+
+            this.wsManager.on('failover', (data) => {
+                log.warn('WebSocket failover occurred', data);
+                this.emit('wsFailover', data);
+            });
+
+            this.wsManager.on('allEndpointsDown', () => {
+                log.error('All WebSocket endpoints are down');
+                this.emit('wsAllDown');
+            });
+
+            this.wsManager.on('circuitOpen', (data) => {
+                this.emit('wsCircuitOpen', data);
+            });
+
+            // Initialize with configured endpoints
+            await this.wsManager.initialize(this.wsEndpoints, config.network.chainId);
+            this.wsManagerInitialized = true;
+
+            log.info('ResilientWebSocketManager initialized successfully');
+        } catch (error) {
+            log.error('Failed to initialize ResilientWebSocketManager', { error: error.message });
+            // Fall back to legacy initialization
+            this._initLegacyWsProviders();
+        }
+    }
+
+    /**
+     * Legacy WebSocket initialization (fallback if ResilientWebSocketManager fails)
+     * @private
+     */
+    _initLegacyWsProviders() {
+        log.warn('Using legacy WebSocket initialization');
+
         this.wsEndpoints.forEach((endpoint, index) => {
             try {
                 const provider = new ethers.WebSocketProvider(endpoint, config.network.chainId);
 
-                // Set up error handlers immediately to prevent crashes
+                // Set up error handlers
                 if (provider._websocket) {
                     provider._websocket.on('error', (error) => {
                         log.debug(`WebSocket error on ${endpoint}: ${error.message}`);
@@ -80,7 +157,6 @@ class RPCManager extends EventEmitter {
                     });
                 }
 
-                // Also handle provider-level errors
                 provider.on('error', (error) => {
                     log.debug(`Provider error on ${endpoint}: ${error.message}`);
                     this.markEndpointUnhealthy(endpoint);
@@ -89,9 +165,9 @@ class RPCManager extends EventEmitter {
                 this.wsProviders.push({ endpoint, provider, index });
                 this.endpointHealth.set(endpoint, { healthy: true, lastCheck: Date.now(), failures: 0 });
 
-                log.debug(`WebSocket Provider ${index} initialized: ${endpoint}`);
+                log.debug(`Legacy WebSocket Provider ${index} initialized: ${endpoint}`);
             } catch (error) {
-                log.error(`Failed to initialize WebSocket provider ${index}: ${endpoint}`, { error: error.message });
+                log.error(`Failed to initialize WebSocket provider ${index}`, { error: error.message });
             }
         });
     }
@@ -127,30 +203,63 @@ class RPCManager extends EventEmitter {
     }
 
     /**
-     * Get a healthy WebSocket provider with priority for Alchemy
+     * Get a healthy WebSocket provider
+     * Uses ResilientWebSocketManager for automatic failover and health management
+     * @returns {Object|null} { provider, endpoint, index } or null
      */
     getWsProvider() {
-        // Priority for Alchemy
-        const alchemyUrl = config.rpc.alchemy.ws;
-        if (alchemyUrl && this.endpointHealth.get(alchemyUrl)?.healthy) {
-            const providerData = this.wsProviders.find(p => p.endpoint === alchemyUrl);
-            if (providerData) return providerData;
+        // Use ResilientWebSocketManager if initialized
+        if (this.wsManagerInitialized && this.wsManager) {
+            return this.wsManager.getWsProvider();
         }
 
-        const healthyProviders = this.wsProviders.filter(p =>
-            this.endpointHealth.get(p.endpoint)?.healthy !== false
-        );
+        // Fallback to legacy providers if manager not ready
+        if (this.wsProviders.length > 0) {
+            // Priority for Alchemy
+            const alchemyUrl = config.rpc?.alchemy?.ws;
+            if (alchemyUrl && this.endpointHealth.get(alchemyUrl)?.healthy) {
+                const providerData = this.wsProviders.find(p => p.endpoint === alchemyUrl);
+                if (providerData) return providerData;
+            }
 
-        if (healthyProviders.length === 0) {
-            log.warn('All WebSocket providers marked unhealthy, resetting...');
-            this.wsProviders.forEach(p => {
-                const health = this.endpointHealth.get(p.endpoint);
-                if (health) health.healthy = true;
-            });
-            return this.wsProviders[0];
+            const healthyProviders = this.wsProviders.filter(p =>
+                this.endpointHealth.get(p.endpoint)?.healthy !== false
+            );
+
+            if (healthyProviders.length === 0) {
+                log.warn('All WebSocket providers marked unhealthy, resetting...');
+                this.wsProviders.forEach(p => {
+                    const health = this.endpointHealth.get(p.endpoint);
+                    if (health) health.healthy = true;
+                });
+                return this.wsProviders[0];
+            }
+
+            return healthyProviders[0];
         }
 
-        return healthyProviders[0];
+        return null;
+    }
+
+    /**
+     * Ensure WebSocket manager is initialized
+     * Call this before operations that require WebSocket
+     * @returns {Promise<boolean>} true if manager is ready
+     */
+    async ensureWsReady() {
+        if (this.wsManagerInitialized) {
+            return true;
+        }
+
+        // Wait for async initialization with timeout
+        const maxWait = 10000;
+        const startTime = Date.now();
+
+        while (!this.wsManagerInitialized && Date.now() - startTime < maxWait) {
+            await this.sleep(100);
+        }
+
+        return this.wsManagerInitialized;
     }
 
     /**
@@ -190,11 +299,12 @@ class RPCManager extends EventEmitter {
      */
     async withRetry(fn, maxRetries = config.rpc.retryAttempts) {
         let lastError = new Error('No successful RPC attempts');
+        let currentProviderData = null; // Track provider for error handling
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                const providerData = this.getHttpProvider();
-                const { provider, endpoint } = providerData;
+                currentProviderData = this.getHttpProvider();
+                const { provider, endpoint } = currentProviderData;
 
                 // Check rate limiting
                 if (!this.canMakeRequest(endpoint)) {
@@ -220,7 +330,7 @@ class RPCManager extends EventEmitter {
                 lastError = error;
 
                 // Get the endpoint that was actually used for this failed request
-                const failedEndpoint = providerData?.endpoint;
+                const failedEndpoint = currentProviderData?.endpoint;
 
                 log.rpc(`Request failed (attempt ${attempt + 1}/${maxRetries})`, {
                     error: error.message,
@@ -402,7 +512,7 @@ class RPCManager extends EventEmitter {
         const now = Date.now();
         const unhealthyEndpoints = [];
 
-        // Collect unhealthy endpoint info
+        // Collect unhealthy HTTP endpoint info
         this.endpointHealth.forEach((health, endpoint) => {
             if (!health.healthy) {
                 unhealthyEndpoints.push({
@@ -420,10 +530,13 @@ class RPCManager extends EventEmitter {
                 total: this.httpProviders.length,
                 healthy: this.httpProviders.filter(p => this.endpointHealth.get(p.endpoint)?.healthy !== false).length,
             },
-            ws: {
-                total: this.wsProviders.length,
-                healthy: this.wsProviders.filter(p => this.endpointHealth.get(p.endpoint)?.healthy !== false).length,
-            },
+            ws: this.wsManagerInitialized && this.wsManager
+                ? this.wsManager.getStatus()
+                : {
+                    total: this.wsProviders.length,
+                    healthy: this.wsProviders.filter(p => this.endpointHealth.get(p.endpoint)?.healthy !== false).length,
+                    legacy: true,
+                },
             selfHealing: {
                 enabled: this.healingInterval !== null,
                 intervalMs: this.healingIntervalMs,
@@ -494,7 +607,16 @@ class RPCManager extends EventEmitter {
         // Stop self-healing
         this.stopSelfHealing();
 
-        // Close WebSocket connections
+        // Disconnect WebSocket manager if using resilient mode
+        if (this.wsManager) {
+            try {
+                await this.wsManager.disconnect();
+            } catch (error) {
+                log.error('Error disconnecting WebSocket manager', { error: error.message });
+            }
+        }
+
+        // Close legacy WebSocket connections if any
         for (const { provider } of this.wsProviders) {
             try {
                 await provider.destroy();

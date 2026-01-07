@@ -97,23 +97,59 @@ class V3PriceFetcher {
      * V3 stores price as: sqrtPriceX96 = sqrt(price) * 2^96
      * To get price: price = (sqrtPriceX96 / 2^96)^2
      *
+     * IMPORTANT: Uses BigInt arithmetic to avoid precision loss when converting
+     * large sqrtPriceX96 values (up to 160 bits) that exceed Number.MAX_SAFE_INTEGER.
+     *
      * @param {BigInt} sqrtPriceX96 - sqrt price from slot0
      * @param {number} decimals0 - Decimals of token0
      * @param {number} decimals1 - Decimals of token1
      * @returns {number} Price of token0 in terms of token1
      */
     sqrtPriceX96ToPrice(sqrtPriceX96, decimals0, decimals1) {
-        // price = (sqrtPriceX96 / 2^96)^2 * (10^decimals0 / 10^decimals1)
-        const sqrtPrice = Number(sqrtPriceX96) / Number(this.Q96);
-        const price = sqrtPrice * sqrtPrice;
+        if (sqrtPriceX96 === 0n) return 0;
 
-        // Adjust for decimal difference
-        const decimalAdjustment = Math.pow(10, decimals0 - decimals1);
-        return price * decimalAdjustment;
+        // price = (sqrtPriceX96)^2 / (2^192) * 10^(decimals0 - decimals1)
+        //
+        // Use BigInt arithmetic throughout to maintain precision for large values.
+        // sqrtPriceX96 can be up to ~160 bits, exceeding Number.MAX_SAFE_INTEGER (53 bits).
+        //
+        // Algorithm:
+        // 1. Compute numerator: sqrtPriceX96^2 * 10^PRECISION_DIGITS
+        // 2. Apply decimal adjustment in BigInt
+        // 3. Divide by Q192
+        // 4. Convert final (smaller) result to Number
+
+        const PRECISION_DIGITS = 18n;
+        const precisionFactor = 10n ** PRECISION_DIGITS;
+
+        // sqrtPriceX96^2 can be up to 320 bits - BigInt handles this
+        const sqrtPriceSquared = sqrtPriceX96 * sqrtPriceX96;
+
+        // Handle decimal adjustment with BigInt to avoid Number overflow
+        const decimalDiff = decimals0 - decimals1;
+
+        let numerator = sqrtPriceSquared * precisionFactor;
+        let denominator = this.Q192;
+
+        // Apply decimal adjustment
+        if (decimalDiff > 0) {
+            numerator *= 10n ** BigInt(decimalDiff);
+        } else if (decimalDiff < 0) {
+            denominator *= 10n ** BigInt(-decimalDiff);
+        }
+
+        // After division, result should be in reasonable range
+        const priceScaled = numerator / denominator;
+
+        // Convert to float - priceScaled should be reasonable (price * 10^18)
+        return Number(priceScaled) / Number(precisionFactor);
     }
 
     /**
      * Convert price to sqrtPriceX96 (for limit orders/simulations)
+     *
+     * IMPORTANT: Uses BigInt arithmetic to avoid precision loss.
+     * Number(Q96) exceeds MAX_SAFE_INTEGER and would cause precision errors.
      *
      * @param {number} price - Human-readable price
      * @param {number} decimals0 - Decimals of token0
@@ -121,10 +157,61 @@ class V3PriceFetcher {
      * @returns {BigInt} sqrtPriceX96
      */
     priceToSqrtPriceX96(price, decimals0, decimals1) {
-        const decimalAdjustment = Math.pow(10, decimals1 - decimals0);
-        const adjustedPrice = price * decimalAdjustment;
-        const sqrtPrice = Math.sqrt(adjustedPrice);
-        return BigInt(Math.floor(sqrtPrice * Number(this.Q96)));
+        if (price <= 0) return 0n;
+
+        // sqrtPriceX96 = sqrt(price * 10^(decimals1 - decimals0)) * 2^96
+        //
+        // To maintain precision:
+        // 1. Scale price to BigInt with precision factor
+        // 2. Apply decimal adjustment
+        // 3. Take square root (using Newton's method on BigInt)
+        // 4. Scale by Q96
+
+        const decimalDiff = decimals1 - decimals0;
+        const PRECISION = 36; // High precision for sqrt calculation
+
+        // Scale price to BigInt
+        let scaledPrice = BigInt(Math.floor(price * Math.pow(10, PRECISION)));
+
+        // Apply decimal adjustment
+        if (decimalDiff > 0) {
+            scaledPrice *= 10n ** BigInt(decimalDiff);
+        } else if (decimalDiff < 0) {
+            scaledPrice /= 10n ** BigInt(-decimalDiff);
+        }
+
+        // sqrt(scaledPrice) = sqrt(price * 10^PRECISION * 10^decimalDiff)
+        // We need sqrt(price * 10^decimalDiff) * Q96
+        // = sqrt(scaledPrice / 10^PRECISION) * Q96
+        // = sqrt(scaledPrice) * Q96 / sqrt(10^PRECISION)
+        // = sqrt(scaledPrice) * Q96 / 10^(PRECISION/2)
+
+        const sqrtScaledPrice = this._bigIntSqrt(scaledPrice);
+        const precisionDivisor = 10n ** BigInt(PRECISION / 2);
+
+        return (sqrtScaledPrice * this.Q96) / precisionDivisor;
+    }
+
+    /**
+     * BigInt square root using Newton's method
+     * @private
+     * @param {BigInt} n - Value to take square root of
+     * @returns {BigInt} Floor of square root
+     */
+    _bigIntSqrt(n) {
+        if (n < 0n) throw new Error('Square root of negative number');
+        if (n < 2n) return n;
+
+        // Newton's method: x_{n+1} = (x_n + n/x_n) / 2
+        let x = n;
+        let y = (x + 1n) / 2n;
+
+        while (y < x) {
+            x = y;
+            y = (x + n / x) / 2n;
+        }
+
+        return x;
     }
 
     /**

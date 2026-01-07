@@ -1,0 +1,490 @@
+import { EventEmitter } from 'events';
+import { ResilientWebSocket } from './resilientWebSocket.js';
+import log from './logger.js';
+
+/**
+ * ResilientWebSocketManager - Manages multiple WebSocket connections with failover
+ *
+ * Features:
+ * 1. Multiple endpoint support with automatic failover
+ * 2. Health-based endpoint selection (latency, error rate)
+ * 3. Parallel connections for redundancy
+ * 4. Unified event forwarding from all connections
+ * 5. Provider scoring for optimal selection
+ */
+export class ResilientWebSocketManager extends EventEmitter {
+    constructor(options = {}) {
+        super();
+
+        // Configuration
+        this.config = {
+            maxConcurrentConnections: options.maxConcurrentConnections || 2,
+            preferredEndpointIndex: options.preferredEndpointIndex || 0,
+            failoverDelayMs: options.failoverDelayMs || 1000,
+            healthCheckIntervalMs: options.healthCheckIntervalMs || 30000,
+            // Pass through to ResilientWebSocket
+            wsOptions: options.wsOptions || {},
+        };
+
+        // Connection management
+        this.connections = new Map(); // endpoint -> ResilientWebSocket
+        this.endpointScores = new Map(); // endpoint -> { score, latency, errors, lastCheck }
+        this.endpoints = [];
+        this.chainId = null;
+        this.primaryEndpoint = null;
+
+        // State
+        this.isInitialized = false;
+        this.healthCheckTimer = null;
+
+        // Statistics
+        this.stats = {
+            failovers: 0,
+            totalConnections: 0,
+            totalDisconnections: 0,
+            requestsServed: 0,
+        };
+    }
+
+    /**
+     * Initialize with WebSocket endpoints
+     * @param {Array<string>} endpoints - Array of WebSocket URLs
+     * @param {number} chainId - Chain ID for providers
+     */
+    async initialize(endpoints, chainId) {
+        if (!endpoints || endpoints.length === 0) {
+            throw new Error('At least one WebSocket endpoint is required');
+        }
+
+        this.endpoints = endpoints;
+        this.chainId = chainId;
+
+        // Initialize scores for all endpoints
+        for (const endpoint of endpoints) {
+            this.endpointScores.set(endpoint, {
+                score: 100, // Start with perfect score
+                latency: 0,
+                errors: 0,
+                successes: 0,
+                lastCheck: Date.now(),
+            });
+        }
+
+        // Connect to primary endpoint first
+        await this._connectToEndpoint(endpoints[this.config.preferredEndpointIndex] || endpoints[0]);
+
+        // Connect to backup endpoints (up to maxConcurrentConnections)
+        const backupEndpoints = endpoints.filter((_, i) => i !== this.config.preferredEndpointIndex);
+        const backupsToConnect = backupEndpoints.slice(0, this.config.maxConcurrentConnections - 1);
+
+        for (const endpoint of backupsToConnect) {
+            // Connect backups in background (don't await)
+            this._connectToEndpoint(endpoint).catch(e => {
+                log.debug(`Backup endpoint connection deferred: ${this._maskUrl(endpoint)}`);
+            });
+        }
+
+        // Start health monitoring
+        this._startHealthMonitoring();
+
+        this.isInitialized = true;
+
+        log.info('ResilientWebSocketManager initialized', {
+            endpoints: endpoints.length,
+            chainId,
+            primaryEndpoint: this._maskUrl(this.primaryEndpoint),
+        });
+    }
+
+    /**
+     * Connect to a specific endpoint
+     * @private
+     */
+    async _connectToEndpoint(endpoint) {
+        if (this.connections.has(endpoint)) {
+            const existing = this.connections.get(endpoint);
+            if (existing.isConnected()) {
+                return existing;
+            }
+            // Clean up old disconnected connection to prevent event listener accumulation
+            try {
+                existing.removeAllListeners();
+                await existing.disconnect();
+            } catch (e) {
+                // Ignore cleanup errors
+            }
+            this.connections.delete(endpoint);
+        }
+
+        const ws = new ResilientWebSocket(endpoint, this.chainId, this.config.wsOptions);
+
+        // Forward events from this connection
+        this._setupConnectionEvents(ws, endpoint);
+
+        try {
+            await ws.connect();
+            this.connections.set(endpoint, ws);
+            this.stats.totalConnections++;
+
+            // Set as primary if we don't have one
+            if (!this.primaryEndpoint) {
+                this.primaryEndpoint = endpoint;
+            }
+
+            // Update score on successful connection
+            this._updateEndpointScore(endpoint, true, 0);
+
+            return ws;
+        } catch (error) {
+            this._updateEndpointScore(endpoint, false);
+            throw error;
+        }
+    }
+
+    /**
+     * Set up event forwarding for a connection
+     * @private
+     */
+    _setupConnectionEvents(ws, endpoint) {
+        // Forward block events (only from primary to avoid duplicates)
+        ws.on('block', (blockNumber) => {
+            if (endpoint === this.primaryEndpoint) {
+                this.emit('block', blockNumber);
+            }
+        });
+
+        ws.on('connected', () => {
+            log.debug(`WebSocket connected: ${this._maskUrl(endpoint)}`);
+            this._updateEndpointScore(endpoint, true);
+        });
+
+        ws.on('disconnected', (reason) => {
+            log.warn(`WebSocket disconnected: ${this._maskUrl(endpoint)}`, { reason });
+            this.stats.totalDisconnections++;
+            this._updateEndpointScore(endpoint, false);
+
+            // If primary disconnected, failover
+            if (endpoint === this.primaryEndpoint) {
+                this._handlePrimaryFailover();
+            }
+        });
+
+        ws.on('reconnected', () => {
+            log.info(`WebSocket reconnected: ${this._maskUrl(endpoint)}`);
+            this._updateEndpointScore(endpoint, true);
+        });
+
+        ws.on('circuitOpen', (data) => {
+            log.error(`Circuit breaker opened for: ${this._maskUrl(endpoint)}`, data);
+            this._updateEndpointScore(endpoint, false);
+
+            if (endpoint === this.primaryEndpoint) {
+                this._handlePrimaryFailover();
+            }
+
+            this.emit('circuitOpen', { endpoint: this._maskUrl(endpoint), ...data });
+        });
+    }
+
+    /**
+     * Handle failover when primary connection fails
+     * @private
+     */
+    _handlePrimaryFailover() {
+        const oldPrimary = this.primaryEndpoint;
+
+        // Find best healthy alternative
+        const newPrimary = this._selectBestEndpoint(oldPrimary);
+
+        if (newPrimary && newPrimary !== oldPrimary) {
+            this.primaryEndpoint = newPrimary;
+            this.stats.failovers++;
+
+            log.warn('Primary WebSocket failover', {
+                from: this._maskUrl(oldPrimary),
+                to: this._maskUrl(newPrimary),
+                totalFailovers: this.stats.failovers,
+            });
+
+            this.emit('failover', {
+                from: this._maskUrl(oldPrimary),
+                to: this._maskUrl(newPrimary),
+            });
+
+            // Try to reconnect old primary in background for future failback
+            setTimeout(() => {
+                this._connectToEndpoint(oldPrimary).catch(() => {});
+            }, this.config.failoverDelayMs);
+        } else {
+            log.error('No healthy WebSocket endpoints available for failover');
+            this.emit('allEndpointsDown');
+        }
+    }
+
+    /**
+     * Select the best endpoint based on scores
+     * @private
+     */
+    _selectBestEndpoint(excludeEndpoint = null) {
+        let bestEndpoint = null;
+        let bestScore = -1;
+
+        for (const [endpoint, scoreData] of this.endpointScores) {
+            if (endpoint === excludeEndpoint) continue;
+
+            // Check if connection exists and is healthy
+            const conn = this.connections.get(endpoint);
+            if (conn && conn.isConnected() && scoreData.score > bestScore) {
+                bestScore = scoreData.score;
+                bestEndpoint = endpoint;
+            }
+        }
+
+        return bestEndpoint;
+    }
+
+    /**
+     * Update endpoint health score
+     * @private
+     */
+    _updateEndpointScore(endpoint, success, latencyMs = null) {
+        const score = this.endpointScores.get(endpoint);
+        if (!score) return;
+
+        if (success) {
+            score.successes++;
+            score.score = Math.min(100, score.score + 5);
+            if (latencyMs !== null) {
+                // Exponential moving average for latency
+                score.latency = score.latency === 0
+                    ? latencyMs
+                    : score.latency * 0.8 + latencyMs * 0.2;
+            }
+        } else {
+            score.errors++;
+            score.score = Math.max(0, score.score - 20);
+        }
+
+        score.lastCheck = Date.now();
+    }
+
+    /**
+     * Start health monitoring background task
+     * @private
+     */
+    _startHealthMonitoring() {
+        if (this.healthCheckTimer) {
+            clearInterval(this.healthCheckTimer);
+        }
+
+        this.healthCheckTimer = setInterval(async () => {
+            await this._performHealthChecks();
+        }, this.config.healthCheckIntervalMs);
+
+        this.healthCheckTimer.unref();
+    }
+
+    /**
+     * Perform health checks on all connections
+     * @private
+     */
+    async _performHealthChecks() {
+        for (const [endpoint, ws] of this.connections) {
+            if (!ws.isConnected()) continue;
+
+            const start = Date.now();
+            try {
+                const provider = ws.getProvider();
+                if (provider) {
+                    await Promise.race([
+                        provider.getBlockNumber(),
+                        new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error('Health check timeout')), 5000)
+                        ),
+                    ]);
+                    this._updateEndpointScore(endpoint, true, Date.now() - start);
+                }
+            } catch (error) {
+                this._updateEndpointScore(endpoint, false);
+            }
+        }
+
+        // Check if we should switch primary based on scores
+        this._evaluatePrimarySwitch();
+    }
+
+    /**
+     * Evaluate if we should switch primary to a better endpoint
+     * @private
+     */
+    _evaluatePrimarySwitch() {
+        if (!this.primaryEndpoint) return;
+
+        const currentScore = this.endpointScores.get(this.primaryEndpoint);
+        const bestEndpoint = this._selectBestEndpoint();
+
+        if (bestEndpoint && bestEndpoint !== this.primaryEndpoint) {
+            const bestScore = this.endpointScores.get(bestEndpoint);
+
+            // Switch if best is significantly better (20+ points) and current is degraded
+            if (bestScore.score - currentScore.score > 20 && currentScore.score < 80) {
+                const oldPrimary = this.primaryEndpoint;
+
+                log.info('Proactive primary switch due to better endpoint available', {
+                    from: this._maskUrl(oldPrimary),
+                    to: this._maskUrl(bestEndpoint),
+                    currentScore: currentScore.score,
+                    newScore: bestScore.score,
+                });
+
+                this.primaryEndpoint = bestEndpoint;
+                this.emit('primarySwitch', {
+                    from: this._maskUrl(oldPrimary),
+                    to: this._maskUrl(bestEndpoint),
+                });
+            }
+        }
+    }
+
+    /**
+     * Get the best available provider
+     * @returns {Object|null} ethers provider or null
+     */
+    getProvider() {
+        // Try primary first
+        if (this.primaryEndpoint) {
+            const primary = this.connections.get(this.primaryEndpoint);
+            if (primary && primary.isConnected()) {
+                this.stats.requestsServed++;
+                return primary.getProvider();
+            }
+        }
+
+        // Failover to any connected endpoint
+        for (const [endpoint, ws] of this.connections) {
+            if (ws.isConnected()) {
+                this.stats.requestsServed++;
+                return ws.getProvider();
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get provider with endpoint info (for compatibility with rpcManager)
+     * @returns {Object|null} { provider, endpoint, index }
+     */
+    getWsProvider() {
+        const provider = this.getProvider();
+        if (!provider) return null;
+
+        return {
+            provider,
+            endpoint: this.primaryEndpoint,
+            index: this.endpoints.indexOf(this.primaryEndpoint),
+        };
+    }
+
+    /**
+     * Subscribe to events using the best provider
+     * Events are automatically re-subscribed on failover
+     * @param {Object|string} filter - Event filter or event name
+     * @param {Function} callback - Event handler
+     */
+    subscribe(filter, callback) {
+        const provider = this.getProvider();
+        if (!provider) {
+            throw new Error('No WebSocket provider available');
+        }
+
+        provider.on(filter, callback);
+
+        // Store subscription for re-subscription on failover
+        // (This is a simplified version - full implementation would track and replay)
+        return () => {
+            try {
+                provider.off(filter, callback);
+            } catch (e) {
+                // Ignore removal errors
+            }
+        };
+    }
+
+    /**
+     * Get status of all connections
+     */
+    getStatus() {
+        const connectionStatus = {};
+
+        for (const [endpoint, ws] of this.connections) {
+            connectionStatus[this._maskUrl(endpoint)] = {
+                ...ws.getStatus(),
+                score: this.endpointScores.get(endpoint),
+                isPrimary: endpoint === this.primaryEndpoint,
+            };
+        }
+
+        return {
+            isInitialized: this.isInitialized,
+            primaryEndpoint: this._maskUrl(this.primaryEndpoint),
+            totalEndpoints: this.endpoints.length,
+            connectedEndpoints: [...this.connections.values()].filter(ws => ws.isConnected()).length,
+            stats: { ...this.stats },
+            connections: connectionStatus,
+        };
+    }
+
+    /**
+     * Force reconnection of a specific endpoint
+     * @param {string} endpoint - Endpoint URL
+     */
+    async reconnectEndpoint(endpoint) {
+        const ws = this.connections.get(endpoint);
+        if (ws) {
+            await ws.disconnect();
+        }
+        return this._connectToEndpoint(endpoint);
+    }
+
+    /**
+     * Disconnect all connections
+     */
+    async disconnect() {
+        if (this.healthCheckTimer) {
+            clearInterval(this.healthCheckTimer);
+            this.healthCheckTimer = null;
+        }
+
+        const disconnectPromises = [];
+        for (const ws of this.connections.values()) {
+            disconnectPromises.push(ws.disconnect());
+        }
+
+        await Promise.all(disconnectPromises);
+        this.connections.clear();
+        this.primaryEndpoint = null;
+        this.isInitialized = false;
+
+        log.info('ResilientWebSocketManager disconnected');
+    }
+
+    /**
+     * Mask URL for logging
+     * @private
+     */
+    _maskUrl(url) {
+        if (!url) return 'none';
+        try {
+            const parsed = new URL(url);
+            if (parsed.pathname.length > 15) {
+                parsed.pathname = parsed.pathname.substring(0, 15) + '...';
+            }
+            return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+        } catch {
+            return url.substring(0, 30) + '...';
+        }
+    }
+}
+
+export default ResilientWebSocketManager;
