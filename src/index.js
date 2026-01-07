@@ -10,6 +10,8 @@ import executionManager from './execution/executionManager.js';
 import eventDrivenDetector from './monitoring/eventDrivenDetector.js';
 import adaptivePrioritizer from './analysis/adaptivePrioritizer.js';
 import reserveDifferentialAnalyzer from './analysis/reserveDifferentialAnalyzer.js';
+import crossPoolCorrelation from './analysis/crossPoolCorrelation.js';
+import dexAggregator from './analysis/dexAggregator.js';
 import config from './config.js';
 import log from './utils/logger.js';
 import { formatChain, formatUSD, formatPercent } from './utils/logFormatter.js';
@@ -132,6 +134,15 @@ class ArbitrageBot {
         adaptivePrioritizer.start();
         log.info('Adaptive pair prioritization started');
 
+        // Start cross-pool correlation tracking
+        crossPoolCorrelation.start();
+        log.info('Cross-pool correlation tracking started');
+
+        // Initialize DEX aggregator with chain ID
+        const chainId = config.chainId || 56;
+        dexAggregator.initialize(chainId);
+        log.info('DEX aggregator initialized', { chainId });
+
         // Start event-driven detection (real-time Sync event monitoring)
         if (config.eventDriven?.enabled !== false) {
             const eventDrivenStarted = await eventDrivenDetector.start();
@@ -235,13 +246,36 @@ class ArbitrageBot {
             // First, run reserve differential analysis (detects cross-DEX lag opportunities)
             const differentialResult = reserveDifferentialAnalyzer.processReserveUpdate(data);
 
+            // Record price update for cross-pool correlation tracking
+            if (data.price) {
+                crossPoolCorrelation.recordPriceUpdate({
+                    pairKey: data.pairKey,
+                    dexName: data.dexName,
+                    price: data.price,
+                    blockNumber: data.blockNumber,
+                });
+
+                // Process correlation and emit checkCorrelated events
+                crossPoolCorrelation.processReserveUpdate(data);
+            }
+
             // Then run standard arbitrage detection
             await this.handleReserveUpdate(data);
+        });
+
+        // Handle correlated pool checks from cross-pool correlation
+        crossPoolCorrelation.on('checkCorrelated', async (correlationData) => {
+            await this.handleCorrelatedPoolCheck(correlationData);
         });
 
         // Handle correlated opportunities from differential analysis
         reserveDifferentialAnalyzer.on('correlatedOpportunity', async (data) => {
             await this.handleDifferentialOpportunity(data);
+        });
+
+        // Handle DEX aggregator arbitrage opportunities
+        dexAggregator.on('opportunity', async (opportunity) => {
+            await this.handleAggregatorOpportunity(opportunity);
         });
 
         // Log price changes at debug level
@@ -301,6 +335,120 @@ class ArbitrageBot {
             } else {
                 dashboard.recordExecution(false);
             }
+        }
+    }
+
+    /**
+     * Handle correlated pool check from cross-pool correlation
+     * When one pool updates, check correlated pools for arbitrage before they update
+     */
+    async handleCorrelatedPoolCheck(correlationData) {
+        const { sourcePool, targetPool, correlationScore, priceChange } = correlationData;
+
+        // Only check high-correlation pools (saves RPC calls)
+        if (correlationScore < 0.7) return;
+
+        try {
+            // Parse target pool info
+            const [pairKey, dexName] = targetPool.split(':');
+            if (!pairKey || !dexName) return;
+
+            // Get cached price for target pool
+            const [token0Symbol, token1Symbol] = pairKey.split('/');
+            const token0 = config.tokens[token0Symbol];
+            const token1 = config.tokens[token1Symbol];
+
+            if (!token0 || !token1) return;
+
+            const cacheKey = `price:${dexName}:${token0.address.toLowerCase()}:${token1.address.toLowerCase()}`;
+            const priceData = cacheManager.priceCache.get(cacheKey);
+
+            if (!priceData || !priceData.data) return;
+
+            // Build prices object for detection
+            const prices = { [pairKey]: { [dexName]: priceData.data } };
+
+            // Add source pool prices for comparison
+            const [sourcePair, sourceDex] = sourcePool.split(':');
+            if (sourcePair === pairKey) {
+                const sourceCacheKey = `price:${sourceDex}:${token0.address.toLowerCase()}:${token1.address.toLowerCase()}`;
+                const sourcePrice = cacheManager.priceCache.get(sourceCacheKey);
+                if (sourcePrice?.data) {
+                    prices[pairKey][sourceDex] = sourcePrice.data;
+                }
+            }
+
+            // Check for arbitrage
+            if (Object.keys(prices[pairKey]).length >= 2) {
+                const opportunities = await arbitrageDetector.detectOpportunities(
+                    prices,
+                    cacheManager.currentBlockNumber
+                );
+
+                for (const opportunity of opportunities) {
+                    opportunity.source = 'correlation-predictive';
+                    opportunity.correlationScore = correlationScore;
+
+                    log.info(`[CORRELATION] Predictive opportunity from ${sourcePool}`, {
+                        target: targetPool,
+                        score: correlationScore.toFixed(2),
+                        profit: `${opportunity.profitPercent?.toFixed(3)}%`,
+                    });
+
+                    this.eventDrivenStats.opportunitiesFromEvents++;
+                    dashboard.recordOpportunities(1);
+                    await alertManager.notify(opportunity);
+
+                    if (config.execution?.enabled) {
+                        const result = await executionManager.execute(opportunity);
+                        if (result.simulated) {
+                            dashboard.recordSimulation(result.success);
+                        } else if (result.success) {
+                            dashboard.recordExecution(true, opportunity.profitCalculation?.netProfitUSD || 0);
+                        } else {
+                            dashboard.recordExecution(false);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            log.debug('Correlated pool check failed', { error: error.message });
+        }
+    }
+
+    /**
+     * Handle opportunity detected by DEX aggregator
+     * These are split-route opportunities found via 1inch/Paraswap APIs
+     */
+    async handleAggregatorOpportunity(opportunity) {
+        if (!opportunity) return;
+
+        dashboard.recordOpportunities(1);
+
+        log.info(`[AGGREGATOR] Split-route opportunity detected`, {
+            aggregator: opportunity.aggregator,
+            spread: `${opportunity.spreadPercent?.toFixed(3)}%`,
+            route: opportunity.route?.join(' → ') || 'multi-hop',
+        });
+
+        // Record with adaptive prioritizer
+        if (opportunity.pairKey) {
+            adaptivePrioritizer.recordOpportunity(opportunity.pairKey, {
+                volumeUSD: opportunity.amountUSD,
+            });
+        }
+
+        // Send alert
+        await alertManager.notify({
+            ...opportunity,
+            type: 'aggregator-arbitrage',
+            source: 'dex-aggregator',
+        });
+
+        // Note: Aggregator arbitrage execution requires different transaction building
+        // For now, log and alert only. Future: integrate with executionManager
+        if (config.execution?.enabled && config.execution?.aggregatorEnabled) {
+            log.info('Aggregator execution not yet implemented - opportunity logged for analysis');
         }
     }
 
@@ -697,6 +845,17 @@ class ArbitrageBot {
             stats: adaptivePrioritizer.getStats(),
         });
 
+        // Stop cross-pool correlation
+        crossPoolCorrelation.stop();
+        log.info('Cross-pool correlation stopped', {
+            stats: crossPoolCorrelation.getStats(),
+        });
+
+        // Log DEX aggregator stats
+        log.info('DEX aggregator stats:', {
+            stats: dexAggregator.getStats(),
+        });
+
         // Stop block monitor
         await blockMonitor.stop();
 
@@ -784,6 +943,8 @@ class ArbitrageBot {
                 eventDriven: eventDrivenDetector.getStats(),
                 prioritizer: adaptivePrioritizer.getStats(),
                 differential: reserveDifferentialAnalyzer.getStats(),
+                correlation: crossPoolCorrelation.getStats(),
+                aggregator: dexAggregator.getStats(),
                 detectionStats: this.eventDrivenStats,
             };
 

@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import rpcManager from '../utils/rpcManager.js';
 import transactionBuilder from './transactionBuilder.js';
 import gasOptimizer from './gasOptimizer.js';
+import flashLoanOptimizer from './flashLoanOptimizer.js';
 import cacheManager from '../data/cacheManager.js';
 import blockMonitor from '../monitoring/blockMonitor.js';
 import config from '../config.js';
@@ -67,6 +68,14 @@ class ExecutionManager {
         } else if (config.execution?.contractAddress) {
             transactionBuilder.setContractAddress(config.execution.contractAddress);
         }
+
+        // Initialize flash loan optimizer with chain ID
+        const chainId = config.chainId || 56; // Default to BSC
+        await flashLoanOptimizer.initialize(chainId);
+        log.info('Flash loan optimizer initialized', {
+            chainId,
+            providers: flashLoanOptimizer.getAvailableProviders().map(p => p.name),
+        });
 
         // Initialize signer for live mode
         if (this.mode === 'live' && config.execution?.privateKey) {
@@ -334,10 +343,11 @@ class ExecutionManager {
 
     /**
      * Resolve flash pair address from token addresses
+     * Uses FlashLoanOptimizer to select the best provider based on fees
      *
      * @private
      * @param {Object} opportunity - Opportunity needing pair resolution
-     * @returns {Object} Opportunity with resolved flash pair
+     * @returns {Object} Opportunity with resolved flash pair and provider info
      */
     async _resolveFlashPair(opportunity) {
         // If pair is already resolved, return as-is
@@ -345,27 +355,45 @@ class ExecutionManager {
             return opportunity;
         }
 
-        // Get token addresses
-        let tokenA, tokenB;
+        // Get token addresses and symbol
+        let tokenA, tokenB, flashAsset;
 
         if (opportunity.type === 'triangular') {
             tokenA = config.tokens[opportunity.path[0]]?.address;
             tokenB = config.tokens[opportunity.path[1]]?.address;
+            flashAsset = opportunity.path[0]; // First token in path
         } else {
             tokenA = config.tokens[opportunity.tokenA]?.address;
             tokenB = config.tokens[opportunity.tokenB]?.address;
+            flashAsset = opportunity.tokenA;
+        }
+
+        // Use flash loan optimizer to select best provider
+        const estimatedTradeUSD = opportunity.profitCalculation?.tradeSizeUSD || 1000;
+        const bestProvider = flashLoanOptimizer.selectBestProvider(flashAsset, estimatedTradeUSD);
+
+        if (bestProvider) {
+            log.debug('Selected flash loan provider', {
+                provider: bestProvider.name,
+                fee: `${(bestProvider.fee * 100).toFixed(2)}%`,
+                asset: flashAsset,
+            });
         }
 
         // Try to get from cache first
-        const cachedPair = cacheManager.getPairAddress(tokenA, tokenB, 'pancakeswap');
+        const preferredDex = bestProvider?.dexFactory || 'pancakeswap';
+        const cachedPair = cacheManager.getPairAddress(tokenA, tokenB, preferredDex);
         if (cachedPair) {
-            return { ...opportunity, flashPair: cachedPair };
+            return {
+                ...opportunity,
+                flashPair: cachedPair,
+                flashLoanProvider: bestProvider?.name || 'pancakeswap',
+                flashLoanFee: bestProvider?.fee || 0.0025,
+            };
         }
 
-        // Fetch from factory - use preferred flash loan provider's factory
+        // Fetch from factory - use optimal flash loan provider's factory
         try {
-            // Get factory address from chain config (prefer pancakeswap on BSC, uniswapV2 elsewhere)
-            const preferredDex = config.flashLoan?.preferredProvider || 'pancakeswap';
             const factoryAddress = config.dex[preferredDex]?.factory
                 || config.dex.pancakeswap?.factory
                 || config.dex.uniswapV2?.factory;
@@ -380,8 +408,13 @@ class ExecutionManager {
             });
 
             if (pairAddress && pairAddress !== ethers.ZeroAddress) {
-                cacheManager.setPairAddress(tokenA, tokenB, 'pancakeswap', pairAddress);
-                return { ...opportunity, flashPair: pairAddress };
+                cacheManager.setPairAddress(tokenA, tokenB, preferredDex, pairAddress);
+                return {
+                    ...opportunity,
+                    flashPair: pairAddress,
+                    flashLoanProvider: bestProvider?.name || 'pancakeswap',
+                    flashLoanFee: bestProvider?.fee || 0.0025,
+                };
             }
         } catch (error) {
             log.error('Failed to resolve flash pair', { error: error.message });

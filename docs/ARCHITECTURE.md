@@ -33,7 +33,12 @@ src/
 │   ├── multiHopDetector.js   # 4+ token path detection
 │   ├── CrossChainDetector.js # Cross-chain opportunities
 │   ├── MempoolMonitor.js     # Pending transaction analysis
-│   └── profitCalculator.js   # Net profit calculations
+│   ├── profitCalculator.js   # Net profit calculations
+│   ├── adaptivePrioritizer.js # Tier-based pair monitoring
+│   ├── reserveDifferentialAnalyzer.js # Cross-DEX lag detection
+│   ├── v3LiquidityAnalyzer.js # V3 tick-level analysis
+│   ├── dexAggregator.js      # 1inch/Paraswap integration
+│   └── crossPoolCorrelation.js # Price correlation matrix
 │
 ├── chains/                   # Chain abstraction layer
 │   ├── BaseChain.js          # Abstract base class
@@ -68,11 +73,16 @@ src/
 ├── execution/                # Trade execution
 │   ├── executionManager.js   # Execution orchestration
 │   ├── transactionBuilder.js # TX construction
-│   └── gasOptimizer.js       # Gas price optimization
+│   ├── gasOptimizer.js       # Gas price optimization
+│   ├── flashLoanOptimizer.js # Multi-provider flash loan selection
+│   ├── executionSimulator.js # Pre-execution simulation
+│   ├── blockTimePredictor.js # Block timing optimization
+│   └── l2GasCalculator.js    # L2-specific gas calculation
 │
 ├── monitoring/               # Blockchain monitoring
 │   ├── blockMonitor.js       # New block detection
-│   └── alertManager.js       # Opportunity alerts
+│   ├── alertManager.js       # Opportunity alerts
+│   └── eventDrivenDetector.js # Real-time Sync event monitoring
 │
 ├── utils/                    # Utilities
 │   ├── logger.js             # Winston logging
@@ -153,34 +163,101 @@ Cross-chain arbitrage:
 - Bridge cost consideration
 - Opportunity ranking
 
+### 8. EventDrivenDetector (`src/monitoring/eventDrivenDetector.js`)
+
+Real-time price monitoring via Sync events:
+- WebSocket subscription to DEX Sync events
+- Sub-100ms detection latency (vs ~3s polling)
+- Block update tracking for cache coordination
+- Debouncing to prevent duplicate processing
+
+### 9. AdaptivePrioritizer (`src/analysis/adaptivePrioritizer.js`)
+
+Tier-based pair monitoring:
+- HOT (Tier 1): Every block - recent opportunities
+- WARM (Tier 2): Every 2 blocks - 30min activity
+- NORMAL (Tier 3): Every 3 blocks - default
+- COLD (Tier 4): Every 5 blocks - inactive pairs
+
+### 10. FlashLoanOptimizer (`src/execution/flashLoanOptimizer.js`)
+
+Multi-provider flash loan selection:
+- dYdX: 0% fee (ETH mainnet, limited assets)
+- Balancer: 0% fee (requires pool interaction)
+- Aave V3: 0.09% fee (wide asset coverage)
+- PancakeSwap: 0.25% fee (fallback, any pair)
+
+### 11. DexAggregator (`src/analysis/dexAggregator.js`)
+
+Aggregator route comparison:
+- 1inch Pathfinder API integration
+- Paraswap API integration
+- Split-route opportunity detection
+- Rate limiting and caching
+
+### 12. CrossPoolCorrelation (`src/analysis/crossPoolCorrelation.js`)
+
+Predictive detection via correlation:
+- Historical price correlation matrix
+- Same-pair cross-DEX correlation (0.95)
+- Base token correlation (0.6)
+- Predictive opportunity alerts
+
 ---
 
 ## Data Flow
 
-### Price Update Flow
+### Price Update Flow (Event-Driven)
 
 ```
+Event-Driven Path (Sub-100ms latency):
+1. EventDrivenDetector receives Sync event via WebSocket
+2. Reserves decoded and cache updated immediately
+3. ReserveDifferentialAnalyzer checks correlated DEXs
+4. CrossPoolCorrelation identifies lagging pools
+5. ArbitrageDetector runs on affected pairs only
+6. AdaptivePrioritizer promotes active pairs to HOT tier
+
+Block-Based Path (Fallback):
 1. BlockMonitor detects new block
-2. PriceFetcher queries DEX reserves (multicall)
-3. Prices stored in CacheManager
-4. ArbitrageDetector scans for opportunities
-5. TriangularDetector builds paths
-6. ProfitCalculator validates profitability
-7. Opportunities emitted to main thread
-8. CrossChainDetector aggregates cross-chain
-9. AlertManager sends notifications
+2. EventDrivenDetector reports pairs updated via events
+3. PriceFetcher skips event-updated pairs (cache-aware)
+4. AdaptivePrioritizer filters by tier frequency
+5. Remaining pairs fetched via multicall
+6. ArbitrageDetector scans for opportunities
+7. TriangularDetector builds paths
+8. ProfitCalculator validates profitability
+9. Opportunities emitted to main thread
+10. CrossChainDetector aggregates cross-chain
+11. AlertManager sends notifications
 ```
+
+### Opportunity Sources
+
+Opportunities are tagged with their detection source:
+
+| Source | Handler | Description |
+|--------|---------|-------------|
+| `sync-event` | handleReserveUpdate | Real-time Sync event detection |
+| `reserve-differential` | handleDifferentialOpportunity | Cross-DEX price lag detection |
+| `correlation-predictive` | handleCorrelatedPoolCheck | Predictive from correlated pools |
+| `aggregator-arbitrage` | handleAggregatorOpportunity | Split-route via 1inch/Paraswap |
+| `block-polling` | handleNewBlock | Traditional block-based scan |
 
 ### Execution Flow
 
 ```
 1. ExecutionManager receives opportunity
-2. Pre-flight validation
-3. GasOptimizer determines gas price
-4. TransactionBuilder constructs TX
-5. Simulation via eth_call
-6. Live execution (if enabled)
-7. Result tracking and statistics
+2. Pre-flight validation (profit threshold, age check)
+3. FlashLoanOptimizer selects best provider:
+   - dYdX (0%) → Balancer (0%) → Aave V3 (0.09%) → PancakeSwap (0.25%)
+   - Based on asset availability and chain support
+4. Resolve flash pair address (cached or fetched from factory)
+5. GasOptimizer determines optimal gas price
+6. TransactionBuilder constructs TX with provider-specific params
+7. Simulation via eth_call
+8. Live execution (if enabled)
+9. Result tracking and statistics
 ```
 
 ---
@@ -329,4 +406,4 @@ const results = await multicall.aggregate([
 
 ---
 
-*Last Updated: 2026-01-06*
+*Last Updated: 2026-01-07*

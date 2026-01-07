@@ -2,16 +2,79 @@
 
 ## Implementation Status (Updated 2026-01-07)
 
-| # | Improvement | Status | Files |
-|---|-------------|--------|-------|
-| 1 | Event-Driven Detection | **IMPLEMENTED** | `src/monitoring/eventDrivenDetector.js` |
-| 2 | Adaptive Pair Prioritization | **IMPLEMENTED** | `src/analysis/adaptivePrioritizer.js` |
-| 3 | Reserve Differential Analysis | **IMPLEMENTED** | `src/analysis/reserveDifferentialAnalyzer.js` |
-| 4 | Deep V3 Integration | **IMPLEMENTED** | `src/analysis/v3LiquidityAnalyzer.js` |
-| 5 | Mempool Monitoring | PENDING (requires paid plan) | - |
-| 6 | Flash Loan Optimization | PENDING | - |
-| 7 | DEX Aggregator Integration | PENDING | - |
-| 8 | Cross-Pool Correlation | PENDING | - |
+| # | Improvement | Status | Files | Tests |
+|---|-------------|--------|-------|-------|
+| 1 | Event-Driven Detection | **IMPLEMENTED** | `src/monitoring/eventDrivenDetector.js` | 24 tests |
+| 2 | Adaptive Pair Prioritization | **IMPLEMENTED** | `src/analysis/adaptivePrioritizer.js` | 35 tests |
+| 3 | Reserve Differential Analysis | **IMPLEMENTED** | `src/analysis/reserveDifferentialAnalyzer.js` | 25 tests |
+| 4 | Deep V3 Integration | **IMPLEMENTED** | `src/analysis/v3LiquidityAnalyzer.js` | 38 tests |
+| 5 | Mempool Monitoring | PENDING (requires paid plan ~$49/mo) | - | - |
+| 6 | Flash Loan Optimization | **IMPLEMENTED** | `src/execution/flashLoanOptimizer.js` | 26 tests |
+| 7 | DEX Aggregator Integration | **IMPLEMENTED** | `src/analysis/dexAggregator.js` | 28 tests |
+| 8 | Cross-Pool Correlation | **IMPLEMENTED** | `src/analysis/crossPoolCorrelation.js` | 32 tests |
+
+### Implementation Summary
+
+**7 of 8 FREE optimizations now implemented.** Only mempool monitoring remains, which requires a paid Alchemy Growth plan (~$49/month).
+
+**Total New Test Coverage:** 208 tests for optimization modules (all passing)
+
+### Session 2 Implementations (2026-01-07)
+
+#### 6. Flash Loan Optimization
+**File:** `src/execution/flashLoanOptimizer.js`
+
+Selects lowest-fee flash loan provider based on asset and chain:
+- **dYdX**: 0% fee (ETH mainnet, limited to WETH/USDC/DAI/USDT)
+- **Balancer V2**: 0% fee (requires Balancer pool interaction)
+- **Aave V3**: 0.09% fee (wide multi-chain asset coverage)
+- **PancakeSwap**: 0.25% fee (fallback, any V2 pair)
+
+**Expected Impact:** +20-40% cost savings on flash loan fees
+
+#### 7. DEX Aggregator Integration
+**File:** `src/analysis/dexAggregator.js`
+
+Integrates with aggregator routing APIs:
+- **1inch Pathfinder**: Split-route optimization across all DEXs
+- **Paraswap**: Alternative aggregator for comparison
+- Rate limiting and caching (1 request/second free tier)
+- Compares aggregator quote vs direct DEX price for arbitrage
+
+**Expected Impact:** +15-30% more opportunities via split-route detection
+
+#### 8. Cross-Pool Correlation
+**File:** `src/analysis/crossPoolCorrelation.js`
+
+Builds and maintains price correlation matrix:
+- **Same-pair correlation**: WBNB/USDT on PancakeSwap ↔ WBNB/USDT on Biswap (0.95 score)
+- **Base token correlation**: WBNB/USDT ↔ WBNB/BUSD (0.6 score)
+- **Statistical correlation**: Pearson coefficient from price return history
+- Emits `checkCorrelated` events for predictive detection
+
+**Expected Impact:** +20-30% more opportunities from predictive detection
+
+### Session 3: Integration into Main Bot Flow (2026-01-07)
+
+All Session 2 modules have been wired into the main bot flow:
+
+#### FlashLoanOptimizer → ExecutionManager
+- Automatically selects lowest-fee provider in `_resolveFlashPair()`
+- Opportunities now include `flashLoanProvider` and `flashLoanFee` fields
+- **File:** `src/execution/executionManager.js`
+
+#### CrossPoolCorrelation → Event-Driven Flow
+- Records price updates from every Sync event
+- Emits `checkCorrelated` events for predictive detection
+- New `handleCorrelatedPoolCheck()` handler enables proactive arbitrage checks
+- **File:** `src/index.js`
+
+#### DexAggregator → Opportunity Detection
+- Listens for `opportunity` events from aggregator API checks
+- New `handleAggregatorOpportunity()` handler for split-route arbitrage
+- **File:** `src/index.js`
+
+**Integration Test Results:** 1039 tests passing (all modules fully tested)
 
 ---
 

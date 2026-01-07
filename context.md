@@ -286,9 +286,58 @@ Run arbitrage detection on combined prices
 
 ---
 
+## Session 2: Additional Optimizations (2026-01-07)
+
+### Implementations Completed
+
+#### 6. Flash Loan Optimization (MEDIUM IMPACT)
+**Files:**
+- `src/execution/flashLoanOptimizer.js` (NEW)
+- `tests/unit/flashLoanOptimizer.test.js` (NEW - 26 tests)
+
+**How it works:**
+- Selects optimal flash loan provider based on fee and asset availability
+- Providers ordered by fee: dYdX (0%), Balancer (0%), Aave V3 (0.09%), PancakeSwap (0.25%)
+- Automatically selects best available provider for each asset/chain combination
+- Tracks estimated savings vs default provider
+
+**Expected Impact:** +20-40% cost savings on flash loan fees
+
+#### 7. DEX Aggregator Integration (MEDIUM IMPACT)
+**Files:**
+- `src/analysis/dexAggregator.js` (NEW)
+- `tests/unit/dexAggregator.test.js` (NEW - 28 tests)
+
+**How it works:**
+- Integrates with 1inch and Paraswap routing APIs
+- Compares direct DEX price vs aggregator quote
+- Finds split-route arbitrage opportunities
+- Rate limiting (1 req/sec) and caching (3s TTL)
+
+**Expected Impact:** +15-30% more opportunities via split-route detection
+
+#### 8. Cross-Pool Correlation (MEDIUM IMPACT)
+**Files:**
+- `src/analysis/crossPoolCorrelation.js` (NEW)
+- `tests/unit/crossPoolCorrelation.test.js` (NEW - 32 tests)
+
+**How it works:**
+- Builds price correlation matrix from historical data
+- Same-pair correlation: WBNB/USDT:pancakeswap ↔ WBNB/USDT:biswap (0.95 score)
+- Base token correlation: WBNB/USDT ↔ WBNB/BUSD (0.6 score)
+- Emits `checkCorrelated` events for predictive detection
+
+**Expected Impact:** +20-30% more opportunities from predictive detection
+
+---
+
 ## Pending Implementations
 
-(None - all planned FREE optimizations have been implemented)
+| Task | Status | Reason |
+|------|--------|--------|
+| Mempool Monitoring | PENDING | Requires paid Alchemy plan (~$49/mo) |
+| Time-of-Day Patterns | FUTURE | Needs historical data collection |
+| ML Price Prediction | FUTURE | Requires 3-6 months historical data |
 
 ---
 
@@ -300,13 +349,16 @@ Run arbitrage detection on combined prices
 | Adaptive Prioritization | FREE (pure code logic) | Implemented |
 | Reserve Differential | FREE (pure code logic) | Implemented |
 | V3 Deep Integration | FREE (more RPC calls, within limits) | Implemented |
+| Flash Loan Optimization | FREE (pure code logic) | Implemented |
+| DEX Aggregator | FREE (1inch/Paraswap free tier) | Implemented |
+| Cross-Pool Correlation | FREE (pure code logic) | Implemented |
 | Mempool Monitoring | PAID (~$49/mo Alchemy Growth) | Not planned |
 
 ---
 
 ## Files Modified This Session
 
-### New Files
+### New Files (Session 1)
 - `src/monitoring/eventDrivenDetector.js`
 - `src/analysis/adaptivePrioritizer.js`
 - `src/analysis/reserveDifferentialAnalyzer.js`
@@ -318,13 +370,26 @@ Run arbitrage detection on combined prices
 - `DETECTION_OPTIMIZATION_RESEARCH.md`
 - `context.md` (this file)
 
-### Modified Files
+### New Files (Session 2)
+- `src/execution/flashLoanOptimizer.js`
+- `src/analysis/dexAggregator.js`
+- `src/analysis/crossPoolCorrelation.js`
+- `tests/unit/flashLoanOptimizer.test.js`
+- `tests/unit/dexAggregator.test.js`
+- `tests/unit/crossPoolCorrelation.test.js`
+
+### Modified Files (Session 1 & 2)
 - `src/index.js` - Integrated new components, optimized handleNewBlock with cache-aware fetching
 - `src/config.js` - Added eventDriven configuration
 - `src/data/priceFetcher.js` - Added cache-aware fetching, priority integration, stats tracking
 - `src/monitoring/eventDrivenDetector.js` - Added block update tracking (getPairsUpdatedInBlock)
 - `src/analysis/v2v3Arbitrage.js` - Integrated v3LiquidityAnalyzer for fee tier arbitrage detection
 - `tests/integration/botFlow.test.js` - Updated assertions for new fetchAllPrices signature
+- `docs/ARCHITECTURE.md` - Updated with new components
+
+### Modified Files (Session 3 - Integration)
+- `src/execution/executionManager.js` - Integrated FlashLoanOptimizer for provider selection
+- `src/index.js` - Added CrossPoolCorrelation and DexAggregator integration, new handlers
 
 ---
 
@@ -360,12 +425,116 @@ Run arbitrage detection on combined prices
 
 ---
 
+## Session 3: Module Integration (2026-01-07)
+
+### Objective
+Wire the new optimization modules (FlashLoanOptimizer, DexAggregator, CrossPoolCorrelation) into the main bot flow, respecting the fast event-driven architecture.
+
+### Integration Completed
+
+#### FlashLoanOptimizer → ExecutionManager
+**Files Modified:**
+- `src/execution/executionManager.js`
+
+**Changes:**
+- Import and initialize `flashLoanOptimizer` with chain ID
+- Modified `_resolveFlashPair()` to use `flashLoanOptimizer.selectBestProvider()`
+- Opportunities now include `flashLoanProvider` and `flashLoanFee` fields
+
+**Flow:**
+```javascript
+// In execute():
+opportunity = await this._resolveFlashPair(opportunity);
+// opportunity.flashLoanProvider = 'aave_v3' (or 'dydx', 'balancer', 'pancakeswap')
+// opportunity.flashLoanFee = 0.0009 (or 0, 0, 0.0025)
+```
+
+#### CrossPoolCorrelation → EventDrivenDetector Flow
+**Files Modified:**
+- `src/index.js`
+
+**Changes:**
+- Start `crossPoolCorrelation.start()` in `startSingleChain()`
+- Record price updates via `crossPoolCorrelation.recordPriceUpdate()` on each Sync event
+- Listen for `checkCorrelated` events for predictive detection
+- New handler `handleCorrelatedPoolCheck()` for predictive arbitrage detection
+- Stop and log stats on shutdown
+
+**Flow:**
+```
+Sync Event → reserveUpdate
+    │
+    ├─→ reserveDifferentialAnalyzer.processReserveUpdate()
+    │
+    ├─→ crossPoolCorrelation.recordPriceUpdate()
+    │       │
+    │       └─→ crossPoolCorrelation.processReserveUpdate()
+    │               │
+    │               └─→ [checkCorrelated event]
+    │                       │
+    │                       └─→ handleCorrelatedPoolCheck()
+    │                               │
+    │                               └─→ Predictive arbitrage detection
+    │
+    └─→ handleReserveUpdate() (standard detection)
+```
+
+#### DexAggregator → Opportunity Detection
+**Files Modified:**
+- `src/index.js`
+
+**Changes:**
+- Initialize `dexAggregator.initialize(chainId)` in `startSingleChain()`
+- Listen for `opportunity` events from aggregator
+- New handler `handleAggregatorOpportunity()` for split-route arbitrage
+- Log stats on shutdown
+
+**Flow:**
+```javascript
+// When aggregator finds better route:
+dexAggregator.on('opportunity', async (opportunity) => {
+    await this.handleAggregatorOpportunity(opportunity);
+});
+```
+
+### New Handler Methods
+
+#### handleCorrelatedPoolCheck()
+Handles predictive detection when correlated pools update:
+- Only processes high-correlation pools (score >= 0.7)
+- Builds prices object from cache for correlated pairs
+- Runs arbitrage detection proactively
+- Tags opportunities with `source: 'correlation-predictive'`
+
+#### handleAggregatorOpportunity()
+Handles split-route opportunities from aggregator APIs:
+- Logs opportunity details (aggregator, spread, route)
+- Records with adaptive prioritizer
+- Sends alerts
+- Note: Execution not yet implemented (requires different TX building)
+
+### Status Endpoint Changes
+
+The `/status` API now includes:
+- `correlation`: Stats from CrossPoolCorrelation (pools tracked, correlation checks)
+- `aggregator`: Stats from DexAggregator (quotes requested, opportunities found)
+
+### Test Results
+- **1039 tests passing** (1 skipped)
+- All integration-related tests pass
+
+---
+
 ## Next Steps
 
-1. **Run live testing** to validate improvements from all 4 implemented optimizations
+1. **Run live testing** to validate improvements from all 7 implemented optimizations
 2. Monitor detection metrics (opportunities/hour, detection latency, false positive rate)
-3. Consider Mempool Monitoring if profitable enough to justify $49/mo cost
-4. Optional future enhancements (see DETECTION_OPTIMIZATION_RESEARCH.md for more ideas)
+3. Monitor new metrics:
+   - `correlation.correlationChecks` - How often correlation-based detection triggers
+   - `aggregator.opportunitiesFound` - Split-route opportunities detected
+   - `execution.flashLoanProvider` - Which providers are being selected
+4. Consider Mempool Monitoring if profitable enough to justify $49/mo cost
+5. Optional future enhancements (see DETECTION_OPTIMIZATION_RESEARCH.md for more ideas)
 
 ---
 
