@@ -50,6 +50,9 @@ class ArbitrageBot {
         this.multiHopDetector = null;
         this.mempoolMonitor = null;
 
+        // Cleanup interval timer (for proper cleanup on stop)
+        this.cleanupIntervalTimer = null;
+
         // Event-driven detection stats
         this.eventDrivenStats = {
             opportunitiesFromEvents: 0,
@@ -353,9 +356,10 @@ class ArbitrageBot {
         });
 
         // Periodic cleanup of old differential history
-        setInterval(() => {
+        this.cleanupIntervalTimer = setInterval(() => {
             reserveDifferentialAnalyzer.cleanup();
         }, 60000); // Every minute
+        this.cleanupIntervalTimer.unref(); // Don't block process exit
     }
 
     /**
@@ -1194,6 +1198,12 @@ class ArbitrageBot {
      * Stop single-chain mode components
      */
     async stopSingleChain() {
+        // Stop cleanup interval timer (prevents memory leak)
+        if (this.cleanupIntervalTimer) {
+            clearInterval(this.cleanupIntervalTimer);
+            this.cleanupIntervalTimer = null;
+        }
+
         // Stop event-driven detector
         if (eventDrivenDetector.isActive()) {
             await eventDrivenDetector.stop();

@@ -45,6 +45,9 @@ export class ResilientWebSocket extends EventEmitter {
         // Circuit breaker
         this.circuitOpenTime = null;
 
+        // Cleanup state flag to prevent race conditions
+        this.isCleaningUp = false;
+
         // Metrics
         this.metrics = {
             connectionsEstablished: 0,
@@ -218,7 +221,8 @@ export class ResilientWebSocket extends EventEmitter {
      * Handle disconnection and trigger reconnect
      */
     _handleDisconnect(reason) {
-        if (this.state === 'reconnecting' || this.state === 'circuit_open') {
+        // Prevent re-entry during cleanup or reconnection
+        if (this.state === 'reconnecting' || this.state === 'circuit_open' || this.isCleaningUp) {
             return; // Already handling
         }
 
@@ -344,23 +348,36 @@ export class ResilientWebSocket extends EventEmitter {
 
     /**
      * Clean up resources
+     * Uses isCleaningUp flag to prevent race conditions with WebSocket close events
      */
     _cleanup() {
-        this._stopHeartbeat();
-
-        if (this.refreshTimer) {
-            clearTimeout(this.refreshTimer);
-            this.refreshTimer = null;
+        // Prevent re-entry and race conditions
+        if (this.isCleaningUp) {
+            return;
         }
+        this.isCleaningUp = true;
 
-        if (this.provider) {
-            try {
-                this.provider.removeAllListeners();
-                this.provider.destroy();
-            } catch (e) {
-                // Ignore cleanup errors
+        try {
+            this._stopHeartbeat();
+
+            if (this.refreshTimer) {
+                clearTimeout(this.refreshTimer);
+                this.refreshTimer = null;
             }
-            this.provider = null;
+
+            if (this.provider) {
+                try {
+                    this.provider.removeAllListeners();
+                    // Wrap destroy in try-catch to handle "WebSocket was closed before connection established" error
+                    this.provider.destroy();
+                } catch (e) {
+                    // Ignore cleanup errors - common during proactive refresh or connection issues
+                    // "WebSocket was closed before the connection was established" is expected in some cases
+                }
+                this.provider = null;
+            }
+        } finally {
+            this.isCleaningUp = false;
         }
     }
 

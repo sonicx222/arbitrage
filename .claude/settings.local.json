@@ -18,7 +18,8 @@
       "Bash(wc -l \"c:\\\\Users\\\\kj2bn8f\\\\OneDrive - Allianz\\\\14 Repo\\\\arbitrage\\\\src\"/**/*.js)",
       "Bash(npm list:*)",
       "Bash(RUN_HARDHAT_TESTS=true npx hardhat:*)",
-      "Bash(npx hardhat:*)"
+      "Bash(npx hardhat:*)",
+      "Bash(find:*)"
     ]
   }
 }

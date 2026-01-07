@@ -233,5 +233,72 @@ describe('ResilientWebSocket', () => {
             expect(ws.refreshTimer).toBeNull();
             expect(ws.reconnectTimer).toBeNull();
         });
+
+        it('should prevent cleanup race condition with isCleaningUp flag', async () => {
+            await ws.connect();
+
+            // Verify initial state
+            expect(ws.isCleaningUp).toBe(false);
+
+            // Manually set isCleaningUp to simulate concurrent cleanup
+            ws.isCleaningUp = true;
+
+            // Call cleanup - should return early without error
+            ws._cleanup();
+
+            // Provider should NOT be null since cleanup was skipped
+            expect(ws.provider).not.toBeNull();
+
+            // Reset flag and cleanup properly
+            ws.isCleaningUp = false;
+            ws._cleanup();
+
+            // Now provider should be null
+            expect(ws.provider).toBeNull();
+        });
+
+        it('should reset isCleaningUp flag after cleanup completes', async () => {
+            await ws.connect();
+
+            ws._cleanup();
+
+            // Flag should be reset after cleanup
+            expect(ws.isCleaningUp).toBe(false);
+        });
+
+        it('should handle disconnect event during cleanup without error', async () => {
+            await ws.connect();
+
+            // Start cleanup
+            ws.isCleaningUp = true;
+
+            // Simulate WebSocket close event triggering handleDisconnect
+            // This should be ignored because isCleaningUp is true
+            const disconnectSpy = jest.fn();
+            ws.on('disconnected', disconnectSpy);
+
+            ws._handleDisconnect('ws_close');
+
+            // Disconnect should not have been processed
+            expect(disconnectSpy).not.toHaveBeenCalled();
+            expect(ws.state).toBe('connected'); // State unchanged
+
+            ws.isCleaningUp = false;
+        });
+
+        it('should handle provider.destroy() errors gracefully', async () => {
+            await ws.connect();
+
+            // Mock destroy to throw error (like "WebSocket was closed before connection established")
+            ws.provider.destroy = jest.fn().mockImplementation(() => {
+                throw new Error('WebSocket was closed before the connection was established');
+            });
+
+            // Cleanup should not throw
+            expect(() => ws._cleanup()).not.toThrow();
+
+            // Provider should still be set to null
+            expect(ws.provider).toBeNull();
+        });
     });
 });
