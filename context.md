@@ -112,41 +112,50 @@ reserveDifferentialAnalyzer.on('correlatedOpportunity', async (data) => {
 ### Architecture Changes
 
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│                         ArbitrageBot                                │
-├────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌─────────────────┐    ┌─────────────────────────────┐            │
-│  │  Block Monitor  │    │  EventDrivenDetector (NEW)  │            │
-│  │  (~3s polling)  │    │  (Real-time Sync events)    │            │
-│  └────────┬────────┘    └──────────────┬──────────────┘            │
-│           │                            │                            │
-│           │                            ▼                            │
-│           │             ┌──────────────────────────────────┐       │
-│           │             │ ReserveDifferentialAnalyzer (NEW)│       │
-│           │             │  (Cross-DEX lag detection)       │       │
-│           │             └──────────────┬───────────────────┘       │
-│           │                            │                            │
-│           └────────────┬───────────────┘                           │
-│                        │                                            │
-│                        ▼                                            │
-│           ┌─────────────────────────────┐                          │
-│           │   AdaptivePrioritizer (NEW) │                          │
-│           │   (Tier-based monitoring)   │                          │
-│           └──────────────┬──────────────┘                          │
-│                          │                                          │
-│                          ▼                                          │
-│           ┌─────────────────────────────┐                          │
-│           │    ArbitrageDetector        │                          │
-│           │    (Multi-type detection)   │                          │
-│           └──────────────┬──────────────┘                          │
-│                          │                                          │
-│                          ▼                                          │
-│           ┌─────────────────────────────┐                          │
-│           │    ExecutionManager         │                          │
-│           └─────────────────────────────┘                          │
-│                                                                     │
-└────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              ArbitrageBot                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────┐       ┌─────────────────────────────┐                  │
+│  │  Block Monitor  │       │  EventDrivenDetector        │                  │
+│  │  (~3s polling)  │       │  (Real-time Sync events)    │                  │
+│  └────────┬────────┘       │  + Block update tracking    │                  │
+│           │                └──────────────┬──────────────┘                  │
+│           │                               │                                  │
+│           │                               ▼                                  │
+│           │                ┌──────────────────────────────────┐             │
+│           │                │ ReserveDifferentialAnalyzer      │             │
+│           │                │  (Cross-DEX lag detection)       │             │
+│           │                └──────────────┬───────────────────┘             │
+│           │                               │                                  │
+│           └───────────────┬───────────────┘                                 │
+│                           │                                                  │
+│                           ▼                                                  │
+│           ┌───────────────────────────────────────────────┐                 │
+│           │         PriceFetcher (OPTIMIZED)              │                 │
+│           │  • Cache-aware: skips fresh event data        │                 │
+│           │  • Priority-aware: respects tier frequencies  │                 │
+│           │  • Stats tracking for optimization monitoring │                 │
+│           └───────────────┬───────────────────────────────┘                 │
+│                           │                                                  │
+│                           ▼                                                  │
+│           ┌─────────────────────────────┐                                   │
+│           │   AdaptivePrioritizer       │                                   │
+│           │   (Tier-based monitoring)   │◄──────────────────┐               │
+│           └──────────────┬──────────────┘                   │               │
+│                          │                                   │               │
+│                          ▼                                   │               │
+│           ┌─────────────────────────────┐                   │               │
+│           │    ArbitrageDetector        │───(opportunities)─┘               │
+│           │    (Multi-type detection)   │                                   │
+│           └──────────────┬──────────────┘                                   │
+│                          │                                                   │
+│                          ▼                                                   │
+│           ┌─────────────────────────────┐                                   │
+│           │    ExecutionManager         │                                   │
+│           └─────────────────────────────┘                                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Test Coverage
@@ -160,7 +169,8 @@ reserveDifferentialAnalyzer.on('correlatedOpportunity', async (data) => {
 ### Status Endpoint Changes
 
 The `/status` API now includes:
-- `eventDriven`: Stats from EventDrivenDetector
+- `priceFetcher`: Stats from PriceFetcher (cache hits, RPC calls, hit rate)
+- `eventDriven`: Stats from EventDrivenDetector (including blocks tracked)
 - `prioritizer`: Stats from AdaptivePrioritizer
 - `differential`: Stats from ReserveDifferentialAnalyzer
 - `detectionStats`: Breakdown of opportunities by source (events vs blocks vs differential)
@@ -209,6 +219,73 @@ if (feeTierOpp) {
 
 ---
 
+#### 5. Architecture Optimization - Cache-Aware Price Fetching (HIGH IMPACT)
+**Files:**
+- `src/data/priceFetcher.js` (MODIFIED - cache-aware fetching)
+- `src/monitoring/eventDrivenDetector.js` (MODIFIED - block update tracking)
+- `src/index.js` (MODIFIED - optimized handleNewBlock)
+- `tests/integration/botFlow.test.js` (MODIFIED - updated assertions)
+
+**How it works:**
+- **Cache-Aware Fetching**: PriceFetcher now checks cache for fresh event-driven data before making RPC calls
+- **Block Update Tracking**: EventDrivenDetector tracks which pairs received Sync events per block
+- **Priority Integration**: Respects AdaptivePrioritizer tier frequencies when deciding which pairs to fetch
+- **Optimized Block Handler**: handleNewBlock passes event-updated pairs to skip redundant RPC calls
+
+**New Methods:**
+```javascript
+// priceFetcher.js - Cache-aware fetching
+async fetchAllPrices(blockNumber, options = {}) {
+    const { excludePairs = new Set(), respectPriority = true } = options;
+    // Separates fresh cache data from pairs needing RPC fetch
+    const { freshPrices, pairsToFetch } = this._separateFreshFromStale(...);
+    // Only fetches pairs without fresh data
+}
+
+// eventDrivenDetector.js - Block update tracking
+getPairsUpdatedInBlock(blockNumber) // Returns Set of pair keys updated in block
+wasPairUpdatedInBlock(pairKey, blockNumber) // Quick check for specific pair
+
+// index.js - Optimized flow
+const eventUpdatedPairs = eventDrivenDetector.getPairsUpdatedInBlock(blockNumber);
+const prices = await priceFetcher.fetchAllPrices(blockNumber, {
+    excludePairs: eventUpdatedPairs,
+    respectPriority: true,
+});
+```
+
+**Data Flow (Optimized):**
+```
+Block Event
+    │
+    ▼
+Get event-updated pairs from EventDrivenDetector
+    │
+    ▼
+Call priceFetcher.fetchAllPrices() with:
+  - excludePairs: pairs already updated via Sync events
+  - respectPriority: check AdaptivePrioritizer tier frequencies
+    │
+    ▼
+_separateFreshFromStale() categorizes pairs:
+  - Fresh from cache (sync-event source) → skip RPC
+  - Skipped by priority → use stale cache
+  - Need fetch → batch RPC call
+    │
+    ▼
+Merge fresh cache + fetched data → unified prices object
+    │
+    ▼
+Run arbitrage detection on combined prices
+```
+
+**Expected Impact:**
+- -30-50% reduction in RPC calls when event-driven detection is active
+- +20-30% efficiency from priority-based skipping
+- Lower latency for block processing
+
+---
+
 ## Pending Implementations
 
 (None - all planned FREE optimizations have been implemented)
@@ -242,9 +319,12 @@ if (feeTierOpp) {
 - `context.md` (this file)
 
 ### Modified Files
-- `src/index.js` - Integrated new components (EventDrivenDetector, AdaptivePrioritizer, ReserveDifferentialAnalyzer)
+- `src/index.js` - Integrated new components, optimized handleNewBlock with cache-aware fetching
 - `src/config.js` - Added eventDriven configuration
+- `src/data/priceFetcher.js` - Added cache-aware fetching, priority integration, stats tracking
+- `src/monitoring/eventDrivenDetector.js` - Added block update tracking (getPairsUpdatedInBlock)
 - `src/analysis/v2v3Arbitrage.js` - Integrated v3LiquidityAnalyzer for fee tier arbitrage detection
+- `tests/integration/botFlow.test.js` - Updated assertions for new fetchAllPrices signature
 
 ---
 
@@ -262,6 +342,10 @@ if (feeTierOpp) {
 
 6. **V3 fee tier arbitrage**: V3LiquidityAnalyzer detects price differences between fee tiers of the same pair (0.01%, 0.05%, 0.3%, 1%) - a new opportunity type unique to V3.
 
+7. **Cache-aware fetching**: PriceFetcher now checks for fresh event-driven data before making RPC calls. This makes the event-driven architecture truly complementary to block polling - events provide immediate updates, and block polling only fills gaps for pairs without events.
+
+8. **Block update tracking**: EventDrivenDetector tracks which pairs received Sync events in each block. This allows handleNewBlock to pass this information to priceFetcher, avoiding redundant RPC calls for data already in cache.
+
 ---
 
 ## Performance Expectations
@@ -270,7 +354,8 @@ if (feeTierOpp) {
 |--------|--------|------------------|
 | Detection latency | ~3000ms | <100ms (events) |
 | Opportunities/hour | Baseline | +100-300% |
-| RPC calls/block | ~250 | ~200 (prioritization) |
+| RPC calls/block | ~250 | ~100-150 (cache-aware + prioritization) |
+| Cache hit rate | 0% | 30-50% (event data reuse) |
 | False positive rate | ~20% | <15% |
 
 ---

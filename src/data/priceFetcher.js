@@ -8,31 +8,206 @@ import { NATIVE_TOKEN_PRICES, STABLECOINS, getFallbackPrice } from '../constants
 
 /**
  * Price Fetcher - Fetches token prices from DEX pairs via smart contract calls
+ *
+ * Optimizations:
+ * - Cache-aware: Skips RPC calls for pairs with fresh event-driven data
+ * - Priority-aware: Respects AdaptivePrioritizer tier frequencies
+ * - Batch fetching: Uses Multicall for efficient RPC usage
  */
 class PriceFetcher {
     constructor() {
         this.dexes = Object.entries(config.dex).filter(([_, dexConfig]) => dexConfig.enabled);
+
+        // Statistics for cache-aware fetching
+        this.stats = {
+            totalFetches: 0,
+            cacheHits: 0,
+            rpcCalls: 0,
+            skippedByPriority: 0,
+        };
+
+        // Lazy-loaded prioritizer reference (avoid circular dependency)
+        this._prioritizer = null;
+
         log.info(`Price Fetcher initialized for ${this.dexes.length} DEXs`);
     }
 
     /**
-     * Fetch prices for all configured token pairs across all DEXs
+     * Get the adaptive prioritizer (lazy load to avoid circular deps)
+     * @private
      */
-    async fetchAllPrices(blockNumber) {
+    _getPrioritizer() {
+        if (!this._prioritizer) {
+            try {
+                // Dynamic import to avoid circular dependency
+                const module = require('../analysis/adaptivePrioritizer.js');
+                this._prioritizer = module.default || module;
+            } catch {
+                this._prioritizer = null;
+            }
+        }
+        return this._prioritizer;
+    }
+
+    /**
+     * Fetch prices for all configured token pairs across all DEXs
+     *
+     * Optimizations applied:
+     * 1. Cache-aware: Uses fresh event-driven data instead of re-fetching
+     * 2. Priority-aware: Respects tier frequencies from AdaptivePrioritizer
+     *
+     * @param {number} blockNumber - Current block number
+     * @param {Object} options - Fetch options
+     * @param {Set<string>} options.excludePairs - Pair keys to exclude (already have fresh data)
+     * @param {boolean} options.respectPriority - Whether to check prioritizer (default: true)
+     */
+    async fetchAllPrices(blockNumber, options = {}) {
         const startTime = Date.now();
+        const { excludePairs = new Set(), respectPriority = true } = options;
+
+        this.stats.totalFetches++;
+
         try {
             const tokenPairs = this._getTokenPairs();
             const validPairs = await this._resolvePairs(tokenPairs);
 
-            const results = await this._fetchBatchedReserves(validPairs);
-            const prices = this._parseReserves(validPairs, results, blockNumber);
+            // Separate pairs into: fresh from cache vs need RPC fetch
+            const { freshPrices, pairsToFetch } = this._separateFreshFromStale(
+                validPairs,
+                blockNumber,
+                excludePairs,
+                respectPriority
+            );
 
-            log.debug(`Fetched ${Object.keys(prices).length} pair prices in ${Date.now() - startTime}ms`);
-            return prices;
+            // Only fetch pairs that need RPC calls
+            let fetchedPrices = {};
+            if (pairsToFetch.length > 0) {
+                const results = await this._fetchBatchedReserves(pairsToFetch);
+                fetchedPrices = this._parseReserves(pairsToFetch, results, blockNumber);
+                this.stats.rpcCalls += pairsToFetch.length;
+            }
+
+            // Merge fresh cache data with newly fetched data
+            const allPrices = this._mergePrices(freshPrices, fetchedPrices);
+
+            const cacheHitRate = validPairs.length > 0
+                ? ((validPairs.length - pairsToFetch.length) / validPairs.length * 100).toFixed(1)
+                : 0;
+
+            log.debug(`Fetched ${Object.keys(allPrices).length} pair prices in ${Date.now() - startTime}ms`, {
+                total: validPairs.length,
+                fromCache: validPairs.length - pairsToFetch.length,
+                fromRPC: pairsToFetch.length,
+                cacheHitRate: `${cacheHitRate}%`,
+            });
+
+            return allPrices;
         } catch (error) {
             log.error('Error fetching prices (Multicall)', { error: error.message });
             return {};
         }
+    }
+
+    /**
+     * Separate pairs into fresh (from cache/events) vs stale (need RPC)
+     * @private
+     */
+    _separateFreshFromStale(validPairs, blockNumber, excludePairs, respectPriority) {
+        const freshPrices = {};
+        const pairsToFetch = [];
+        const prioritizer = respectPriority ? this._getPrioritizer() : null;
+
+        for (const pair of validPairs) {
+            const pairKey = pair.pairKey;
+            const fullPairKey = `${pairKey}:${pair.dexName}`;
+
+            // Skip if explicitly excluded (e.g., already processed via event)
+            if (excludePairs.has(pairKey) || excludePairs.has(fullPairKey)) {
+                // Still include from cache if available
+                const cacheKey = cacheManager.getPriceKey(pair.tokenA.address, pair.tokenB.address, pair.dexName);
+                const cached = cacheManager.priceCache.get(cacheKey);
+                if (cached && cached.data) {
+                    if (!freshPrices[pairKey]) freshPrices[pairKey] = {};
+                    freshPrices[pairKey][pair.dexName] = cached.data;
+                    this.stats.cacheHits++;
+                }
+                continue;
+            }
+
+            // Check priority-based skipping
+            if (prioritizer && !prioritizer.shouldCheckPair(fullPairKey, blockNumber)) {
+                // Still include stale cache data if available
+                const cacheKey = cacheManager.getPriceKey(pair.tokenA.address, pair.tokenB.address, pair.dexName);
+                const cached = cacheManager.priceCache.get(cacheKey);
+                if (cached && cached.data) {
+                    if (!freshPrices[pairKey]) freshPrices[pairKey] = {};
+                    freshPrices[pairKey][pair.dexName] = cached.data;
+                }
+                this.stats.skippedByPriority++;
+                continue;
+            }
+
+            // Check if we have fresh event-driven data for this pair
+            const cacheKey = cacheManager.getPriceKey(pair.tokenA.address, pair.tokenB.address, pair.dexName);
+            const cached = cacheManager.priceCache.get(cacheKey);
+
+            if (cached && cached.blockNumber === blockNumber && cached.data?.source === 'sync-event') {
+                // Fresh data from Sync event - no need to fetch
+                if (!freshPrices[pairKey]) freshPrices[pairKey] = {};
+                freshPrices[pairKey][pair.dexName] = cached.data;
+                this.stats.cacheHits++;
+            } else {
+                // Need to fetch via RPC
+                pairsToFetch.push(pair);
+            }
+        }
+
+        return { freshPrices, pairsToFetch };
+    }
+
+    /**
+     * Merge fresh prices with fetched prices
+     * @private
+     */
+    _mergePrices(freshPrices, fetchedPrices) {
+        const merged = { ...freshPrices };
+
+        for (const [pairKey, dexPrices] of Object.entries(fetchedPrices)) {
+            if (!merged[pairKey]) {
+                merged[pairKey] = dexPrices;
+            } else {
+                // Merge DEX prices
+                merged[pairKey] = { ...merged[pairKey], ...dexPrices };
+            }
+        }
+
+        return merged;
+    }
+
+    /**
+     * Get fetcher statistics
+     */
+    getStats() {
+        const hitRate = this.stats.totalFetches > 0
+            ? (this.stats.cacheHits / (this.stats.cacheHits + this.stats.rpcCalls) * 100).toFixed(1)
+            : 0;
+
+        return {
+            ...this.stats,
+            cacheHitRate: `${hitRate}%`,
+        };
+    }
+
+    /**
+     * Reset statistics
+     */
+    resetStats() {
+        this.stats = {
+            totalFetches: 0,
+            cacheHits: 0,
+            rpcCalls: 0,
+            skippedByPriority: 0,
+        };
     }
 
     /**

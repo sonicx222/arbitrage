@@ -135,7 +135,11 @@ describe('ArbitrageBot Integration Flow', () => {
             throw new Error('Block handler not captured');
         }
 
-        expect(priceFetcher.fetchAllPrices).toHaveBeenCalledWith(12345678);
+        // fetchAllPrices now takes (blockNumber, options) with cache-aware optimization
+        expect(priceFetcher.fetchAllPrices).toHaveBeenCalledWith(12345678, expect.objectContaining({
+            excludePairs: expect.any(Set),
+            respectPriority: true,
+        }));
         expect(alertManager.notify).toHaveBeenCalledTimes(1);
 
         const opportunity = alertManager.notify.mock.calls[0][0];
@@ -216,7 +220,11 @@ describe('ArbitrageBot Integration Flow', () => {
         // Expect priceFetcher to be called ONLY ONCE (for Block A)
         // because Block B should have been skipped
         expect(priceFetcher.fetchAllPrices).toHaveBeenCalledTimes(1);
-        expect(priceFetcher.fetchAllPrices).toHaveBeenCalledWith(100);
+        // fetchAllPrices now takes (blockNumber, options) with cache-aware optimization
+        expect(priceFetcher.fetchAllPrices).toHaveBeenCalledWith(100, expect.objectContaining({
+            excludePairs: expect.any(Set),
+            respectPriority: true,
+        }));
     });
 
     test('should handle multiple opportunities in a single block', async () => {

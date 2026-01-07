@@ -44,6 +44,11 @@ class EventDrivenDetector extends EventEmitter {
         this.recentlyProcessed = new Map(); // pairAddress -> timestamp
         this.debounceMs = 100; // Minimum time between processing same pair
 
+        // Track pairs updated per block (for cache-aware optimization)
+        // blockNumber -> Set<pairKey>
+        this.blockUpdates = new Map();
+        this.maxBlockHistory = 10; // Keep last N blocks of update history
+
         // Statistics
         this.stats = {
             eventsReceived: 0,
@@ -280,6 +285,9 @@ class EventDrivenDetector extends EventEmitter {
             // Update cache with new reserves
             this.updatePriceCache(pairInfo, reserves, eventLog.blockNumber);
 
+            // Track this pair as updated in this block (for cache-aware optimization)
+            this._trackBlockUpdate(eventLog.blockNumber, pairInfo.pairKey, pairInfo.dexName);
+
             this.stats.eventsProcessed++;
             this.stats.reserveUpdates++;
 
@@ -484,6 +492,71 @@ class EventDrivenDetector extends EventEmitter {
     }
 
     /**
+     * Track a pair update for a specific block
+     * @private
+     */
+    _trackBlockUpdate(blockNumber, pairKey, dexName) {
+        if (!this.blockUpdates.has(blockNumber)) {
+            this.blockUpdates.set(blockNumber, new Set());
+
+            // Clean up old block history
+            this._cleanupOldBlockUpdates(blockNumber);
+        }
+
+        // Track both the pairKey and the full key with DEX
+        this.blockUpdates.get(blockNumber).add(pairKey);
+        this.blockUpdates.get(blockNumber).add(`${pairKey}:${dexName}`);
+    }
+
+    /**
+     * Clean up block update history older than maxBlockHistory
+     * @private
+     */
+    _cleanupOldBlockUpdates(currentBlock) {
+        const minBlock = currentBlock - this.maxBlockHistory;
+
+        for (const block of this.blockUpdates.keys()) {
+            if (block < minBlock) {
+                this.blockUpdates.delete(block);
+            }
+        }
+    }
+
+    /**
+     * Get set of pair keys updated in a specific block via Sync events
+     * This is used by priceFetcher to skip redundant RPC calls
+     *
+     * @param {number} blockNumber - Block number to check
+     * @returns {Set<string>} Set of pair keys updated in this block
+     */
+    getPairsUpdatedInBlock(blockNumber) {
+        return this.blockUpdates.get(blockNumber) || new Set();
+    }
+
+    /**
+     * Check if a pair was updated in a specific block
+     * @param {string} pairKey - Pair key (e.g., "WBNB/USDT" or "WBNB/USDT:pancakeswap")
+     * @param {number} blockNumber - Block number
+     * @returns {boolean}
+     */
+    wasPairUpdatedInBlock(pairKey, blockNumber) {
+        const updates = this.blockUpdates.get(blockNumber);
+        return updates ? updates.has(pairKey) : false;
+    }
+
+    /**
+     * Get count of pairs updated in recent blocks
+     * @returns {Object} Block -> count mapping
+     */
+    getBlockUpdateCounts() {
+        const counts = {};
+        for (const [block, pairs] of this.blockUpdates) {
+            counts[block] = pairs.size;
+        }
+        return counts;
+    }
+
+    /**
      * Stop event-driven detection
      */
     async stop() {
@@ -501,6 +574,7 @@ class EventDrivenDetector extends EventEmitter {
 
             // Clear state
             this.recentlyProcessed.clear();
+            this.blockUpdates.clear();
             this.eventQueue = [];
 
             log.info('EventDrivenDetector stopped', { stats: this.stats });
@@ -520,6 +594,7 @@ class EventDrivenDetector extends EventEmitter {
             isRunning: this.isRunning,
             pairsSubscribed: this.addressToPairInfo.size,
             debounceMapSize: this.recentlyProcessed.size,
+            blocksTracked: this.blockUpdates.size,
         };
     }
 

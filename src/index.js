@@ -534,6 +534,11 @@ class ArbitrageBot {
 
     /**
      * Handle new block event (single-chain mode)
+     *
+     * Optimized flow:
+     * 1. Get pairs already updated via Sync events (no need to re-fetch)
+     * 2. Fetch remaining pairs via RPC (cache-aware)
+     * 3. Run detection on combined price data
      */
     async handleNewBlock(blockData) {
         const { blockNumber } = blockData;
@@ -555,8 +560,17 @@ class ArbitrageBot {
             // Invalidate stale cache entries
             cacheManager.invalidateOlderThan(blockNumber);
 
-            // Fetch all prices
-            const prices = await priceFetcher.fetchAllPrices(blockNumber);
+            // Get pairs already updated via event-driven detection
+            // These pairs already have fresh data in cache from Sync events
+            const eventUpdatedPairs = eventDrivenDetector.isActive()
+                ? eventDrivenDetector.getPairsUpdatedInBlock(blockNumber)
+                : new Set();
+
+            // Fetch prices (cache-aware: skips pairs with fresh event data)
+            const prices = await priceFetcher.fetchAllPrices(blockNumber, {
+                excludePairs: eventUpdatedPairs,
+                respectPriority: true,
+            });
 
             if (Object.keys(prices).length === 0) {
                 log.debug('No prices fetched for this block');
@@ -766,6 +780,7 @@ class ArbitrageBot {
                 blockMonitor: blockMonitor.getStatus(),
                 rpc: rpcManager.getStats(),
                 cache: cacheManager.getStats(),
+                priceFetcher: priceFetcher.getStats(),
                 eventDriven: eventDrivenDetector.getStats(),
                 prioritizer: adaptivePrioritizer.getStats(),
                 differential: reserveDifferentialAnalyzer.getStats(),
