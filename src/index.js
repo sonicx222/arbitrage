@@ -1369,6 +1369,16 @@ async function main() {
     // Handle unhandled errors
     process.on('unhandledRejection', (reason, promise) => {
         log.error('Unhandled Promise Rejection', { reason, promise });
+        // Don't exit - allow the bot to continue running for non-fatal rejections
+    });
+
+    // Handle Node.js warnings (deprecation notices, etc.)
+    process.on('warning', (warning) => {
+        log.warn('Node.js Warning', {
+            name: warning.name,
+            message: warning.message,
+            stack: warning.stack,
+        });
     });
 
     // Handle uncaught exceptions
