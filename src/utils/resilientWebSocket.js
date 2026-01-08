@@ -415,14 +415,26 @@ export class ResilientWebSocket extends EventEmitter {
 
                 // FIX v3.6: Handle each state explicitly with proper error handling
                 if (readyState === 0) {
-                    // CONNECTING state - cannot call close() without error
-                    // Just terminate the underlying socket if possible
+                    // CONNECTING state - WebSocket handshake not complete
+                    // DON'T call terminate() - it throws "WebSocket was closed before connection established"
+                    // which propagates through the socket stream as an uncaught exception.
+                    // Instead: remove listeners and try close() which is gentler
                     try {
-                        if (ws && typeof ws.terminate === 'function') {
-                            ws.terminate(); // Hard close without handshake
+                        if (ws) {
+                            // Remove all listeners first to prevent callback issues
+                            if (typeof ws.removeAllListeners === 'function') {
+                                ws.removeAllListeners();
+                            }
+                            // Try close() - may fail but won't throw uncaught exception
+                            if (typeof ws.close === 'function') {
+                                ws.close();
+                            }
                         }
-                    } catch (terminateError) {
-                        // Ignore - socket may already be gone
+                    } catch (connectingCleanupError) {
+                        // Ignore - socket will timeout/close on its own
+                        log.debug('WebSocket CONNECTING cleanup error (ignored)', {
+                            error: connectingCleanupError.message
+                        });
                     }
                 } else if (readyState === 1 || readyState === 2) {
                     // OPEN or CLOSING - safe to destroy
