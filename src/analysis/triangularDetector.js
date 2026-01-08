@@ -251,8 +251,20 @@ class TriangularDetector {
         // Calculate effective rate
         const inputFloat = Number(inputAmount) / Math.pow(10, tokenDecimals);
         const outputFloat = Number(currentAmount) / Math.pow(10, tokenDecimals);
-        const effectiveRate = outputFloat / inputFloat;
-        const priceImpactPercent = (1 - effectiveRate / opportunity.cycleProduct) * 100;
+
+        // FIX v3.2: Validate divisors to prevent Infinity/NaN propagation
+        let effectiveRate = 0;
+        let priceImpactPercent = 0;
+
+        if (Number.isFinite(inputFloat) && inputFloat > 0) {
+            effectiveRate = outputFloat / inputFloat;
+
+            // FIX v3.2: Also validate cycleProduct before division
+            const cycleProduct = opportunity.cycleProduct;
+            if (Number.isFinite(cycleProduct) && cycleProduct > 0 && Number.isFinite(effectiveRate)) {
+                priceImpactPercent = (1 - effectiveRate / cycleProduct) * 100;
+            }
+        }
 
         return {
             outputAmount: currentAmount,
@@ -608,7 +620,12 @@ class TriangularDetector {
 
         const inputFloat = Number(inputAmount) / Math.pow(10, tokenDecimals);
         const outputFloat = Number(currentAmount) / Math.pow(10, tokenDecimals);
-        const effectiveRate = outputFloat / inputFloat;
+
+        // FIX v3.2: Validate divisor to prevent Infinity/NaN propagation
+        let effectiveRate = 0;
+        if (Number.isFinite(inputFloat) && inputFloat > 0) {
+            effectiveRate = outputFloat / inputFloat;
+        }
 
         return {
             outputAmount: currentAmount,

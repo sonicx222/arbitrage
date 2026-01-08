@@ -15,19 +15,22 @@ export default class PolygonChain extends BaseChain {
 
     /**
      * Initialize Polygon chain components
+     * FIX v3.3: Creates fresh instances with chain-specific config
      */
     async initialize() {
         this.log('info', 'Initializing Polygon chain components...');
 
         try {
-            const { default: RPCManagerClass } = await import('../../utils/rpcManager.js');
-            const { default: BlockMonitorClass } = await import('../../monitoring/blockMonitor.js');
+            // FIX v3.3: Import CLASSES (not singletons) for chain-specific instances
+            const { RPCManager } = await import('../../utils/rpcManager.js');
+            const { BlockMonitor } = await import('../../monitoring/blockMonitor.js');
             const { default: PriceFetcherClass } = await import('../../data/priceFetcher.js');
             const { default: CacheManagerClass } = await import('../../data/cacheManager.js');
             const { default: ArbitrageDetectorClass } = await import('../../analysis/arbitrageDetector.js');
 
-            this.rpcManager = RPCManagerClass;
-            this.blockMonitor = BlockMonitorClass;
+            // FIX v3.3: Create NEW instances with Polygon config
+            this.rpcManager = new RPCManager(this.config);
+            this.blockMonitor = new BlockMonitor(this.rpcManager, this.config.name);
             this.priceFetcher = PriceFetcherClass;
             this.cache = CacheManagerClass;
             this.arbitrageDetector = ArbitrageDetectorClass;

@@ -31,6 +31,7 @@ export class ResilientWebSocketManager extends EventEmitter {
         this.endpointScores = new Map(); // endpoint -> { score, latency, errors, lastCheck }
         this.endpoints = [];
         this.chainId = null;
+        this.chainName = 'Unknown'; // FIX v3.3: Add chain name for log context
         this.primaryEndpoint = null;
 
         // State
@@ -50,16 +51,19 @@ export class ResilientWebSocketManager extends EventEmitter {
 
     /**
      * Initialize with WebSocket endpoints
+     * FIX v3.3: Added chainName parameter for log context
      * @param {Array<string>} endpoints - Array of WebSocket URLs
      * @param {number} chainId - Chain ID for providers
+     * @param {string} chainName - Optional chain name for logging
      */
-    async initialize(endpoints, chainId) {
+    async initialize(endpoints, chainId, chainName = null) {
         if (!endpoints || endpoints.length === 0) {
             throw new Error('At least one WebSocket endpoint is required');
         }
 
         this.endpoints = endpoints;
         this.chainId = chainId;
+        this.chainName = chainName || `Chain ${chainId}`;
 
         // Initialize scores for all endpoints
         for (const endpoint of endpoints) {
@@ -91,7 +95,8 @@ export class ResilientWebSocketManager extends EventEmitter {
 
         this.isInitialized = true;
 
-        log.info('ResilientWebSocketManager initialized', {
+        // FIX v3.3: Include chain name in log for multi-chain clarity
+        log.info(`[${this.chainName}] WebSocket manager initialized`, {
             endpoints: endpoints.length,
             chainId,
             primaryEndpoint: this._maskUrl(this.primaryEndpoint),
@@ -123,7 +128,9 @@ export class ResilientWebSocketManager extends EventEmitter {
             this.connections.delete(endpoint);
         }
 
-        const ws = new ResilientWebSocket(endpoint, this.chainId, this.config.wsOptions);
+        // FIX v3.3: Pass chainName for clearer logging in multi-chain mode
+        const wsOptions = { ...this.config.wsOptions, chainName: this.chainName };
+        const ws = new ResilientWebSocket(endpoint, this.chainId, wsOptions);
 
         // Forward events from this connection
         this._setupConnectionEvents(ws, endpoint);

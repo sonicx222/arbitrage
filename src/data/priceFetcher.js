@@ -39,8 +39,11 @@ class PriceFetcher {
 
         // Lazy-loaded prioritizer reference (avoid circular dependency)
         this._prioritizer = null;
+        // FIX v3.2: Add loading promise to prevent race condition during concurrent initialization
+        this._prioritizerLoadPromise = null;
 
-        log.info(`Price Fetcher initialized for ${this.dexes.length} DEXs`, {
+        // FIX v3.3: Changed to debug - logs for each worker in multi-chain mode
+        log.debug(`Price Fetcher initialized for ${this.dexes.length} DEXs`, {
             batchSize: this.batchSize,
             interBatchDelayMs: this.interBatchDelayMs,
         });
@@ -49,11 +52,26 @@ class PriceFetcher {
     /**
      * Get the adaptive prioritizer (lazy load to avoid circular deps)
      * Uses dynamic import for ESM compatibility
+     *
+     * FIX v3.2: Added race condition protection using a loading promise
+     * to prevent concurrent module imports
+     *
      * @private
      * @returns {Promise<Object|null>} Prioritizer instance or null if unavailable
      */
     async _getPrioritizer() {
-        if (!this._prioritizer) {
+        // Fast path: already loaded
+        if (this._prioritizer !== null) {
+            return this._prioritizer;
+        }
+
+        // FIX v3.2: Check if another call is already loading the module
+        if (this._prioritizerLoadPromise) {
+            return this._prioritizerLoadPromise;
+        }
+
+        // Start loading and store the promise to prevent concurrent loads
+        this._prioritizerLoadPromise = (async () => {
             try {
                 // Dynamic import for ESM compatibility (avoids circular dependency)
                 const module = await import('../analysis/adaptivePrioritizer.js');
@@ -61,8 +79,10 @@ class PriceFetcher {
             } catch {
                 this._prioritizer = null;
             }
-        }
-        return this._prioritizer;
+            return this._prioritizer;
+        })();
+
+        return this._prioritizerLoadPromise;
     }
 
     /**

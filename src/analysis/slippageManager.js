@@ -83,7 +83,8 @@ class SlippageManager {
         this.minSlippage = 0.0005;  // 0.05% minimum
         this.maxSlippage = 0.03;    // 3.0% maximum
 
-        log.info('Slippage Manager initialized', {
+        // FIX v3.3: Changed to debug - logs for each worker in multi-chain mode
+        log.debug('Slippage Manager initialized', {
             tokenTypes: Object.keys(this.tokenTypes).length,
             stablecoins: this.tokenTypes.stablecoin.size,
             baseRates: this.baseSlippageRates,

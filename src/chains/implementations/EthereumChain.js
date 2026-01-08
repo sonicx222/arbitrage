@@ -6,6 +6,9 @@ import log from '../../utils/logger.js';
  *
  * Extends BaseChain for Ethereum-specific behavior.
  * Uses EIP-1559 gas model.
+ *
+ * FIX v3.3: Creates fresh instances of RPC Manager, Block Monitor, etc.
+ * with chain-specific configuration for proper multi-chain support.
  */
 export default class EthereumChain extends BaseChain {
     constructor(config) {
@@ -15,22 +18,24 @@ export default class EthereumChain extends BaseChain {
 
     /**
      * Initialize Ethereum chain components
-     * Creates fresh instances (not singletons) for worker thread isolation
+     * FIX v3.3: Creates fresh instances (not singletons) for proper chain isolation
      */
     async initialize() {
         this.log('info', 'Initializing Ethereum chain components...');
 
         try {
-            // Dynamically import to create fresh instances per worker
-            const { default: RPCManagerClass } = await import('../../utils/rpcManager.js');
-            const { default: BlockMonitorClass } = await import('../../monitoring/blockMonitor.js');
+            // FIX v3.3: Import CLASSES (not singletons) for chain-specific instances
+            const { RPCManager } = await import('../../utils/rpcManager.js');
+            const { BlockMonitor } = await import('../../monitoring/blockMonitor.js');
             const { default: PriceFetcherClass } = await import('../../data/priceFetcher.js');
             const { default: CacheManagerClass } = await import('../../data/cacheManager.js');
             const { default: ArbitrageDetectorClass } = await import('../../analysis/arbitrageDetector.js');
 
-            // For now, use singleton instances (proper per-chain instances require factory refactoring)
-            this.rpcManager = RPCManagerClass;
-            this.blockMonitor = BlockMonitorClass;
+            // FIX v3.3: Create NEW instances with Ethereum config instead of BSC singletons
+            this.rpcManager = new RPCManager(this.config);
+            this.blockMonitor = new BlockMonitor(this.rpcManager, this.config.name);
+
+            // These still use singletons for now (need further refactoring)
             this.priceFetcher = PriceFetcherClass;
             this.cache = CacheManagerClass;
             this.arbitrageDetector = ArbitrageDetectorClass;

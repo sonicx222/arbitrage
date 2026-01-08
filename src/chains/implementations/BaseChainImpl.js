@@ -16,19 +16,25 @@ export default class BaseChainImpl extends BaseChain {
 
     /**
      * Initialize Base chain components
+     * FIX v3.3: Create NEW instances with chain-specific config instead of using singletons
      */
     async initialize() {
         this.log('info', 'Initializing Base chain components...');
 
         try {
-            const { default: RPCManagerClass } = await import('../../utils/rpcManager.js');
-            const { default: BlockMonitorClass } = await import('../../monitoring/blockMonitor.js');
+            // FIX v3.3: Import CLASSES (not singletons) for proper chain isolation
+            const { RPCManager } = await import('../../utils/rpcManager.js');
+            const { BlockMonitor } = await import('../../monitoring/blockMonitor.js');
+            // These still use singletons for now (require deeper refactoring)
             const { default: PriceFetcherClass } = await import('../../data/priceFetcher.js');
             const { default: CacheManagerClass } = await import('../../data/cacheManager.js');
             const { default: ArbitrageDetectorClass } = await import('../../analysis/arbitrageDetector.js');
 
-            this.rpcManager = RPCManagerClass;
-            this.blockMonitor = BlockMonitorClass;
+            // FIX v3.3: Create NEW instances with Base-specific config
+            this.rpcManager = new RPCManager(this.config);
+            this.blockMonitor = new BlockMonitor(this.rpcManager, this.config.name);
+
+            // These still use singletons (future improvement: per-chain instances)
             this.priceFetcher = PriceFetcherClass;
             this.cache = CacheManagerClass;
             this.arbitrageDetector = ArbitrageDetectorClass;

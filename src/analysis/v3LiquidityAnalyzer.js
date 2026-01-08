@@ -181,13 +181,24 @@ class V3LiquidityAnalyzer extends EventEmitter {
         // Calculate price impact
         const startPrice = this._sqrtPriceToPrice(sqrtPriceX96);
         const endPrice = this._sqrtPriceToPrice(sqrtPrice);
-        const priceImpact = Math.abs((endPrice - startPrice) / startPrice) * 100;
+
+        // FIX v3.2: Validate divisors to prevent division by zero
+        let priceImpact = 0;
+        if (Number.isFinite(startPrice) && startPrice > 0) {
+            priceImpact = Math.abs((endPrice - startPrice) / startPrice) * 100;
+        }
+
+        let effectivePrice = 0;
+        const amountInNum = Number(amountIn);
+        if (Number.isFinite(amountInNum) && amountInNum > 0) {
+            effectivePrice = Number(totalOut) / amountInNum;
+        }
 
         return {
             amountOut: totalOut,
             priceImpact,
             ticksCrossed,
-            effectivePrice: Number(totalOut) / Number(amountIn),
+            effectivePrice,
         };
     }
 
@@ -219,6 +230,9 @@ class V3LiquidityAnalyzer extends EventEmitter {
 
         const effectiveBuy = buyPrice * (1 + buyFee);
         const effectiveSell = sellPrice * (1 - sellFee);
+
+        // FIX v3.2: Validate divisor to prevent division by zero
+        if (!Number.isFinite(effectiveBuy) || effectiveBuy <= 0) return null;
 
         const spreadPercent = ((effectiveSell - effectiveBuy) / effectiveBuy) * 100;
 

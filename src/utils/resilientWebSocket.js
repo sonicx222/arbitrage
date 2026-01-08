@@ -16,6 +16,8 @@ export class ResilientWebSocket extends EventEmitter {
 
         this.url = url;
         this.chainId = chainId;
+        // FIX v3.3: Add chain name for clearer logging
+        this.chainName = options.chainName || `Chain ${chainId}`;
 
         // Configuration
         this.config = {
@@ -104,9 +106,9 @@ export class ResilientWebSocket extends EventEmitter {
             this.lastSuccessfulHeartbeat = Date.now();
             this.metrics.connectionsEstablished++;
 
-            log.info('ResilientWebSocket connected', {
+            // FIX v3.3: Changed to debug level - manager logs init at info level
+            log.debug(`[${this.chainName}] WebSocket endpoint connected`, {
                 url: this._maskUrl(this.url),
-                chainId: this.chainId,
             });
 
             this.emit('connected');

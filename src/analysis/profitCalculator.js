@@ -75,7 +75,8 @@ class ProfitCalculator {
         this.chainName = 'bsc';
         this.provider = null; // Set via setProvider() for L2 chains
 
-        log.info('Profit Calculator initialized', {
+        // FIX v3.3: Changed to debug - logs for each worker in multi-chain mode
+        log.debug('Profit Calculator initialized', {
             flashLoanFee: `${this.flashLoanFee * 100}%`,
             slippageBuffer: `${this.slippageBuffer * 100}%`,
             minProfitUSD: `$${this.minProfitUSD}`,
@@ -248,6 +249,28 @@ class ProfitCalculator {
             config.triangular?.maxTradeSizeUSD || 5000,
             minLiquidityUSD * 0.1
         );
+
+        // FIX v3.2: Validate baseTokenPriceUSD to prevent division by zero
+        // If price is invalid, return zero profit to skip this opportunity safely
+        if (!Number.isFinite(baseTokenPriceUSD) || baseTokenPriceUSD <= 0) {
+            log.debug('Invalid baseTokenPriceUSD in triangular profit calculation', {
+                baseTokenPriceUSD,
+                baseToken,
+            });
+            return {
+                type: 'triangular',
+                grossProfitUSD: 0,
+                flashFeeUSD: 0,
+                gasCostUSD: 0,
+                slippageUSD: 0,
+                slippageRate: 0,
+                netProfitUSD: 0,
+                netProfitPercent: 0,
+                tradeSizeUSD: 0,
+                isProfitable: false,
+                breakdown: { gross: 0, flashLoan: 0, gas: 0, slippage: 0, net: 0 },
+            };
+        }
 
         // Convert trade size to token amount
         const tradeSizeTokens = maxTradeUSD / baseTokenPriceUSD;

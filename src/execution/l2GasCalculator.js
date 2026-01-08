@@ -55,7 +55,8 @@ class L2GasCalculator {
             flashLoan: 800,    // ~800 bytes with flash loan overhead
         };
 
-        log.info('L2 Gas Calculator initialized', {
+        // FIX v3.3: Changed to debug - logs for each worker in multi-chain mode
+        log.debug('L2 Gas Calculator initialized', {
             supportedChains: ['arbitrum', 'base'],
         });
     }

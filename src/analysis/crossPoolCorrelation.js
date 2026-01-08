@@ -118,10 +118,17 @@ class CrossPoolCorrelation extends EventEmitter {
         // Check if price changed significantly
         if (history.length > 0) {
             const lastPrice = history[history.length - 1].price;
-            const changePercent = Math.abs((price - lastPrice) / lastPrice) * 100;
 
-            if (changePercent < this.priceChangeThreshold) {
-                return; // Price didn't change enough
+            // FIX v3.2: Validate lastPrice to prevent division by zero
+            if (!Number.isFinite(lastPrice) || lastPrice <= 0) {
+                // Skip change calculation if last price is invalid
+                // Still record the new price below
+            } else {
+                const changePercent = Math.abs((price - lastPrice) / lastPrice) * 100;
+
+                if (changePercent < this.priceChangeThreshold) {
+                    return; // Price didn't change enough
+                }
             }
         }
 

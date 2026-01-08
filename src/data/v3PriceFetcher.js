@@ -40,7 +40,8 @@ class V3PriceFetcher {
         this.Q96 = 2n ** 96n;
         this.Q192 = 2n ** 192n;
 
-        log.info('V3 Price Fetcher initialized');
+        // FIX v3.3: Changed to debug - logs for each worker in multi-chain mode
+        log.debug('V3 Price Fetcher initialized');
     }
 
     /**

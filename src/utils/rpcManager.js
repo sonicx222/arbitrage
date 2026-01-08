@@ -21,11 +21,23 @@ import { ResilientWebSocketManager } from './resilientWebSocketManager.js';
  * - Adaptive rate limiting based on endpoint health
  */
 class RPCManager extends EventEmitter {
-    constructor() {
+    /**
+     * Create an RPC Manager instance
+     * FIX v3.3: Accept optional chainConfig for multi-chain support
+     * @param {Object} chainConfig - Optional chain-specific config (defaults to main config for BSC)
+     */
+    constructor(chainConfig = null) {
         super();
 
-        this.httpEndpoints = config.rpc.http;
-        this.wsEndpoints = config.rpc.ws;
+        // FIX v3.3: Use chain-specific config if provided, otherwise default to main config
+        const rpcConfig = chainConfig?.rpc || config.rpc;
+        const networkConfig = chainConfig || config.network || config;
+
+        this.chainId = networkConfig.chainId || config.network?.chainId || 56;
+        this.chainName = networkConfig.name || config.network?.name || 'Unknown Chain';
+
+        this.httpEndpoints = rpcConfig.http || [];
+        this.wsEndpoints = rpcConfig.ws || [];
 
         // HTTP providers pool
         this.httpProviders = [];
@@ -41,7 +53,7 @@ class RPCManager extends EventEmitter {
 
         // Rate limiting - v2.1: Enhanced with global budget
         this.requestCounts = new Map(); // endpoint -> { count, resetTime }
-        this.maxRequestsPerMinute = config.rpc.maxRequestsPerMinute;
+        this.maxRequestsPerMinute = rpcConfig.maxRequestsPerMinute || 300;
 
         // v2.1: Global request budget to prevent aggregate overload
         this.globalRequestBudget = {
@@ -49,14 +61,14 @@ class RPCManager extends EventEmitter {
             resetTime: Date.now() + 60000,
             // Conservative: 80% of sum of all endpoint limits, capped at 1000/min
             maxPerMinute: Math.min(
-                Math.floor((config.rpc.maxRequestsPerMinute || 300) * (config.rpc.http?.length || 1) * 0.8),
+                Math.floor((rpcConfig.maxRequestsPerMinute || 300) * (this.httpEndpoints.length || 1) * 0.8),
                 1000
             ),
         };
 
         // v2.1: Request throttling for burst prevention
         this.lastRequestTime = 0;
-        this.minRequestIntervalMs = config.rpc.requestDelay || 50; // Min ms between requests
+        this.minRequestIntervalMs = rpcConfig.requestDelay || 50; // Min ms between requests
 
         // v2.1: Cooldown tracking for rate-limited endpoints
         this.endpointCooldowns = new Map(); // endpoint -> cooldownUntil timestamp
@@ -75,7 +87,10 @@ class RPCManager extends EventEmitter {
         // Start self-healing background task
         this.startSelfHealing();
 
-        log.info(`RPC Manager initialized with ${this.httpProviders.length} HTTP and ${this.wsEndpoints.length} WebSocket endpoints`, {
+        // FIX v3.3: Include chain context in log
+        log.info(`[${this.chainName}] RPC Manager initialized with ${this.httpProviders.length} HTTP and ${this.wsEndpoints.length} WebSocket endpoints`, {
+            chainId: this.chainId,
+            chainName: this.chainName,
             selfHealing: true,
             healingInterval: '5 minutes',
             resilientWebSocket: true,
@@ -147,11 +162,13 @@ class RPCManager extends EventEmitter {
                 this.emit('wsCircuitOpen', data);
             });
 
-            // Initialize with configured endpoints
-            await this.wsManager.initialize(this.wsEndpoints, config.network.chainId);
+            // FIX v3.3: Pass chainId and chainName for proper multi-chain logging
+            await this.wsManager.initialize(this.wsEndpoints, this.chainId, this.chainName);
             this.wsManagerInitialized = true;
 
-            log.info('ResilientWebSocketManager initialized successfully');
+            log.debug(`[${this.chainName}] ResilientWebSocketManager ready`, {
+                chainId: this.chainId,
+            });
         } catch (error) {
             log.error('Failed to initialize ResilientWebSocketManager', { error: error.message });
             // Fall back to legacy initialization
@@ -164,11 +181,12 @@ class RPCManager extends EventEmitter {
      * @private
      */
     _initLegacyWsProviders() {
-        log.warn('Using legacy WebSocket initialization');
+        log.warn(`[${this.chainName}] Using legacy WebSocket initialization`);
 
         this.wsEndpoints.forEach((endpoint, index) => {
             try {
-                const provider = new ethers.WebSocketProvider(endpoint, config.network.chainId);
+                // FIX v3.3: Use instance chainId instead of global config
+                const provider = new ethers.WebSocketProvider(endpoint, this.chainId);
 
                 // Set up error handlers
                 if (provider._websocket) {
@@ -567,10 +585,24 @@ class RPCManager extends EventEmitter {
 
     /**
      * Attempt to heal unhealthy endpoints by re-testing them
+     *
+     * FIX v3.2: Also cleans up expired cooldowns to prevent Map accumulation
      */
     async healUnhealthyEndpoints() {
         const now = Date.now();
         const unhealthyEndpoints = [];
+
+        // FIX v3.2: Cleanup expired cooldowns during healing cycle
+        // Collect expired cooldown keys first to avoid mutation during iteration
+        const expiredCooldowns = [];
+        for (const [endpoint, cooldownUntil] of this.endpointCooldowns) {
+            if (now > cooldownUntil) {
+                expiredCooldowns.push(endpoint);
+            }
+        }
+        for (const endpoint of expiredCooldowns) {
+            this.endpointCooldowns.delete(endpoint);
+        }
 
         // Find endpoints that have been unhealthy long enough to retry
         this.endpointHealth.forEach((health, endpoint) => {
@@ -791,6 +823,9 @@ class RPCManager extends EventEmitter {
     }
 }
 
-// Export singleton instance
+// Export singleton instance (for backward compatibility with BSC)
 const rpcManager = new RPCManager();
 export default rpcManager;
+
+// FIX v3.3: Export class for multi-chain support (each chain creates its own instance)
+export { RPCManager };

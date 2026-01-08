@@ -273,6 +273,11 @@ class GasOptimizer {
         const recentAvg = recent.reduce((a, b) => a + Number(b.gasPrice), 0) / recent.length;
         const olderAvg = older.reduce((a, b) => a + Number(b.gasPrice), 0) / older.length;
 
+        // FIX v3.2: Validate divisor to prevent division by zero
+        if (!Number.isFinite(olderAvg) || olderAvg <= 0) {
+            return 'insufficient_data';
+        }
+
         const changePercent = ((recentAvg - olderAvg) / olderAvg) * 100;
 
         if (changePercent > 10) return 'increasing';

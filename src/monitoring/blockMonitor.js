@@ -12,8 +12,18 @@ import config from '../config.js';
  * - Falls back to HTTP polling only when all WS endpoints are down
  */
 class BlockMonitor extends EventEmitter {
-    constructor() {
+    /**
+     * Create a Block Monitor instance
+     * FIX v3.3: Accept optional rpcManagerInstance for multi-chain support
+     * @param {Object} rpcManagerInstance - Optional RPC manager instance (defaults to singleton)
+     * @param {string} chainName - Optional chain name for logging context
+     */
+    constructor(rpcManagerInstance = null, chainName = 'BSC Mainnet') {
         super();
+
+        // FIX v3.3: Use provided rpcManager or fall back to singleton
+        this.rpcManager = rpcManagerInstance || rpcManager;
+        this.chainName = chainName;
 
         this.isRunning = false;
         this.mode = 'disconnected'; // 'websocket', 'polling', 'disconnected'
@@ -27,7 +37,7 @@ class BlockMonitor extends EventEmitter {
         this._boundHandleAllDown = this._handleAllWsDown.bind(this);
         this._boundHandleRecovery = this._handleWsRecovery.bind(this);
 
-        log.info('Block Monitor initialized (resilient mode)');
+        log.info(`[${this.chainName}] Block Monitor initialized (resilient mode)`);
     }
 
     /**
@@ -41,17 +51,17 @@ class BlockMonitor extends EventEmitter {
         }
 
         try {
-            // Ensure WebSocket manager is ready
-            const wsReady = await rpcManager.ensureWsReady();
+            // FIX v3.3: Use instance rpcManager instead of global singleton
+            const wsReady = await this.rpcManager.ensureWsReady();
 
             if (wsReady) {
                 // Subscribe to rpcManager's forwarded block events
-                rpcManager.on('block', this._boundHandleBlock);
-                rpcManager.on('wsAllDown', this._boundHandleAllDown);
-                rpcManager.on('endpointRecovered', this._boundHandleRecovery);
+                this.rpcManager.on('block', this._boundHandleBlock);
+                this.rpcManager.on('wsAllDown', this._boundHandleAllDown);
+                this.rpcManager.on('endpointRecovered', this._boundHandleRecovery);
 
                 // Get initial block number
-                const initialBlock = await rpcManager.withRetry(async (provider) => {
+                const initialBlock = await this.rpcManager.withRetry(async (provider) => {
                     return await provider.getBlockNumber();
                 });
 
@@ -63,7 +73,7 @@ class BlockMonitor extends EventEmitter {
                 // Start stale block detection as safety net
                 this._setupStaleBlockDetection();
 
-                log.info('✅ Block Monitor started (resilient WebSocket mode)', {
+                log.info(`[${this.chainName}] ✅ Block Monitor started (resilient WebSocket mode)`, {
                     initialBlock,
                 });
             } else {
@@ -81,28 +91,39 @@ class BlockMonitor extends EventEmitter {
 
     /**
      * Start HTTP polling mode as fallback
+     *
+     * FIX v3.2: Set mode to 'polling' BEFORE async operations to prevent
+     * race conditions where multiple calls could start concurrent polling
      */
     async startHttpPolling() {
+        // FIX v3.2: Check if already in polling mode to prevent concurrent calls
+        if (this.mode === 'polling') {
+            log.debug('Already in polling mode, skipping duplicate startHttpPolling call');
+            return;
+        }
+
+        // FIX v3.2: Set mode BEFORE async operations to prevent race condition
+        this.mode = 'polling';
+
         // Stop any existing polling
         if (this.pollingInterval) {
             clearInterval(this.pollingInterval);
         }
 
-        log.info('Starting HTTP polling mode (polling every 3 seconds)');
+        log.info(`[${this.chainName}] Starting HTTP polling mode (polling every 3 seconds)`);
 
-        // Get initial block
-        const initialBlock = await rpcManager.withRetry(async (provider) => {
+        // FIX v3.3: Use instance rpcManager
+        const initialBlock = await this.rpcManager.withRetry(async (provider) => {
             return await provider.getBlockNumber();
         });
 
         this.lastBlockNumber = initialBlock;
         this.lastBlockTime = Date.now();
-        this.mode = 'polling';
 
         // Poll for new blocks (unref to not block process exit)
         this.pollingInterval = setInterval(async () => {
             try {
-                const currentBlock = await rpcManager.withRetry(async (provider) => {
+                const currentBlock = await this.rpcManager.withRetry(async (provider) => {
                     return await provider.getBlockNumber();
                 });
 
@@ -251,12 +272,12 @@ class BlockMonitor extends EventEmitter {
                 this.pollingInterval = null;
             }
 
-            // Unsubscribe from rpcManager events
-            rpcManager.off('block', this._boundHandleBlock);
-            rpcManager.off('wsAllDown', this._boundHandleAllDown);
-            rpcManager.off('endpointRecovered', this._boundHandleRecovery);
+            // FIX v3.3: Use instance rpcManager
+            this.rpcManager.off('block', this._boundHandleBlock);
+            this.rpcManager.off('wsAllDown', this._boundHandleAllDown);
+            this.rpcManager.off('endpointRecovered', this._boundHandleRecovery);
 
-            log.info('Block Monitor stopped', { previousMode });
+            log.info(`[${this.chainName}] Block Monitor stopped`, { previousMode });
         } catch (error) {
             log.error('Error stopping Block Monitor', { error: error.message });
         }
@@ -283,6 +304,9 @@ class BlockMonitor extends EventEmitter {
     }
 }
 
-// Export singleton instance
+// Export singleton instance (for backward compatibility with BSC)
 const blockMonitor = new BlockMonitor();
 export default blockMonitor;
+
+// FIX v3.3: Export class for multi-chain support
+export { BlockMonitor };

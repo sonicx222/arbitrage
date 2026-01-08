@@ -48,7 +48,8 @@ class CacheManager {
 
         this._loadPersistentCache();
 
-        log.info('Cache Manager initialized', {
+        // FIX v3.3: Changed to debug - logs for each worker in multi-chain mode
+        log.debug('Cache Manager initialized', {
             maxSize: config.monitoring.cacheSize,
             cachedPairs: this.pairAddressCache.keys().length,
             priceCacheTTL: `${this.priceCache.options.stdTTL}s`,

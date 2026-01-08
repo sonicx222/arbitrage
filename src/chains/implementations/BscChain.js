@@ -1,11 +1,5 @@
 import BaseChain from '../BaseChain.js';
-import RPCManager from '../../utils/rpcManager.js';
-import BlockMonitor from '../../monitoring/blockMonitor.js';
-import PriceFetcher from '../../data/priceFetcher.js';
-import CacheManager from '../../data/cacheManager.js';
-import ArbitrageDetector from '../../analysis/arbitrageDetector.js';
-import TriangularDetector from '../../analysis/triangularDetector.js';
-import ExecutionManager from '../../execution/executionManager.js';
+// FIX v3.3: Removed static singleton imports - now use dynamic imports in initialize()
 import log from '../../utils/logger.js';
 
 /**
@@ -25,16 +19,27 @@ export default class BscChain extends BaseChain {
 
     /**
      * Initialize all BSC components
-     * Uses existing singleton instances for backward compatibility
+     * FIX v3.3: Create NEW instances with chain-specific config for proper isolation
      */
     async initialize() {
         this.log('info', 'Initializing BSC chain components...');
 
         try {
-            // Use existing singleton instances
-            // In the future, these would be created as new instances per chain
-            this.rpcManager = RPCManager;
-            this.blockMonitor = BlockMonitor;
+            // FIX v3.3: Import CLASSES for chain isolation in multi-chain mode
+            const { RPCManager } = await import('../../utils/rpcManager.js');
+            const { BlockMonitor } = await import('../../monitoring/blockMonitor.js');
+            // These still use singletons for now (require deeper refactoring)
+            const { default: PriceFetcher } = await import('../../data/priceFetcher.js');
+            const { default: CacheManager } = await import('../../data/cacheManager.js');
+            const { default: ArbitrageDetector } = await import('../../analysis/arbitrageDetector.js');
+            const { default: TriangularDetector } = await import('../../analysis/triangularDetector.js');
+            const { default: ExecutionManager } = await import('../../execution/executionManager.js');
+
+            // FIX v3.3: Create NEW instances with BSC-specific config
+            this.rpcManager = new RPCManager(this.config);
+            this.blockMonitor = new BlockMonitor(this.rpcManager, this.config.name);
+
+            // These still use singletons (future improvement: per-chain instances)
             this.priceFetcher = PriceFetcher;
             this.cache = CacheManager;
             this.arbitrageDetector = ArbitrageDetector;

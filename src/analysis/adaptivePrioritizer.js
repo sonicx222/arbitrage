@@ -51,7 +51,8 @@ class AdaptivePrioritizer extends EventEmitter {
         // Decay timer
         this.decayTimer = null;
 
-        log.info('AdaptivePrioritizer initialized', {
+        // FIX v3.3: Changed to debug level - logs on every module import in multi-chain mode
+        log.debug('AdaptivePrioritizer module loaded', {
             tiers: Object.keys(this.tiers).length,
             decayInterval: this.decayIntervalMs,
         });
@@ -72,7 +73,11 @@ class AdaptivePrioritizer extends EventEmitter {
         // Don't prevent process exit
         this.decayTimer.unref();
 
-        log.debug('AdaptivePrioritizer started');
+        // FIX v3.3: Log at info level on explicit start, not constructor
+        log.info('AdaptivePrioritizer started', {
+            tiers: Object.keys(this.tiers).length,
+            decayInterval: this.decayIntervalMs,
+        });
     }
 
     /**

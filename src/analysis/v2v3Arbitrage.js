@@ -261,6 +261,9 @@ class V2V3Arbitrage extends EventEmitter {
         const v2BuyCost = v2Analysis.buyPrice * (1 + v2Analysis.fee);
         const v3SellReturn = v3Analysis.sellPrice * (1 - v3Analysis.sellFee);
 
+        // FIX v3.2: Validate divisor to prevent division by zero / Infinity
+        if (!Number.isFinite(v2BuyCost) || v2BuyCost <= 0) return null;
+
         const spreadPercent = ((v3SellReturn - v2BuyCost) / v2BuyCost) * 100;
 
         if (spreadPercent < this.minSpreadPercent) return null;
@@ -313,6 +316,9 @@ class V2V3Arbitrage extends EventEmitter {
         // Calculate effective spread after fees
         const v3BuyCost = v3Analysis.buyPrice * (1 + v3Analysis.buyFee);
         const v2SellReturn = v2Analysis.sellPrice * (1 - v2Analysis.fee);
+
+        // FIX v3.2: Validate divisor to prevent division by zero / Infinity
+        if (!Number.isFinite(v3BuyCost) || v3BuyCost <= 0) return null;
 
         const spreadPercent = ((v2SellReturn - v3BuyCost) / v3BuyCost) * 100;
 
