@@ -29,7 +29,8 @@ class GasPriceCache {
             hits: 0,
             misses: 0,
             coalescedRequests: 0,
-            staleFallbacks: 0,
+            staleFallbacks: 0,       // FIX v3.7: Now tracks lazy refill returns
+            lazyRefreshes: 0,        // FIX v3.7: Background refreshes triggered
             fetchErrors: 0,
             avgFetchTimeMs: 0,
             totalFetchTimeMs: 0,
@@ -41,6 +42,13 @@ class GasPriceCache {
 
     /**
      * Get gas price with caching
+     *
+     * FIX v3.7: Implements "Lazy Refill" pattern for non-blocking gas price retrieval
+     * - If fresh cache exists: return immediately
+     * - If stale cache exists: return IMMEDIATELY + trigger background refresh
+     * - If no cache: block and fetch (only on cold start)
+     *
+     * This reduces gasPrice phase latency from ~700ms to <1ms in most cases.
      *
      * @param {Function} fetchFn - Async function to fetch gas price (receives provider)
      * @param {Object} provider - ethers provider (optional, passed to fetchFn)
@@ -55,13 +63,27 @@ class GasPriceCache {
             return this.cache;
         }
 
-        // 2. Coalesce concurrent requests
+        // 2. FIX v3.7: LAZY REFILL - Return stale cache immediately, refresh in background
+        // This is the key optimization: detection never blocks on network latency
+        if (this.cache && (now - this.timestamp) < this.staleTtlMs) {
+            this.stats.staleFallbacks++;
+
+            // Trigger background refresh (non-blocking) if not already in progress
+            if (!this.pendingFetch) {
+                this._backgroundRefresh(fetchFn, provider);
+            }
+
+            // Return stale data immediately - <1ms latency!
+            return { ...this.cache, source: 'stale-lazy' };
+        }
+
+        // 3. Coalesce concurrent requests (blocks if no stale cache available)
         if (this.pendingFetch) {
             this.stats.coalescedRequests++;
             return this.pendingFetch;
         }
 
-        // 3. Fetch new gas price
+        // 4. Cold start - must block and fetch (only happens once per startup)
         this.stats.misses++;
         this.pendingFetch = this._fetchGasPrice(fetchFn, provider, now);
 
@@ -71,6 +93,31 @@ class GasPriceCache {
         } finally {
             this.pendingFetch = null;
         }
+    }
+
+    /**
+     * Background refresh - non-blocking gas price update
+     * FIX v3.7: Part of Lazy Refill pattern
+     * @private
+     */
+    _backgroundRefresh(fetchFn, provider) {
+        this.stats.lazyRefreshes++;
+
+        // Fire-and-forget async refresh
+        this.pendingFetch = this._fetchGasPrice(fetchFn, provider, Date.now())
+            .then(result => {
+                log.debug('Gas price background refresh completed', {
+                    gasPrice: result.gasPrice?.toString(),
+                });
+                return result;
+            })
+            .catch(error => {
+                log.debug('Gas price background refresh failed', { error: error.message });
+                // Swallow error - stale cache was already returned
+            })
+            .finally(() => {
+                this.pendingFetch = null;
+            });
     }
 
     /**
@@ -171,6 +218,7 @@ class GasPriceCache {
             misses: 0,
             coalescedRequests: 0,
             staleFallbacks: 0,
+            lazyRefreshes: 0,
             fetchErrors: 0,
             avgFetchTimeMs: 0,
             totalFetchTimeMs: 0,

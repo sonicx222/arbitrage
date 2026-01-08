@@ -66,6 +66,9 @@ export default class EthereumChain extends BaseChain {
         this.log('info', 'Starting Ethereum chain monitoring...');
 
         try {
+            // FIX v3.7: Pre-warm gas price cache before first detection cycle
+            await this._prewarmGasCache();
+
             await this.blockMonitor.start();
             this.isRunning = true;
             this.log('info', 'Ethereum chain monitoring started');
@@ -92,6 +95,32 @@ export default class EthereumChain extends BaseChain {
             this.log('info', 'Ethereum chain stopped');
         } catch (error) {
             this.log('error', 'Error stopping Ethereum chain', { error: error.message });
+        }
+    }
+
+    /**
+     * Pre-warm the gas price cache before first detection cycle
+     * FIX v3.7: Eliminates 600ms+ cold-start delay on first block
+     * @private
+     */
+    async _prewarmGasCache() {
+        try {
+            const { default: gasPriceCache } = await import('../../utils/gasPriceCache.js');
+
+            if (gasPriceCache.isFresh()) {
+                this.log('debug', 'Gas price cache already warm');
+                return;
+            }
+
+            const startTime = performance.now();
+            await gasPriceCache.getGasPrice(async () => {
+                return await this.rpcManager.withRetry(async (provider) => provider.getFeeData());
+            });
+
+            const elapsed = (performance.now() - startTime).toFixed(2);
+            this.log('info', `Gas price cache pre-warmed (${elapsed}ms)`);
+        } catch (error) {
+            this.log('warn', 'Failed to pre-warm gas cache', { error: error.message });
         }
     }
 

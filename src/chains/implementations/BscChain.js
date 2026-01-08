@@ -81,6 +81,10 @@ export default class BscChain extends BaseChain {
         this.log('info', 'Starting BSC chain monitoring...');
 
         try {
+            // FIX v3.7: Pre-warm gas price cache before first detection cycle
+            // This eliminates the 600ms+ cold-start delay on first block
+            await this._prewarmGasCache();
+
             // Start block monitoring
             await this.blockMonitor.start();
 
@@ -115,6 +119,41 @@ export default class BscChain extends BaseChain {
 
         } catch (error) {
             this.log('error', 'Error stopping BSC chain', { error: error.message });
+        }
+    }
+
+    /**
+     * Pre-warm the gas price cache before first detection cycle
+     * FIX v3.7: Eliminates 600ms+ cold-start delay on first block
+     *
+     * This runs during start() so the cache is populated before
+     * handleNewBlock() is called for the first time.
+     *
+     * @private
+     */
+    async _prewarmGasCache() {
+        try {
+            const { default: gasPriceCache } = await import('../../utils/gasPriceCache.js');
+
+            // Only pre-warm if cache is empty
+            if (gasPriceCache.isFresh()) {
+                this.log('debug', 'Gas price cache already warm');
+                return;
+            }
+
+            const startTime = performance.now();
+
+            // Fetch gas price to populate cache
+            await gasPriceCache.getGasPrice(async () => {
+                return await this.rpcManager.withRetry(async (provider) => provider.getFeeData());
+            });
+
+            const elapsed = (performance.now() - startTime).toFixed(2);
+            this.log('info', `Gas price cache pre-warmed (${elapsed}ms)`);
+
+        } catch (error) {
+            // Non-fatal - first detection will still work, just slower
+            this.log('warn', 'Failed to pre-warm gas cache', { error: error.message });
         }
     }
 
