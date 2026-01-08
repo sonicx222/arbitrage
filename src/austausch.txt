@@ -1,0 +1,209 @@
+pho@CVDEM053 Arbitrage_Bot_V2 % npm start
+
+> bsc-arbitrage-bot@2.0.0 start
+> node src/index.js
+
+2026-01-08 10:38:21 [info] RPC Manager initialized with 5 HTTP and 2 WebSocket endpoints {"selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-08 10:38:21 [info] Block Monitor initialized (resilient mode)
+2026-01-08 10:38:21 [info] Cache Manager initialized {"maxSize":2000,"cachedPairs":3969,"priceCacheTTL":"60s","maxStaleBlocks":3}
+2026-01-08 10:38:21 [info] Price Fetcher initialized for 5 DEXs {"batchSize":50,"interBatchDelayMs":100}
+2026-01-08 10:38:21 [info] L2 Gas Calculator initialized {"supportedChains":["arbitrum","base"]}
+2026-01-08 10:38:21 [info] Slippage Manager initialized {"tokenTypes":5,"stablecoins":22,"baseRates":{"stablecoin":0.001,"native":0.003,"blueChip":0.005,"volatile":0.01,"meme":0.015,"unknown":0.01}}
+2026-01-08 10:38:21 [info] Profit Calculator initialized {"flashLoanFee":"0.25%","slippageBuffer":"1%","minProfitUSD":"$1","dynamicPricing":true,"dynamicSlippage":true,"l2GasSupport":true}
+2026-01-08 10:38:21 [info] Alert Manager initialized {"channels":["console"]}
+2026-01-08 10:38:21 [info] Performance Tracker initialized
+2026-01-08 10:38:21 [info] Gas Price Manager initialized {"eip1559Chains":[1,137,42161,8453,43114],"legacyChains":[56]}
+2026-01-08 10:38:21 [info] Transaction Builder initialized {"contractAddress":"0x0000000000000000000000000000000000000001","eip1559Support":true}
+2026-01-08 10:38:21 [info] Gas Optimizer initialized {"maxGasPrice":"10 Gwei","tiers":{"high":{"minProfit":50,"multiplier":1.2},"medium":{"minProfit":10,"multiplier":1},"low":{"minProfit":0,"multiplier":0.95}}}
+2026-01-08 10:38:21 [info] FlashLoanOptimizer initialized {"providers":["dydx (0%)","balancer (0%)","aave_v3 (0.09%)","pancakeswap (0.25%)","uniswap_v2 (0.3%)"],"chainId":56}
+2026-01-08 10:38:21 [info] Execution Simulator initialized {"blockTime":"3000ms","avgCompetitors":3}
+2026-01-08 10:38:21 [info] Execution Manager initialized {"mode":"simulation","contractConfigured":true}
+2026-01-08 10:38:21 [info] EventDrivenDetector initialized (resilient mode) {"enabled":true,"maxPairs":100,"swapEventsEnabled":true,"v3Enabled":true,"maxV3Pools":50}
+2026-01-08 10:38:21 [info] AdaptivePrioritizer initialized {"tiers":4,"decayInterval":60000}
+2026-01-08 10:38:21 [info] ReserveDifferentialAnalyzer initialized {"significantChangeThreshold":"0.5%","largeChangeThreshold":"2%"}
+2026-01-08 10:38:21 [info] CrossPoolCorrelation initialized {"historyLength":100,"correlationThreshold":0.7}
+2026-01-08 10:38:21 [info] DexAggregator initialized {"chainId":56,"aggregators":["1inch","paraswap"]}
+2026-01-08 10:38:21 [info] WhaleTracker initialized {"minTradeUSD":10000,"minTradesForWhale":5}
+2026-01-08 10:38:21 [info] V3 Price Fetcher initialized
+2026-01-08 10:38:21 [info] V3LiquidityAnalyzer initialized {"tickWindow":100,"feeTiers":[100,500,3000,10000]}
+2026-01-08 10:38:21 [info] V2/V3 Arbitrage detector initialized {"minSpreadPercent":0.15,"v2Fee":0.003,"v3FeeTiers":[100,500,3000,10000]}
+2026-01-08 10:38:21 [info] Statistical Arbitrage Detector initialized {"windowSize":100,"zScoreThreshold":2,"minSamples":20}
+2026-01-08 10:38:21 [info] Arbitrage Bot v3.0.0 (Multi-Chain) starting...
+2026-01-08 10:38:21 [info] Starting in multi-chain mode {"chains":["Ethereum Mainnet","BSC Mainnet","Polygon Mainnet","Base Mainnet","Arbitrum One","Avalanche C-Chain"],"chainCount":6}
+2026-01-08 10:38:21 [info] CrossChainDetector initialized {"tokens":11,"minProfitUSD":10}
+2026-01-08 10:38:21 [info] Contract address set {"address":"0x0000000000000000000000000000000000000001"}
+2026-01-08 10:38:21 [info] FlashLoanOptimizer ready {"chainId":56,"availableProviders":["aave_v3","pancakeswap"]}
+2026-01-08 10:38:21 [info] Flash loan optimizer initialized {"chainId":56,"providers":["aave_v3","pancakeswap"]}
+2026-01-08 10:38:22 [info] ResilientWebSocket connected {"url":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","chainId":56}
+2026-01-08 10:38:22 [info] ResilientWebSocketManager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
+2026-01-08 10:38:22 [info] ResilientWebSocketManager initialized successfully
+2026-01-08 10:38:22 [info] ResilientWebSocket connected {"url":"wss://bsc.publicnode.com/","chainId":56}
+2026-01-08 10:38:23 [info] Flash pair cache warmed {"resolved":53,"attempted":76,"durationMs":"1886.76"}
+2026-01-08 10:38:23 [info] Execution Manager ready {"mode":"simulation"}
+2026-01-08 10:38:23 [info] Execution manager initialized for multi-chain mode {"mode":"simulation"}
+2026-01-08 10:38:23 [info] Dashboard available at http://localhost:8080
+2026-01-08 10:38:23 [info] Starting workers for 6 chains...
+2026-01-08 10:38:23 [info] Spawned worker for chain 1 (Ethereum Mainnet)
+2026-01-08 10:38:23 [info] Spawned worker for chain 56 (BSC Mainnet)
+2026-01-08 10:38:23 [info] Spawned worker for chain 137 (Polygon Mainnet)
+2026-01-08 10:38:23 [info] Spawned worker for chain 8453 (Base Mainnet)
+2026-01-08 10:38:23 [info] Spawned worker for chain 42161 (Arbitrum One)
+2026-01-08 10:38:23 [info] Spawned worker for chain 43114 (Avalanche C-Chain)
+2026-01-08 10:38:23 [info] Dashboard listening on port 8080
+2026-01-08 10:38:24 [info] Created chain instance: ethereum (ID: 1)
+2026-01-08 10:38:24 [info] Created chain instance: base (ID: 8453)
+2026-01-08 10:38:24 [info] Created chain instance: arbitrum (ID: 42161)
+2026-01-08 10:38:24 [info] Created chain instance: avalanche (ID: 43114)
+2026-01-08 10:38:24 [info] Created chain instance: polygon (ID: 137)
+2026-01-08 10:38:24 [info] Worker 1 initialized
+2026-01-08 10:38:24 [info] [Ethereum Mainnet] Initializing Ethereum chain components... {"chainId":1,"chainName":"Ethereum Mainnet"}
+2026-01-08 10:38:24 [info] RPC Manager initialized with 5 HTTP and 2 WebSocket endpoints {"selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-08 10:38:24 [info] Block Monitor initialized (resilient mode)
+2026-01-08 10:38:24 [info] Cache Manager initialized {"maxSize":2000,"cachedPairs":3969,"priceCacheTTL":"60s","maxStaleBlocks":3}
+2026-01-08 10:38:24 [info] Price Fetcher initialized for 5 DEXs {"batchSize":50,"interBatchDelayMs":100}
+2026-01-08 10:38:24 [info] L2 Gas Calculator initialized {"supportedChains":["arbitrum","base"]}
+2026-01-08 10:38:24 [info] Slippage Manager initialized {"tokenTypes":5,"stablecoins":22,"baseRates":{"stablecoin":0.001,"native":0.003,"blueChip":0.005,"volatile":0.01,"meme":0.015,"unknown":0.01}}
+2026-01-08 10:38:24 [info] Profit Calculator initialized {"flashLoanFee":"0.25%","slippageBuffer":"1%","minProfitUSD":"$1","dynamicPricing":true,"dynamicSlippage":true,"l2GasSupport":true}
+2026-01-08 10:38:24 [info] [Ethereum Mainnet] Ethereum chain initialized successfully {"dexes":7,"tokens":28,"chainId":1,"chainName":"Ethereum Mainnet"}
+2026-01-08 10:38:24 [info] RPC Manager initialized with 5 HTTP and 2 WebSocket endpoints {"selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-08 10:38:24 [info] Worker 42161 initialized
+2026-01-08 10:38:24 [info] [Arbitrum One] Initializing Arbitrum chain components... {"chainId":42161,"chainName":"Arbitrum One"}
+2026-01-08 10:38:24 [info] RPC Manager initialized with 5 HTTP and 2 WebSocket endpoints {"selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-08 10:38:24 [info] Block Monitor initialized (resilient mode)
+2026-01-08 10:38:24 [info] Cache Manager initialized {"maxSize":2000,"cachedPairs":3969,"priceCacheTTL":"60s","maxStaleBlocks":3}
+2026-01-08 10:38:24 [info] Price Fetcher initialized for 5 DEXs {"batchSize":50,"interBatchDelayMs":100}
+2026-01-08 10:38:24 [info] L2 Gas Calculator initialized {"supportedChains":["arbitrum","base"]}
+2026-01-08 10:38:24 [info] Slippage Manager initialized {"tokenTypes":5,"stablecoins":22,"baseRates":{"stablecoin":0.001,"native":0.003,"blueChip":0.005,"volatile":0.01,"meme":0.015,"unknown":0.01}}
+2026-01-08 10:38:24 [info] Profit Calculator initialized {"flashLoanFee":"0.25%","slippageBuffer":"1%","minProfitUSD":"$1","dynamicPricing":true,"dynamicSlippage":true,"l2GasSupport":true}
+2026-01-08 10:38:24 [info] [Arbitrum One] Arbitrum chain initialized successfully {"dexes":12,"tokens":31,"chainId":42161,"chainName":"Arbitrum One"}
+2026-01-08 10:38:24 [info] ResilientWebSocket connected {"url":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","chainId":56}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized successfully
+2026-01-08 10:38:24 [info] Worker 43114 initialized
+2026-01-08 10:38:24 [info] [Avalanche C-Chain] Initializing Avalanche chain components... {"chainId":43114,"chainName":"Avalanche C-Chain"}
+2026-01-08 10:38:24 [info] RPC Manager initialized with 5 HTTP and 2 WebSocket endpoints {"selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-08 10:38:24 [info] Block Monitor initialized (resilient mode)
+2026-01-08 10:38:24 [info] Cache Manager initialized {"maxSize":2000,"cachedPairs":3969,"priceCacheTTL":"60s","maxStaleBlocks":3}
+2026-01-08 10:38:24 [info] Price Fetcher initialized for 5 DEXs {"batchSize":50,"interBatchDelayMs":100}
+2026-01-08 10:38:24 [info] L2 Gas Calculator initialized {"supportedChains":["arbitrum","base"]}
+2026-01-08 10:38:24 [info] Slippage Manager initialized {"tokenTypes":5,"stablecoins":22,"baseRates":{"stablecoin":0.001,"native":0.003,"blueChip":0.005,"volatile":0.01,"meme":0.015,"unknown":0.01}}
+2026-01-08 10:38:24 [info] Profit Calculator initialized {"flashLoanFee":"0.25%","slippageBuffer":"1%","minProfitUSD":"$1","dynamicPricing":true,"dynamicSlippage":true,"l2GasSupport":true}
+2026-01-08 10:38:24 [info] [Avalanche C-Chain] Avalanche chain initialized successfully {"dexes":4,"tokens":24,"chainId":43114,"chainName":"Avalanche C-Chain"}
+2026-01-08 10:38:24 [info] Worker 8453 initialized
+2026-01-08 10:38:24 [info] [Base Mainnet] Initializing Base chain components... {"chainId":8453,"chainName":"Base Mainnet"}
+2026-01-08 10:38:24 [info] RPC Manager initialized with 5 HTTP and 2 WebSocket endpoints {"selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-08 10:38:24 [info] Block Monitor initialized (resilient mode)
+2026-01-08 10:38:24 [info] Cache Manager initialized {"maxSize":2000,"cachedPairs":3969,"priceCacheTTL":"60s","maxStaleBlocks":3}
+2026-01-08 10:38:24 [info] Price Fetcher initialized for 5 DEXs {"batchSize":50,"interBatchDelayMs":100}
+2026-01-08 10:38:24 [info] L2 Gas Calculator initialized {"supportedChains":["arbitrum","base"]}
+2026-01-08 10:38:24 [info] Slippage Manager initialized {"tokenTypes":5,"stablecoins":22,"baseRates":{"stablecoin":0.001,"native":0.003,"blueChip":0.005,"volatile":0.01,"meme":0.015,"unknown":0.01}}
+2026-01-08 10:38:24 [info] Profit Calculator initialized {"flashLoanFee":"0.25%","slippageBuffer":"1%","minProfitUSD":"$1","dynamicPricing":true,"dynamicSlippage":true,"l2GasSupport":true}
+2026-01-08 10:38:24 [info] [Base Mainnet] Base chain initialized successfully {"dexes":12,"tokens":29,"chainId":8453,"chainName":"Base Mainnet"}
+2026-01-08 10:38:24 [info] Worker 137 initialized
+2026-01-08 10:38:24 [info] [Polygon Mainnet] Initializing Polygon chain components... {"chainId":137,"chainName":"Polygon Mainnet"}
+2026-01-08 10:38:24 [info] RPC Manager initialized with 5 HTTP and 2 WebSocket endpoints {"selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-08 10:38:24 [info] Block Monitor initialized (resilient mode)
+2026-01-08 10:38:24 [info] Cache Manager initialized {"maxSize":2000,"cachedPairs":3969,"priceCacheTTL":"60s","maxStaleBlocks":3}
+2026-01-08 10:38:24 [info] Price Fetcher initialized for 5 DEXs {"batchSize":50,"interBatchDelayMs":100}
+2026-01-08 10:38:24 [info] L2 Gas Calculator initialized {"supportedChains":["arbitrum","base"]}
+2026-01-08 10:38:24 [info] Slippage Manager initialized {"tokenTypes":5,"stablecoins":22,"baseRates":{"stablecoin":0.001,"native":0.003,"blueChip":0.005,"volatile":0.01,"meme":0.015,"unknown":0.01}}
+2026-01-08 10:38:24 [info] Profit Calculator initialized {"flashLoanFee":"0.25%","slippageBuffer":"1%","minProfitUSD":"$1","dynamicPricing":true,"dynamicSlippage":true,"l2GasSupport":true}
+2026-01-08 10:38:24 [info] [Polygon Mainnet] Polygon chain initialized successfully {"dexes":11,"tokens":30,"chainId":137,"chainName":"Polygon Mainnet"}
+2026-01-08 10:38:24 [info] Block Monitor initialized (resilient mode)
+2026-01-08 10:38:24 [info] Cache Manager initialized {"maxSize":2000,"cachedPairs":3969,"priceCacheTTL":"60s","maxStaleBlocks":3}
+2026-01-08 10:38:24 [info] Price Fetcher initialized for 5 DEXs {"batchSize":50,"interBatchDelayMs":100}
+2026-01-08 10:38:24 [info] L2 Gas Calculator initialized {"supportedChains":["arbitrum","base"]}
+2026-01-08 10:38:24 [info] Slippage Manager initialized {"tokenTypes":5,"stablecoins":22,"baseRates":{"stablecoin":0.001,"native":0.003,"blueChip":0.005,"volatile":0.01,"meme":0.015,"unknown":0.01}}
+2026-01-08 10:38:24 [info] Profit Calculator initialized {"flashLoanFee":"0.25%","slippageBuffer":"1%","minProfitUSD":"$1","dynamicPricing":true,"dynamicSlippage":true,"l2GasSupport":true}
+2026-01-08 10:38:24 [info] Gas Price Manager initialized {"eip1559Chains":[1,137,42161,8453,43114],"legacyChains":[56]}
+2026-01-08 10:38:24 [info] Transaction Builder initialized {"contractAddress":"0x0000000000000000000000000000000000000001","eip1559Support":true}
+2026-01-08 10:38:24 [info] Gas Optimizer initialized {"maxGasPrice":"10 Gwei","tiers":{"high":{"minProfit":50,"multiplier":1.2},"medium":{"minProfit":10,"multiplier":1},"low":{"minProfit":0,"multiplier":0.95}}}
+2026-01-08 10:38:24 [info] FlashLoanOptimizer initialized {"providers":["dydx (0%)","balancer (0%)","aave_v3 (0.09%)","pancakeswap (0.25%)","uniswap_v2 (0.3%)"],"chainId":56}
+2026-01-08 10:38:24 [info] Execution Simulator initialized {"blockTime":"3000ms","avgCompetitors":3}
+2026-01-08 10:38:24 [info] Execution Manager initialized {"mode":"simulation","contractConfigured":true}
+2026-01-08 10:38:24 [info] Created chain instance: bsc (ID: 56)
+2026-01-08 10:38:24 [info] [BSC Mainnet] Initializing BSC chain components... {"chainId":56,"chainName":"BSC Mainnet"}
+2026-01-08 10:38:24 [info] Contract address set {"address":"0x0000000000000000000000000000000000000001"}
+2026-01-08 10:38:24 [info] FlashLoanOptimizer ready {"chainId":56,"availableProviders":["aave_v3","pancakeswap"]}
+2026-01-08 10:38:24 [info] Flash loan optimizer initialized {"chainId":56,"providers":["aave_v3","pancakeswap"]}
+2026-01-08 10:38:24 [info] ResilientWebSocket connected {"url":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","chainId":56}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized successfully
+2026-01-08 10:38:24 [info] ResilientWebSocket connected {"url":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","chainId":56}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized successfully
+2026-01-08 10:38:24 [info] ResilientWebSocket connected {"url":"wss://bsc.publicnode.com/","chainId":56}
+2026-01-08 10:38:24 [info] ResilientWebSocket connected {"url":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","chainId":56}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized successfully
+2026-01-08 10:38:24 [info] ResilientWebSocket connected {"url":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","chainId":56}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized successfully
+2026-01-08 10:38:24 [info] ResilientWebSocket connected {"url":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","chainId":56}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
+2026-01-08 10:38:24 [info] ResilientWebSocketManager initialized successfully
+2026-01-08 10:38:25 [info] ResilientWebSocket connected {"url":"wss://bsc.publicnode.com/","chainId":56}
+2026-01-08 10:38:25 [info] ResilientWebSocket connected {"url":"wss://bsc.publicnode.com/","chainId":56}
+2026-01-08 10:38:25 [info] ResilientWebSocket connected {"url":"wss://bsc.publicnode.com/","chainId":56}
+2026-01-08 10:38:25 [info] ResilientWebSocket connected {"url":"wss://bsc.publicnode.com/","chainId":56}
+2026-01-08 10:38:25 [info] ResilientWebSocket connected {"url":"wss://bsc.publicnode.com/","chainId":56}
+2026-01-08 10:38:26 [info] Flash pair cache warmed {"resolved":53,"attempted":76,"durationMs":"1971.13"}
+2026-01-08 10:38:26 [info] Worker 56 initialized
+2026-01-08 10:38:26 [info] Execution Manager ready {"mode":"simulation"}
+2026-01-08 10:38:26 [info] [BSC Mainnet] Execution manager initialized {"mode":"simulation","chainId":56,"chainName":"BSC Mainnet"}
+2026-01-08 10:38:26 [info] [BSC Mainnet] BSC chain initialized successfully {"dexes":14,"tokens":36,"baseTokens":6,"chainId":56,"chainName":"BSC Mainnet"}
+2026-01-08 10:38:26 [info] [BSC Mainnet] Starting BSC chain monitoring... {"chainId":56,"chainName":"BSC Mainnet"}
+2026-01-08 10:38:26 [info] [Polygon Mainnet] Starting Polygon chain monitoring... {"chainId":137,"chainName":"Polygon Mainnet"}
+2026-01-08 10:38:26 [info] [Avalanche C-Chain] Starting Avalanche chain monitoring... {"chainId":43114,"chainName":"Avalanche C-Chain"}
+2026-01-08 10:38:26 [info] [Ethereum Mainnet] Starting Ethereum chain monitoring... {"chainId":1,"chainName":"Ethereum Mainnet"}
+2026-01-08 10:38:26 [info] [Arbitrum One] Starting Arbitrum chain monitoring... {"chainId":42161,"chainName":"Arbitrum One"}
+2026-01-08 10:38:26 [info] [Base Mainnet] Starting Base chain monitoring... {"chainId":8453,"chainName":"Base Mainnet"}
+2026-01-08 10:38:26 [info] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":74483742}
+2026-01-08 10:38:26 [info] Worker 1 started monitoring
+2026-01-08 10:38:26 [info] [Ethereum Mainnet] Ethereum chain monitoring started {"chainId":1,"chainName":"Ethereum Mainnet"}
+2026-01-08 10:38:26 [info] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":74483742}
+2026-01-08 10:38:26 [info] Worker 42161 started monitoring
+2026-01-08 10:38:26 [info] [Arbitrum One] Arbitrum chain monitoring started {"chainId":42161,"chainName":"Arbitrum One"}
+2026-01-08 10:38:26 [info] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":74483742}
+2026-01-08 10:38:26 [info] Worker 43114 started monitoring
+2026-01-08 10:38:26 [info] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":74483742}
+2026-01-08 10:38:26 [info] Worker 8453 started monitoring
+2026-01-08 10:38:26 [info] [Avalanche C-Chain] Avalanche chain monitoring started {"chainId":43114,"chainName":"Avalanche C-Chain"}
+2026-01-08 10:38:26 [info] [Base Mainnet] Base chain monitoring started {"chainId":8453,"chainName":"Base Mainnet"}
+2026-01-08 10:38:26 [info] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":74483742}
+2026-01-08 10:38:26 [info] Worker 137 started monitoring
+2026-01-08 10:38:26 [info] [Polygon Mainnet] Polygon chain monitoring started {"chainId":137,"chainName":"Polygon Mainnet"}
+2026-01-08 10:38:27 [info] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":74483742}
+2026-01-08 10:38:27 [info] Worker 56 started monitoring
+2026-01-08 10:38:27 [info] [BSC Mainnet] BSC chain monitoring started {"chainId":56,"chainName":"BSC Mainnet"}
+2026-01-08 10:38:27 [info] All 6 workers started successfully
+2026-01-08 10:38:27 [info] Multi-chain monitoring started for 6 chains
+2026-01-08 10:38:27 [info] Bot is now running and monitoring for arbitrage opportunities
+2026-01-08 10:38:27 [info] AdaptivePrioritizer initialized {"tiers":4,"decayInterval":60000}
+2026-01-08 10:38:27 [info] AdaptivePrioritizer initialized {"tiers":4,"decayInterval":60000}
+2026-01-08 10:38:27 [info] AdaptivePrioritizer initialized {"tiers":4,"decayInterval":60000}
+2026-01-08 10:38:27 [info] AdaptivePrioritizer initialized {"tiers":4,"decayInterval":60000}
+2026-01-08 10:38:27 [info] AdaptivePrioritizer initialized {"tiers":4,"decayInterval":60000}
+2026-01-08 10:38:27 [info] AdaptivePrioritizer initialized {"tiers":4,"decayInterval":60000}
+2026-01-08 10:38:33 [warn] Slow trace detected {"id":"detection_74483748","totalMs":"593.18","phases":{"gasPrice":"580.91ms","pairFilter":"0.69ms","crossDexDetection":"1.79ms","triangularDetection":"11.41ms"}}
+2026-01-08 10:38:42 [warn] Slow trace detected {"id":"detection_74483760","totalMs":"571.64","phases":{"gasPrice":"566.70ms","pairFilter":"0.20ms","crossDexDetection":"0.10ms","triangularDetection":"4.63ms"}}
+2026-01-08 10:38:42 [warn] Slow trace detected {"id":"detection_74483760","totalMs":"560.90","phases":{"gasPrice":"556.48ms","pairFilter":"0.16ms","crossDexDetection":"0.54ms","triangularDetection":"4.07ms"}}
+2026-01-08 10:38:51 [warn] Slow trace detected {"id":"detection_74483772","totalMs":"579.21","phases":{"gasPrice":"576.21ms","pairFilter":"0.22ms","crossDexDetection":"0.28ms","triangularDetection":"2.67ms"}}
+2026-01-08 10:41:33 [warn] WebSocket closed {"code":1006,"reason":""}
+2026-01-08 10:41:33 [warn] ResilientWebSocket disconnected {"reason":"ws_close"}
+2026-01-08 10:41:33 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":1266}
+2026-01-08 10:41:33 [warn] WebSocket disconnected: wss://bsc.publicnode.com/ {"reason":"ws_close"}
+2026-01-08 10:41:34 [info] ResilientWebSocket connected {"url":"wss://bsc.publicnode.com/","chainId":56}
+2026-01-08 10:41:34 [info] WebSocket reconnected: wss://bsc.publicnode.com/
+2026-01-08 10:46:17 [warn] WebSocket closed {"code":1006,"reason":""}
+2026-01-08 10:46:17 [warn] ResilientWebSocket disconnected {"reason":"ws_close"}
+2026-01-08 10:46:17 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":1247}
+2026-01-08 10:46:17 [warn] WebSocket disconnected: wss://bsc.publicnode.com/ {"reason":"ws_close"}
+2026-01-08 10:46:18 [info] ResilientWebSocket connected {"url":"wss://bsc.publicnode.com/","chainId":56}
+2026-01-08 10:46:18 [info] WebSocket reconnected: wss://bsc.publicnode.com/
+2026-01-08 10:47:56 [warn] WebSocket closed {"code":1006,"reason":""}
+2026-01-08 10:47:56 [warn] ResilientWebSocket disconnected {"reason":"ws_close"}
+2026-01-08 10:47:56 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":1105}
+2026-01-08 10:47:56 [warn] WebSocket disconnected: wss://bsc.publicnode.com/ {"reason":"ws_close"}
+2026-01-08 10:47:57 [info] ResilientWebSocket connected {"url":"wss://bsc.publicnode.com/","chainId":56}
+2026-01-08 10:47:57 [info] WebSocket reconnected: wss://bsc.publicnode.com/
