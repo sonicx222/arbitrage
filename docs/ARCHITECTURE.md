@@ -1220,6 +1220,117 @@ If implementing **single-process multi-chain** (without workers):
 
 ---
 
+### ADR-015: Multi-Chain Configuration Architecture
+
+**Status:** Accepted
+**Date:** 2026-01-08 (v3.4)
+**Context:**
+
+Supporting 9 different blockchains (BSC, Ethereum, Polygon, Arbitrum, Base, Avalanche, Optimism, Fantom, zkSync) requires a scalable configuration system that:
+- Avoids code duplication across chain configs
+- Supports chain-specific overrides
+- Provides sensible defaults
+- Allows runtime enable/disable of chains
+- Maintains backward compatibility with single-chain mode
+
+**Options Considered:**
+
+1. **Monolithic config** - Single large config file with all chains
+2. **Per-chain files** - Separate config file per chain with shared defaults
+3. **Database-driven** - Store configs in external database
+4. **Environment-only** - All config via environment variables
+
+**Decision:**
+
+Implement **hierarchical per-chain configuration** with centralized exports:
+
+```
+src/config/
+├── index.js              # Central aggregator and exports
+├── schema.js             # Validation schemas
+└── chains/
+    ├── bsc.js            # BSC-specific config
+    ├── ethereum.js       # Ethereum-specific config
+    ├── polygon.js        # Polygon-specific config
+    ├── arbitrum.js       # Arbitrum-specific config
+    ├── base.js           # Base-specific config
+    ├── avalanche.js      # Avalanche-specific config
+    ├── optimism.js       # Optimism-specific config
+    ├── fantom.js         # Fantom-specific config
+    └── zksync.js         # zkSync-specific config
+```
+
+**Key Design Principles:**
+
+1. **Enabled by Default**: All chains use `!== 'false'` pattern:
+   ```javascript
+   enabled: process.env.BSC_ENABLED !== 'false'
+   ```
+   This means chains are enabled unless explicitly disabled, reducing configuration burden.
+
+2. **Environment Variable Hierarchy**:
+   ```
+   Chain-specific (highest priority): BSC_MIN_PROFIT
+   Global fallback: MIN_PROFIT_PERCENTAGE
+   Default value (lowest priority): '0.5'
+   ```
+   Example: `parseFloat(process.env.BSC_MIN_PROFIT || process.env.MIN_PROFIT_PERCENTAGE || '0.5')`
+
+3. **Feature Flags per Chain**:
+   - `{CHAIN}_TRIANGULAR_ENABLED` - Triangular arbitrage
+   - `{CHAIN}_V3_ENABLED` - V3 concentrated liquidity
+   - `{CHAIN}_EXECUTION_ENABLED` - Live execution
+
+4. **Standardized Structure**: Every chain config exports:
+   ```javascript
+   export default {
+       name, chainId, enabled, blockTime,
+       nativeToken: { symbol, decimals, wrapped, priceUSD },
+       rpc: { alchemy, http[], ws[], maxRequestsPerMinute, ... },
+       contracts: { multicall, flashLoanProvider },
+       dex: { ... },
+       tokens: { ... },
+       baseTokens: [...],
+       trading: { minProfitPercentage, maxSlippage, gasPriceGwei, ... },
+       monitoring: { maxPairsToMonitor, cacheSize, blockProcessingTimeout },
+       triangular: { enabled, maxPathLength, minLiquidityUSD, maxTradeSizeUSD },
+       v3: { enabled, feeTiers, minLiquidityUSD, minProfitPercent },
+       execution: { enabled, mode, contractAddress, privateKey, ... },
+       flashLoan: { providers[], preferredProvider, ... },
+       bridges: { ... },
+   };
+   ```
+
+5. **Global Config**: `src/config/index.js` provides:
+   - `chainConfigs` - All chain configs indexed by chain ID
+   - `globalConfig` - Chain-agnostic settings (alerts, workers, cross-chain, etc.)
+   - `crossChainTokens` - Token address mappings across chains
+   - Helper functions: `getChainConfig()`, `getEnabledChains()`, `getEnabledChainIds()`
+
+6. **Backward Compatibility**: Default export spreads BSC config for legacy imports:
+   ```javascript
+   import config from './config/index.js'; // Gets BSC + global
+   ```
+
+**Rationale:**
+
+- Per-chain files keep configs manageable and isolated
+- Standardized structure ensures all chains have required fields
+- Environment hierarchy allows global defaults with chain overrides
+- `!== 'false'` pattern enables all chains by default (user opts out)
+- Centralized index enables multi-chain aggregation
+
+**Consequences:**
+
+- ✅ Easy to add new chains (copy template, adjust values)
+- ✅ Clear separation between chain-specific and global settings
+- ✅ Environment variables override any default
+- ✅ Backward compatible with single-chain imports
+- ⚠️ ~600 lines of environment variables in .env.example
+- ⚠️ Must maintain consistency across 9 config files
+
+---
+
 ## ADR Index
 
 | ID | Title | Status | Date |
@@ -1238,7 +1349,8 @@ If implementing **single-process multi-chain** (without workers):
 | ADR-012 | Event Queue | Accepted | 2026-01-07 |
 | ADR-013 | Event Handler Reference Storage | Accepted | 2026-01-08 |
 | ADR-014 | Singleton Limitations (Multi-Chain) | Documented | 2026-01-08 |
+| ADR-015 | Multi-Chain Configuration Architecture | Accepted | 2026-01-08 |
 
 ---
 
-*Last Updated: 2026-01-08 (Added ADR-013, ADR-014 for v3.4 reliability improvements)*
+*Last Updated: 2026-01-08 (Added ADR-015 for configuration architecture standardization)*

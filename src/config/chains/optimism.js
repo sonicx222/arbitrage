@@ -17,7 +17,7 @@ export default {
     // Chain identification
     name: 'Optimism Mainnet',
     chainId: 10,
-    enabled: process.env.OPTIMISM_ENABLED === 'true',
+    enabled: process.env.OPTIMISM_ENABLED !== 'false', // Enabled by default, set OPTIMISM_ENABLED=false to disable
     blockTime: 2000, // ~2 seconds
 
     // Native token

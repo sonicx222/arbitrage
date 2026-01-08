@@ -14,7 +14,7 @@ export default {
     // Chain identification
     name: 'BSC Mainnet',
     chainId: 56,
-    enabled: true,
+    enabled: process.env.BSC_ENABLED !== 'false', // Enabled by default, set BSC_ENABLED=false to disable
     blockTime: 3000, // 3 seconds average
 
     // Native token

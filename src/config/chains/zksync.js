@@ -17,7 +17,7 @@ export default {
     // Chain identification
     name: 'zkSync Era',
     chainId: 324,
-    enabled: process.env.ZKSYNC_ENABLED === 'true',
+    enabled: process.env.ZKSYNC_ENABLED !== 'false', // Enabled by default, set ZKSYNC_ENABLED=false to disable
     blockTime: 1500, // ~1-2 seconds
 
     // Native token
@@ -241,10 +241,15 @@ export default {
         flashLoanFee: 0.003,
     },
 
-    // Flash loan providers (limited on zkSync)
+    // Flash loan providers
+    // zkSync has limited options - ZeroLend (Aave V3 fork) supports flash loans
     flashLoan: {
-        providers: [],
-        preferredProvider: null,
+        providers: ['zerolend'],
+        preferredProvider: 'zerolend',
+        zerolend: {
+            poolAddress: '0x4d9429246EA989C9CeE203B43F6d1C7D83e3B8F8', // ZeroLend Pool on zkSync
+            fee: 0.0005, // 0.05% flash loan fee
+        },
     },
 
     // Bridge configurations

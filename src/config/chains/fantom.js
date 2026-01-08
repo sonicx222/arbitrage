@@ -17,7 +17,7 @@ export default {
     // Chain identification
     name: 'Fantom Opera',
     chainId: 250,
-    enabled: process.env.FANTOM_ENABLED === 'true',
+    enabled: process.env.FANTOM_ENABLED !== 'false', // Enabled by default, set FANTOM_ENABLED=false to disable
     blockTime: 1000, // ~1 second (very fast!)
 
     // Native token

@@ -87,8 +87,8 @@ export const globalConfig = {
     // Debug mode
     debugMode: process.env.DEBUG_MODE === 'true',
 
-    // Dynamic gas pricing
-    dynamicGas: process.env.DYNAMIC_GAS === 'true',
+    // Dynamic gas pricing (enabled by default for optimal execution)
+    dynamicGas: process.env.DYNAMIC_GAS !== 'false',
 
     // Alert Configuration
     alerts: {
@@ -111,14 +111,14 @@ export const globalConfig = {
     // Logging Configuration
     logging: {
         level: process.env.LOG_LEVEL || 'info',
-        toFile: process.env.LOG_TO_FILE === 'true',
+        toFile: process.env.LOG_TO_FILE !== 'false', // Enabled by default
         directory: 'logs',
     },
 
     // Worker thread configuration
     workers: {
         enabled: process.env.WORKERS_ENABLED !== 'false',
-        maxWorkers: parseInt(process.env.MAX_WORKERS || '6'),
+        maxWorkers: parseInt(process.env.MAX_WORKERS || '9'), // 9 chains supported
         workerTimeout: parseInt(process.env.WORKER_TIMEOUT || '30000'),
         restartDelay: parseInt(process.env.WORKER_RESTART_DELAY || '5000'),
     },
@@ -133,8 +133,68 @@ export const globalConfig = {
 
     // Mempool monitoring
     mempool: {
-        enabled: process.env.MEMPOOL_ENABLED === 'true',
+        enabled: process.env.MEMPOOL_ENABLED === 'true', // Disabled by default (requires special RPC)
         minSwapSizeUSD: parseFloat(process.env.MEMPOOL_MIN_SWAP_SIZE || '10000'),
+    },
+
+    // Event-driven detection (faster than block polling)
+    eventDriven: {
+        enabled: process.env.EVENT_DRIVEN_ENABLED !== 'false', // Enabled by default
+    },
+
+    // Aggregator integration (1inch, Paraswap)
+    aggregator: {
+        enabled: process.env.AGGREGATOR_ENABLED === 'true', // Disabled by default
+    },
+
+    // Whale tracking (mempool alternative)
+    whaleTracking: {
+        enabled: process.env.WHALE_TRACKING_ENABLED !== 'false', // Enabled by default
+    },
+
+    // Statistical arbitrage detection
+    statisticalArb: {
+        enabled: process.env.STATISTICAL_ARB_ENABLED !== 'false', // Enabled by default
+    },
+
+    // Global triangular arbitrage defaults (chain configs can override)
+    triangular: {
+        enabled: process.env.TRIANGULAR_ENABLED !== 'false', // Enabled by default
+        minLiquidityUSD: parseInt(process.env.TRIANGULAR_MIN_LIQUIDITY || '5000'),
+        maxTradeSizeUSD: parseInt(process.env.TRIANGULAR_MAX_TRADE || '5000'),
+    },
+
+    // Global V3 (concentrated liquidity) defaults (chain configs can override)
+    v3: {
+        enabled: process.env.V3_ENABLED !== 'false', // Enabled by default
+        minLiquidityUSD: parseInt(process.env.V3_MIN_LIQUIDITY || '3000'),
+        minProfitPercent: parseFloat(process.env.V3_MIN_PROFIT || '0.2'),
+    },
+
+    // Global detection parameters
+    detection: {
+        minProfitPercentage: parseFloat(process.env.MIN_PROFIT_PERCENTAGE || '0.5'),
+        maxSlippage: parseFloat(process.env.MAX_SLIPPAGE || '1.0'),
+        gasPriceGwei: parseFloat(process.env.GAS_PRICE_GWEI || '5'),
+    },
+
+    // Global execution parameters
+    execution: {
+        enabled: process.env.EXECUTION_ENABLED === 'true', // Disabled by default (detection only)
+        mode: process.env.EXECUTION_MODE || 'simulation',
+        minProfitUSD: parseFloat(process.env.MIN_PROFIT_USD || '1.0'),
+        maxGasPriceGwei: parseFloat(process.env.MAX_GAS_PRICE_GWEI || '10'),
+        slippageTolerance: parseFloat(process.env.SLIPPAGE_TOLERANCE || '1.0'),
+    },
+
+    // Performance & caching
+    performance: {
+        maxPairsToMonitor: parseInt(process.env.MAX_PAIRS_TO_MONITOR || '250'),
+        cacheSize: parseInt(process.env.CACHE_SIZE || '2000'),
+        blockProcessingTimeoutMs: parseInt(process.env.BLOCK_PROCESSING_TIMEOUT_MS || '5000'),
+        maxRpcRpm: parseInt(process.env.MAX_RPC_RPM || '300'),
+        priceCacheTtl: parseInt(process.env.PRICE_CACHE_TTL || '60'),
+        maxStaleBlocks: parseInt(process.env.MAX_STALE_BLOCKS || '3'),
     },
 
     // Environment
@@ -281,8 +341,12 @@ export default {
 
     // Multi-chain access
     chains: chainConfigs,
+    chainNames,
     getChainConfig,
     getEnabledChains,
     getEnabledChainIds,
     crossChainTokens,
+
+    // Global settings access (for multi-chain mode)
+    globalConfig,
 };
