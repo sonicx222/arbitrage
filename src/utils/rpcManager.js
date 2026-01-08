@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import config from '../config.js';
 import log from './logger.js';
 import { ResilientWebSocketManager } from './resilientWebSocketManager.js';
+import gasPriceCache from './gasPriceCache.js';
 
 /**
  * Smart RPC Manager with automatic failover, rate limiting, health checking,
@@ -760,26 +761,23 @@ class RPCManager extends EventEmitter {
 
     /**
      * Get current gas price from network
-     * Caches result to avoid redundant calls within the same block
+     * SPEED OPT v3.6: Uses shared gasPriceCache for cross-component efficiency
+     * - Eliminates redundant RPC calls across detection/execution phases
+     * - Request coalescing prevents concurrent fetches
+     * - Expected improvement: -100-200ms per detection cycle
      */
     async getGasPrice() {
-        const now = Date.now();
-
-        // Return cached value if fresh (less than 3 seconds old)
-        if (this.cachedGasPrice && (now - this.lastGasUpdate < 3000)) {
-            return this.cachedGasPrice;
-        }
-
         try {
-            const gasPrice = await this.withRetry(async (provider) => {
-                const feeData = await provider.getFeeData();
-                return feeData.gasPrice;
+            // SPEED OPT: Use shared cache with request coalescing
+            // This eliminates throttle delay for cached values
+            const cached = await gasPriceCache.getGasPrice(async () => {
+                // Only hit RPC when cache is stale
+                return await this.withRetry(async (provider) => {
+                    return await provider.getFeeData();
+                });
             });
 
-            this.cachedGasPrice = gasPrice;
-            this.lastGasUpdate = now;
-
-            return gasPrice;
+            return cached.gasPrice;
         } catch (error) {
             log.error('Failed to fetch gas price', { error: error.message });
             // Fallback to config if RPC fails

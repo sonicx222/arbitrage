@@ -3,7 +3,7 @@
 **Project**: DeFi Arbitrage Bot
 **Assessment Date**: 2026-01-08
 **Assessor**: Claude Code Deep Analysis
-**Version**: 3.5 (Code Verification Audit Release)
+**Version**: 3.6 (WebSocket Resilience + Gas Price Optimization)
 
 ---
 

@@ -1,5 +1,6 @@
 import { parseUnits, formatUnits } from 'ethers';
 import rpcManager from '../utils/rpcManager.js';
+import gasPriceCache from '../utils/gasPriceCache.js';
 import config from '../config.js';
 import log from '../utils/logger.js';
 
@@ -31,10 +32,8 @@ class GasOptimizer {
             low: { minProfit: 0, multiplier: 0.95 },      // <$10 -> 5% discount
         };
 
-        // Cache for gas price to avoid redundant calls
-        this.cachedGasPrice = null;
-        this.cacheTimestamp = 0;
-        this.cacheDuration = 3000; // 3 seconds
+        // SPEED OPT v3.6: Removed local cache in favor of shared gasPriceCache
+        // This ensures all components share the same cached value
 
         log.info('Gas Optimizer initialized', {
             maxGasPrice: `${this.maxGasPriceGwei} Gwei`,
@@ -92,34 +91,35 @@ class GasOptimizer {
 
     /**
      * Get current network gas price with caching
+     * SPEED OPT v3.6: Uses shared gasPriceCache for cross-component efficiency
+     * - All gas price requests share single cached value
+     * - Request coalescing eliminates redundant RPC calls
+     * - Expected improvement: -100-500ms per execution cycle
      *
      * @returns {BigInt} Gas price in wei
      */
     async getCurrentGasPrice() {
-        const now = Date.now();
-
-        // Return cached value if fresh
-        if (this.cachedGasPrice && (now - this.cacheTimestamp < this.cacheDuration)) {
-            return this.cachedGasPrice;
-        }
-
         try {
-            const gasPrice = await rpcManager.getGasPrice();
+            // SPEED OPT: Use shared cache - no local caching needed
+            const cached = await gasPriceCache.getGasPrice(async () => {
+                return await rpcManager.withRetry(async (provider) => {
+                    return await provider.getFeeData();
+                });
+            });
 
-            // Update cache
-            this.cachedGasPrice = gasPrice;
-            this.cacheTimestamp = now;
+            const gasPrice = cached.gasPrice;
 
-            // Record in history
+            // Record in history for analytics
             this.recordGasPrice(gasPrice);
 
             return gasPrice;
         } catch (error) {
             log.error('Failed to fetch gas price', { error: error.message });
 
-            // Fallback to cached or default
-            if (this.cachedGasPrice) {
-                return this.cachedGasPrice;
+            // Fallback to stale cache or default
+            const stale = gasPriceCache.getCached();
+            if (stale?.gasPrice) {
+                return stale.gasPrice;
             }
 
             return parseUnits(config.trading.gasPriceGwei.toString(), 'gwei');

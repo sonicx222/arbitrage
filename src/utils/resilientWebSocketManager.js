@@ -40,6 +40,14 @@ export class ResilientWebSocketManager extends EventEmitter {
         this.isShuttingDown = false; // Shutdown flag to prevent reconnect during teardown
         this.pendingFailoverTimers = []; // Track failover timers for cleanup
 
+        // FIX v3.6: Connection locks to prevent concurrent operations on same endpoint
+        // This prevents race conditions when multiple failovers trigger simultaneously
+        this.pendingConnections = new Set(); // Endpoints currently being connected
+
+        // FIX v3.6: Failover debounce to prevent cascade when multiple WS disconnect simultaneously
+        this.failoverInProgress = false;
+        this.failoverDebounceTimer = null;
+
         // Statistics
         this.stats = {
             failovers: 0,
@@ -105,6 +113,7 @@ export class ResilientWebSocketManager extends EventEmitter {
 
     /**
      * Connect to a specific endpoint
+     * FIX v3.6: Added connection locking to prevent race conditions
      * @private
      */
     async _connectToEndpoint(endpoint) {
@@ -113,45 +122,74 @@ export class ResilientWebSocketManager extends EventEmitter {
             return null;
         }
 
-        if (this.connections.has(endpoint)) {
+        // FIX v3.6: Prevent concurrent connection attempts to the same endpoint
+        // This can happen when multiple failovers trigger simultaneously
+        if (this.pendingConnections.has(endpoint)) {
+            log.debug(`Connection to ${this._maskUrl(endpoint)} already in progress, skipping`);
+            // Wait briefly and return existing connection if available
+            await new Promise(resolve => setTimeout(resolve, 100));
             const existing = this.connections.get(endpoint);
-            if (existing.isConnected()) {
+            if (existing?.isConnected()) {
                 return existing;
             }
-            // Clean up old disconnected connection to prevent event listener accumulation
-            try {
-                existing.removeAllListeners();
-                await existing.disconnect();
-            } catch (e) {
-                // Ignore cleanup errors
-            }
-            this.connections.delete(endpoint);
+            return null;
         }
 
-        // FIX v3.3: Pass chainName for clearer logging in multi-chain mode
-        const wsOptions = { ...this.config.wsOptions, chainName: this.chainName };
-        const ws = new ResilientWebSocket(endpoint, this.chainId, wsOptions);
-
-        // Forward events from this connection
-        this._setupConnectionEvents(ws, endpoint);
+        // Mark this endpoint as having a pending connection
+        this.pendingConnections.add(endpoint);
 
         try {
-            await ws.connect();
-            this.connections.set(endpoint, ws);
-            this.stats.totalConnections++;
-
-            // Set as primary if we don't have one
-            if (!this.primaryEndpoint) {
-                this.primaryEndpoint = endpoint;
+            if (this.connections.has(endpoint)) {
+                const existing = this.connections.get(endpoint);
+                if (existing.isConnected()) {
+                    return existing;
+                }
+                // Clean up old disconnected connection to prevent event listener accumulation
+                // FIX v3.6: Enhanced error handling for cleanup
+                try {
+                    existing.removeAllListeners();
+                } catch (e) {
+                    // Ignore listener removal errors
+                }
+                try {
+                    await existing.disconnect();
+                } catch (e) {
+                    // FIX v3.6: Log but don't throw on cleanup errors
+                    log.debug(`Cleanup error for ${this._maskUrl(endpoint)} (ignored)`, {
+                        error: e.message
+                    });
+                }
+                this.connections.delete(endpoint);
             }
 
-            // Update score on successful connection
-            this._updateEndpointScore(endpoint, true, 0);
+            // FIX v3.3: Pass chainName for clearer logging in multi-chain mode
+            const wsOptions = { ...this.config.wsOptions, chainName: this.chainName };
+            const ws = new ResilientWebSocket(endpoint, this.chainId, wsOptions);
 
-            return ws;
-        } catch (error) {
-            this._updateEndpointScore(endpoint, false);
-            throw error;
+            // Forward events from this connection
+            this._setupConnectionEvents(ws, endpoint);
+
+            try {
+                await ws.connect();
+                this.connections.set(endpoint, ws);
+                this.stats.totalConnections++;
+
+                // Set as primary if we don't have one
+                if (!this.primaryEndpoint) {
+                    this.primaryEndpoint = endpoint;
+                }
+
+                // Update score on successful connection
+                this._updateEndpointScore(endpoint, true, 0);
+
+                return ws;
+            } catch (error) {
+                this._updateEndpointScore(endpoint, false);
+                throw error;
+            }
+        } finally {
+            // FIX v3.6: Always release the connection lock
+            this.pendingConnections.delete(endpoint);
         }
     }
 
@@ -202,6 +240,7 @@ export class ResilientWebSocketManager extends EventEmitter {
 
     /**
      * Handle failover when primary connection fails
+     * FIX v3.6: Added debounce to prevent cascade when multiple WS disconnect simultaneously
      * @private
      */
     _handlePrimaryFailover() {
@@ -210,44 +249,86 @@ export class ResilientWebSocketManager extends EventEmitter {
             return;
         }
 
-        const oldPrimary = this.primaryEndpoint;
+        // FIX v3.6: Debounce failover - when multiple connections drop simultaneously,
+        // we only want to handle failover once, not trigger multiple failovers
+        if (this.failoverInProgress) {
+            log.debug('Failover already in progress, skipping duplicate');
+            return;
+        }
 
-        // Find best healthy alternative
-        const newPrimary = this._selectBestEndpoint(oldPrimary);
+        // FIX v3.6: Use a short debounce to coalesce rapid disconnection events
+        if (this.failoverDebounceTimer) {
+            clearTimeout(this.failoverDebounceTimer);
+        }
 
-        if (newPrimary && newPrimary !== oldPrimary) {
-            this.primaryEndpoint = newPrimary;
-            this.stats.failovers++;
+        this.failoverDebounceTimer = setTimeout(() => {
+            this.failoverDebounceTimer = null;
+            this._executeFailover();
+        }, 100); // 100ms debounce
+    }
 
-            log.warn('Primary WebSocket failover', {
-                from: this._maskUrl(oldPrimary),
-                to: this._maskUrl(newPrimary),
-                totalFailovers: this.stats.failovers,
-            });
+    /**
+     * Execute the actual failover logic
+     * FIX v3.6: Separated from _handlePrimaryFailover for debouncing
+     * @private
+     */
+    _executeFailover() {
+        // Double-check shutdown flag
+        if (this.isShuttingDown || this.failoverInProgress) {
+            return;
+        }
 
-            this.emit('failover', {
-                from: this._maskUrl(oldPrimary),
-                to: this._maskUrl(newPrimary),
-            });
+        this.failoverInProgress = true;
 
-            // Try to reconnect old primary in background for future failback
-            // Track timer for cleanup during shutdown
-            const timer = setTimeout(() => {
-                // Remove from pending timers
-                const idx = this.pendingFailoverTimers.indexOf(timer);
-                if (idx !== -1) this.pendingFailoverTimers.splice(idx, 1);
+        try {
+            const oldPrimary = this.primaryEndpoint;
 
-                // Only reconnect if not shutting down
-                if (!this.isShuttingDown) {
-                    this._connectToEndpoint(oldPrimary).catch(() => {});
-                }
-            }, this.config.failoverDelayMs);
+            // Find best healthy alternative
+            const newPrimary = this._selectBestEndpoint(oldPrimary);
 
-            timer.unref();
-            this.pendingFailoverTimers.push(timer);
-        } else {
-            log.error('No healthy WebSocket endpoints available for failover');
-            this.emit('allEndpointsDown');
+            if (newPrimary && newPrimary !== oldPrimary) {
+                this.primaryEndpoint = newPrimary;
+                this.stats.failovers++;
+
+                log.warn('Primary WebSocket failover', {
+                    from: this._maskUrl(oldPrimary),
+                    to: this._maskUrl(newPrimary),
+                    totalFailovers: this.stats.failovers,
+                });
+
+                this.emit('failover', {
+                    from: this._maskUrl(oldPrimary),
+                    to: this._maskUrl(newPrimary),
+                });
+
+                // Try to reconnect old primary in background for future failback
+                // Track timer for cleanup during shutdown
+                const timer = setTimeout(() => {
+                    // Remove from pending timers
+                    const idx = this.pendingFailoverTimers.indexOf(timer);
+                    if (idx !== -1) this.pendingFailoverTimers.splice(idx, 1);
+
+                    // Only reconnect if not shutting down
+                    if (!this.isShuttingDown) {
+                        this._connectToEndpoint(oldPrimary).catch((e) => {
+                            log.debug(`Background reconnect failed for ${this._maskUrl(oldPrimary)}`, {
+                                error: e.message
+                            });
+                        });
+                    }
+                }, this.config.failoverDelayMs);
+
+                timer.unref();
+                this.pendingFailoverTimers.push(timer);
+            } else {
+                log.error('No healthy WebSocket endpoints available for failover');
+                this.emit('allEndpointsDown');
+            }
+        } finally {
+            // FIX v3.6: Release failover lock after a short delay to prevent rapid re-entry
+            setTimeout(() => {
+                this.failoverInProgress = false;
+            }, 500);
         }
     }
 
@@ -486,10 +567,18 @@ export class ResilientWebSocketManager extends EventEmitter {
     /**
      * Disconnect all connections
      * Sets shutdown flag FIRST to prevent reconnect/failover during teardown
+     * FIX v3.6: Added cleanup for new debounce timers and connection locks
      */
     async disconnect() {
         // IMPORTANT: Set shutdown flag FIRST to prevent any reconnection attempts
         this.isShuttingDown = true;
+
+        // FIX v3.6: Clear failover debounce timer
+        if (this.failoverDebounceTimer) {
+            clearTimeout(this.failoverDebounceTimer);
+            this.failoverDebounceTimer = null;
+        }
+        this.failoverInProgress = false;
 
         // Clear health check timer
         if (this.healthCheckTimer) {
@@ -502,6 +591,9 @@ export class ResilientWebSocketManager extends EventEmitter {
             clearTimeout(timer);
         }
         this.pendingFailoverTimers = [];
+
+        // FIX v3.6: Clear pending connections set
+        this.pendingConnections.clear();
 
         // Disconnect all connections with error handling
         const disconnectPromises = [];

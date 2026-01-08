@@ -379,6 +379,10 @@ export class ResilientWebSocket extends EventEmitter {
     /**
      * Clean up resources
      * Uses isCleaningUp flag to prevent race conditions with WebSocket close events
+     *
+     * FIX v3.6: Comprehensive error handling for all WebSocket states
+     * The ws library throws "WebSocket was closed before the connection was established"
+     * when close() is called on a CONNECTING (readyState=0) WebSocket.
      */
     _cleanup() {
         // Prevent re-entry and race conditions
@@ -396,32 +400,58 @@ export class ResilientWebSocket extends EventEmitter {
             }
 
             if (this.provider) {
+                // FIX v3.6: Wrap ALL provider cleanup in try-catch
+                // provider.destroy() internally calls ws.close() which can throw
                 try {
                     this.provider.removeAllListeners();
-
-                    // Check WebSocket readyState before destroying to avoid errors
-                    // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
-                    const ws = this.provider.websocket || this.provider._websocket;
-                    const readyState = ws?.readyState;
-
-                    // Only call destroy if connection is established (OPEN) or closing
-                    // Skip if still CONNECTING (0) to avoid "closed before established" error
-                    if (readyState === undefined || readyState >= 1) {
-                        this.provider.destroy();
-                    } else {
-                        // For CONNECTING state, close the underlying WebSocket directly
-                        try {
-                            if (ws && typeof ws.close === 'function') {
-                                ws.close();
-                            }
-                        } catch (closeError) {
-                            // Ignore close errors on CONNECTING websockets
-                        }
-                    }
-                } catch (e) {
-                    // Ignore cleanup errors - common during proactive refresh or connection issues
-                    // "WebSocket was closed before the connection was established" is expected in some cases
+                } catch (listenerError) {
+                    // Ignore - provider may already be destroyed
                 }
+
+                // Check WebSocket readyState before destroying to avoid errors
+                // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
+                const ws = this.provider.websocket || this.provider._websocket;
+                const readyState = ws?.readyState;
+
+                // FIX v3.6: Handle each state explicitly with proper error handling
+                if (readyState === 0) {
+                    // CONNECTING state - cannot call close() without error
+                    // Just terminate the underlying socket if possible
+                    try {
+                        if (ws && typeof ws.terminate === 'function') {
+                            ws.terminate(); // Hard close without handshake
+                        }
+                    } catch (terminateError) {
+                        // Ignore - socket may already be gone
+                    }
+                } else if (readyState === 1 || readyState === 2) {
+                    // OPEN or CLOSING - safe to destroy
+                    try {
+                        this.provider.destroy();
+                    } catch (destroyError) {
+                        // FIX v3.6: Catch "closed before established" and other errors
+                        // This can happen if state changed between check and destroy
+                        log.debug('Provider destroy error (ignored)', {
+                            error: destroyError.message,
+                            readyState
+                        });
+                    }
+                } else if (readyState === 3) {
+                    // CLOSED - already closed, just cleanup
+                    try {
+                        this.provider.destroy();
+                    } catch (e) {
+                        // Ignore - already closed
+                    }
+                } else if (readyState === undefined) {
+                    // No underlying WebSocket or ethers v5 - try destroy with catch
+                    try {
+                        this.provider.destroy();
+                    } catch (e) {
+                        // Ignore destroy errors when readyState unknown
+                    }
+                }
+
                 this.provider = null;
             }
         } finally {

@@ -252,22 +252,90 @@ parentPort.on('message', (message) => {
 // Initialize on startup
 worker.initialize();
 
-// Handle uncaught errors
+// FIX v3.6: Improved uncaught error handling for 24/7 uptime
+// These handlers catch errors that slip through and attempt to recover
+// rather than letting the worker crash
+
+// Track error counts for rate limiting restarts
+let uncaughtErrorCount = 0;
+let lastErrorResetTime = Date.now();
+const ERROR_RESET_INTERVAL = 60000; // Reset error count every minute
+const MAX_ERRORS_PER_INTERVAL = 10; // Max errors before giving up
+
 process.on('uncaughtException', (error) => {
-    console.error('Uncaught exception in worker:', error);
-    worker.sendMessage(MessageType.ERROR, {
-        chainId: worker.chainId,
-        error: error.message,
-        stack: error.stack,
-        fatal: true,
-    });
+    // Reset error count if enough time has passed
+    if (Date.now() - lastErrorResetTime > ERROR_RESET_INTERVAL) {
+        uncaughtErrorCount = 0;
+        lastErrorResetTime = Date.now();
+    }
+
+    uncaughtErrorCount++;
+    const errorMessage = error?.message || String(error);
+
+    // Log the error
+    console.error(`[Worker ${worker.chainId}] Uncaught exception (${uncaughtErrorCount}/${MAX_ERRORS_PER_INTERVAL}):`, errorMessage);
+
+    // Notify coordinator
+    try {
+        worker.sendMessage(MessageType.ERROR, {
+            chainId: worker.chainId,
+            error: errorMessage,
+            stack: error?.stack,
+            fatal: uncaughtErrorCount >= MAX_ERRORS_PER_INTERVAL,
+            errorCount: uncaughtErrorCount,
+        });
+    } catch (sendError) {
+        console.error('Failed to send error message:', sendError);
+    }
+
+    // FIX v3.6: Check if this is a known recoverable error
+    const isRecoverable = [
+        'WebSocket was closed before the connection was established',
+        'Connection timeout',
+        'ECONNRESET',
+        'ENOTFOUND',
+        'ETIMEDOUT',
+        'socket hang up',
+    ].some(pattern => errorMessage.includes(pattern));
+
+    if (isRecoverable && uncaughtErrorCount < MAX_ERRORS_PER_INTERVAL) {
+        console.log(`[Worker ${worker.chainId}] Recoverable error detected, continuing operation`);
+        // Don't exit - let the resilient WebSocket handle reconnection
+        return;
+    }
+
+    // If too many errors, let the coordinator handle worker restart
+    if (uncaughtErrorCount >= MAX_ERRORS_PER_INTERVAL) {
+        console.error(`[Worker ${worker.chainId}] Too many errors, allowing coordinator to restart worker`);
+        // Exit with code 1 to trigger coordinator restart
+        process.exit(1);
+    }
 });
 
-process.on('unhandledRejection', (reason) => {
-    console.error('Unhandled rejection in worker:', reason);
-    worker.sendMessage(MessageType.ERROR, {
-        chainId: worker.chainId,
-        error: reason?.message || String(reason),
-        fatal: false,
-    });
+process.on('unhandledRejection', (reason, promise) => {
+    const errorMessage = reason?.message || String(reason);
+    console.error(`[Worker ${worker.chainId}] Unhandled rejection:`, errorMessage);
+
+    // FIX v3.6: Don't crash on unhandled rejections - they're often from
+    // background operations that don't need to block the worker
+    try {
+        worker.sendMessage(MessageType.WARNING, {
+            chainId: worker.chainId,
+            warning: `Unhandled rejection: ${errorMessage}`,
+            stack: reason?.stack,
+        });
+    } catch (sendError) {
+        console.error('Failed to send warning message:', sendError);
+    }
+
+    // FIX v3.6: Check if this is a known issue that should be logged but not crash
+    const isKnownIssue = [
+        'WebSocket was closed before the connection was established',
+        'Connection timeout',
+        'provider.destroy is not a function',
+    ].some(pattern => errorMessage.includes(pattern));
+
+    if (isKnownIssue) {
+        console.log(`[Worker ${worker.chainId}] Known issue detected, continuing operation`);
+    }
 });
