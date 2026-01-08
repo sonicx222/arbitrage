@@ -58,6 +58,26 @@ class ArbitrageBot {
         this.eventDrivenHandlersSetup = false;
         this.multiChainHandlersSetup = false;
 
+        // FIX v3.4: Store handler references for proper cleanup
+        // Without storing references, anonymous handlers cannot be removed with .off()
+        // causing memory leaks and duplicate event processing
+        this._handlers = {
+            // Single-chain handlers
+            blockMonitor: {},
+            rpcManager: {},
+            // Event-driven handlers
+            eventDrivenDetector: {},
+            crossPoolCorrelation: {},
+            reserveDifferentialAnalyzer: {},
+            dexAggregator: {},
+            whaleTracker: {},
+            statisticalArbitrageDetector: {},
+            // Multi-chain handlers
+            workerCoordinator: {},
+            crossChainDetector: {},
+            mempoolMonitor: {},
+        };
+
         // Event-driven detection stats
         this.eventDrivenStats = {
             opportunitiesFromEvents: 0,
@@ -245,6 +265,7 @@ class ArbitrageBot {
     /**
      * Set up event handlers for single-chain mode
      * FIX v3.4: Guard against duplicate handler registration
+     * FIX v3.4: Store handler references for proper cleanup in stop()
      */
     setupSingleChainEventHandlers() {
         if (this.singleChainHandlersSetup) {
@@ -253,26 +274,32 @@ class ArbitrageBot {
         }
         this.singleChainHandlersSetup = true;
 
-        // Handle new blocks
-        blockMonitor.on('newBlock', async (blockData) => {
+        // FIX v3.4: Create named handlers and store references
+        this._handlers.blockMonitor.newBlock = async (blockData) => {
             await this.handleNewBlock(blockData);
-        });
+        };
+        this._handlers.blockMonitor.error = (error) => {
+            log.error('Block monitor error', { error: error.message });
+        };
+        this._handlers.rpcManager.endpointUnhealthy = (endpoint) => {
+            log.warn(`RPC endpoint unhealthy: ${endpoint}`);
+        };
+
+        // Handle new blocks
+        blockMonitor.on('newBlock', this._handlers.blockMonitor.newBlock);
 
         // Handle errors
-        blockMonitor.on('error', (error) => {
-            log.error('Block monitor error', { error: error.message });
-        });
+        blockMonitor.on('error', this._handlers.blockMonitor.error);
 
         // Handle RPC manager events
-        rpcManager.on('endpointUnhealthy', (endpoint) => {
-            log.warn(`RPC endpoint unhealthy: ${endpoint}`);
-        });
+        rpcManager.on('endpointUnhealthy', this._handlers.rpcManager.endpointUnhealthy);
     }
 
     /**
      * Set up event handlers for event-driven detection
      * Processes Sync events in real-time for faster opportunity detection
      * FIX v3.4: Guard against duplicate handler registration
+     * FIX v3.4: Store handler references for proper cleanup in stop()
      */
     setupEventDrivenHandlers() {
         if (this.eventDrivenHandlersSetup) {
@@ -281,8 +308,8 @@ class ArbitrageBot {
         }
         this.eventDrivenHandlersSetup = true;
 
-        // Handle real-time reserve updates from Sync events
-        eventDrivenDetector.on('reserveUpdate', async (data) => {
+        // FIX v3.4: Create named handlers and store references for cleanup
+        this._handlers.eventDrivenDetector.reserveUpdate = async (data) => {
             // First, run reserve differential analysis (detects cross-DEX lag opportunities)
             const differentialResult = reserveDifferentialAnalyzer.processReserveUpdate(data);
 
@@ -301,48 +328,39 @@ class ArbitrageBot {
 
             // Then run standard arbitrage detection
             await this.handleReserveUpdate(data);
-        });
+        };
 
-        // Handle correlated pool checks from cross-pool correlation
-        crossPoolCorrelation.on('checkCorrelated', async (correlationData) => {
+        this._handlers.crossPoolCorrelation.checkCorrelated = async (correlationData) => {
             await this.handleCorrelatedPoolCheck(correlationData);
-        });
+        };
 
-        // Handle correlated opportunities from differential analysis
-        reserveDifferentialAnalyzer.on('correlatedOpportunity', async (data) => {
+        this._handlers.reserveDifferentialAnalyzer.correlatedOpportunity = async (data) => {
             await this.handleDifferentialOpportunity(data);
-        });
+        };
 
-        // Handle DEX aggregator arbitrage opportunities
-        dexAggregator.on('opportunity', async (opportunity) => {
+        this._handlers.dexAggregator.opportunity = async (opportunity) => {
             await this.handleAggregatorOpportunity(opportunity);
-        });
+        };
 
-        // Handle whale activity signals (from confirmed whale trades)
-        whaleTracker.on('whaleActivity', async (signal) => {
+        this._handlers.whaleTracker.whaleActivity = async (signal) => {
             await this.handleWhaleActivity(signal);
-        });
+        };
 
-        // Handle statistical arbitrage signals (P3 improvement)
-        statisticalArbitrageDetector.on('statisticalSignal', async (signal) => {
+        this._handlers.statisticalArbitrageDetector.statisticalSignal = async (signal) => {
             await this.handleStatisticalSignal(signal);
-        });
+        };
 
-        // Handle swap events for whale tracking (feeds trader addresses to WhaleTracker)
-        eventDrivenDetector.on('swapDetected', (swapData) => {
+        this._handlers.eventDrivenDetector.swapDetected = (swapData) => {
             this.handleSwapForWhaleTracking(swapData);
-        });
+        };
 
-        // Log price changes at debug level
-        eventDrivenDetector.on('priceChange', (data) => {
+        this._handlers.eventDrivenDetector.priceChange = (data) => {
             log.debug(`Sync event: ${data.pairKey} on ${data.dexName}`, {
                 blockNumber: data.blockNumber,
             });
-        });
+        };
 
-        // Handle V3 price updates (V3 Swap events include sqrtPriceX96 directly!)
-        // This is more valuable than V2 because we get the exact pool price
-        eventDrivenDetector.on('v3PriceUpdate', async (data) => {
+        this._handlers.eventDrivenDetector.v3PriceUpdate = async (data) => {
             // Record price for cross-pool correlation
             crossPoolCorrelation.recordPriceUpdate({
                 pairKey: data.poolKey,
@@ -379,7 +397,18 @@ class ArbitrageBot {
                 tick: data.tick,
                 blockNumber: data.blockNumber,
             });
-        });
+        };
+
+        // Register all handlers with their emitters
+        eventDrivenDetector.on('reserveUpdate', this._handlers.eventDrivenDetector.reserveUpdate);
+        crossPoolCorrelation.on('checkCorrelated', this._handlers.crossPoolCorrelation.checkCorrelated);
+        reserveDifferentialAnalyzer.on('correlatedOpportunity', this._handlers.reserveDifferentialAnalyzer.correlatedOpportunity);
+        dexAggregator.on('opportunity', this._handlers.dexAggregator.opportunity);
+        whaleTracker.on('whaleActivity', this._handlers.whaleTracker.whaleActivity);
+        statisticalArbitrageDetector.on('statisticalSignal', this._handlers.statisticalArbitrageDetector.statisticalSignal);
+        eventDrivenDetector.on('swapDetected', this._handlers.eventDrivenDetector.swapDetected);
+        eventDrivenDetector.on('priceChange', this._handlers.eventDrivenDetector.priceChange);
+        eventDrivenDetector.on('v3PriceUpdate', this._handlers.eventDrivenDetector.v3PriceUpdate);
 
         // Periodic cleanup of old differential history
         this.cleanupIntervalTimer = setInterval(() => {
@@ -1033,6 +1062,7 @@ class ArbitrageBot {
     /**
      * Set up event handlers for multi-chain mode
      * FIX v3.4: Guard against duplicate handler registration
+     * FIX v3.4: Store handler references for proper cleanup in stop()
      */
     setupMultiChainEventHandlers() {
         if (!this.workerCoordinator) return;
@@ -1043,8 +1073,8 @@ class ArbitrageBot {
         }
         this.multiChainHandlersSetup = true;
 
-        // Handle opportunities from workers
-        this.workerCoordinator.on('opportunities', async (data) => {
+        // FIX v3.4: Create named handlers and store references for cleanup
+        this._handlers.workerCoordinator.opportunities = async (data) => {
             const { chainId, blockNumber, opportunities, processingTime } = data;
 
             // Update dashboard metrics
@@ -1086,11 +1116,30 @@ class ArbitrageBot {
 
             // Record performance
             performanceTracker.recordBlockProcessing(blockNumber, processingTime, opportunities.length);
-        });
+        };
+
+        this._handlers.workerCoordinator.workerError = ({ chainId, error }) => {
+            log.error(`Worker ${formatChain(chainId)} error: ${error?.message || error}`);
+            dashboard.recordError();
+        };
+
+        this._handlers.workerCoordinator.workerStarted = ({ chainId }) => {
+            log.debug(`Worker ${formatChain(chainId)} started`);
+        };
+
+        this._handlers.workerCoordinator.workerStopped = ({ chainId }) => {
+            log.debug(`Worker ${formatChain(chainId)} stopped`);
+        };
+
+        // Register workerCoordinator handlers
+        this.workerCoordinator.on('opportunities', this._handlers.workerCoordinator.opportunities);
+        this.workerCoordinator.on('workerError', this._handlers.workerCoordinator.workerError);
+        this.workerCoordinator.on('workerStarted', this._handlers.workerCoordinator.workerStarted);
+        this.workerCoordinator.on('workerStopped', this._handlers.workerCoordinator.workerStopped);
 
         // Handle cross-chain opportunities
         if (this.crossChainDetector) {
-            this.crossChainDetector.on('crossChainOpportunity', async (opportunity) => {
+            this._handlers.crossChainDetector.crossChainOpportunity = async (opportunity) => {
                 log.info(`🌐 Cross-chain: ${opportunity.token} | ${formatChain(opportunity.buyChain)}→${formatChain(opportunity.sellChain)} | Spread: ${formatPercent(opportunity.spreadPercent)} | Net: ${formatPercent(opportunity.netProfitPercent)}`);
 
                 // Send alert for cross-chain opportunity
@@ -1100,30 +1149,17 @@ class ArbitrageBot {
                 });
 
                 dashboard.recordOpportunities(1);
-            });
+            };
+            this.crossChainDetector.on('crossChainOpportunity', this._handlers.crossChainDetector.crossChainOpportunity);
         }
 
         // Handle mempool events (debug level - can be noisy)
         if (this.mempoolMonitor) {
-            this.mempoolMonitor.on('largeSwap', (swapInfo) => {
+            this._handlers.mempoolMonitor.largeSwap = (swapInfo) => {
                 log.debug(`🔮 Mempool: ${swapInfo.method} | ${swapInfo.txHash?.slice(0, 14)}... | ${swapInfo.value}`);
-            });
+            };
+            this.mempoolMonitor.on('largeSwap', this._handlers.mempoolMonitor.largeSwap);
         }
-
-        // Handle worker errors
-        this.workerCoordinator.on('workerError', ({ chainId, error }) => {
-            log.error(`Worker ${formatChain(chainId)} error: ${error?.message || error}`);
-            dashboard.recordError();
-        });
-
-        // Handle worker lifecycle events (debug level - not critical for users)
-        this.workerCoordinator.on('workerStarted', ({ chainId }) => {
-            log.debug(`Worker ${formatChain(chainId)} started`);
-        });
-
-        this.workerCoordinator.on('workerStopped', ({ chainId }) => {
-            log.debug(`Worker ${formatChain(chainId)} stopped`);
-        });
     }
 
     /**
@@ -1408,9 +1444,104 @@ class ArbitrageBot {
     }
 
     /**
+     * Remove all registered event handlers
+     * FIX v3.4: Prevents memory leaks from accumulated listeners
+     * @private
+     */
+    _removeAllEventHandlers() {
+        // Remove single-chain handlers
+        if (this._handlers.blockMonitor.newBlock) {
+            blockMonitor.off('newBlock', this._handlers.blockMonitor.newBlock);
+        }
+        if (this._handlers.blockMonitor.error) {
+            blockMonitor.off('error', this._handlers.blockMonitor.error);
+        }
+        if (this._handlers.rpcManager.endpointUnhealthy) {
+            rpcManager.off('endpointUnhealthy', this._handlers.rpcManager.endpointUnhealthy);
+        }
+
+        // Remove event-driven handlers
+        if (this._handlers.eventDrivenDetector.reserveUpdate) {
+            eventDrivenDetector.off('reserveUpdate', this._handlers.eventDrivenDetector.reserveUpdate);
+        }
+        if (this._handlers.eventDrivenDetector.swapDetected) {
+            eventDrivenDetector.off('swapDetected', this._handlers.eventDrivenDetector.swapDetected);
+        }
+        if (this._handlers.eventDrivenDetector.priceChange) {
+            eventDrivenDetector.off('priceChange', this._handlers.eventDrivenDetector.priceChange);
+        }
+        if (this._handlers.eventDrivenDetector.v3PriceUpdate) {
+            eventDrivenDetector.off('v3PriceUpdate', this._handlers.eventDrivenDetector.v3PriceUpdate);
+        }
+        if (this._handlers.crossPoolCorrelation.checkCorrelated) {
+            crossPoolCorrelation.off('checkCorrelated', this._handlers.crossPoolCorrelation.checkCorrelated);
+        }
+        if (this._handlers.reserveDifferentialAnalyzer.correlatedOpportunity) {
+            reserveDifferentialAnalyzer.off('correlatedOpportunity', this._handlers.reserveDifferentialAnalyzer.correlatedOpportunity);
+        }
+        if (this._handlers.dexAggregator.opportunity) {
+            dexAggregator.off('opportunity', this._handlers.dexAggregator.opportunity);
+        }
+        if (this._handlers.whaleTracker.whaleActivity) {
+            whaleTracker.off('whaleActivity', this._handlers.whaleTracker.whaleActivity);
+        }
+        if (this._handlers.statisticalArbitrageDetector.statisticalSignal) {
+            statisticalArbitrageDetector.off('statisticalSignal', this._handlers.statisticalArbitrageDetector.statisticalSignal);
+        }
+
+        // Remove multi-chain handlers
+        if (this.workerCoordinator) {
+            if (this._handlers.workerCoordinator.opportunities) {
+                this.workerCoordinator.off('opportunities', this._handlers.workerCoordinator.opportunities);
+            }
+            if (this._handlers.workerCoordinator.workerError) {
+                this.workerCoordinator.off('workerError', this._handlers.workerCoordinator.workerError);
+            }
+            if (this._handlers.workerCoordinator.workerStarted) {
+                this.workerCoordinator.off('workerStarted', this._handlers.workerCoordinator.workerStarted);
+            }
+            if (this._handlers.workerCoordinator.workerStopped) {
+                this.workerCoordinator.off('workerStopped', this._handlers.workerCoordinator.workerStopped);
+            }
+        }
+        if (this.crossChainDetector && this._handlers.crossChainDetector.crossChainOpportunity) {
+            this.crossChainDetector.off('crossChainOpportunity', this._handlers.crossChainDetector.crossChainOpportunity);
+        }
+        if (this.mempoolMonitor && this._handlers.mempoolMonitor.largeSwap) {
+            this.mempoolMonitor.off('largeSwap', this._handlers.mempoolMonitor.largeSwap);
+        }
+
+        // Clear handler references
+        this._handlers = {
+            blockMonitor: {},
+            rpcManager: {},
+            eventDrivenDetector: {},
+            crossPoolCorrelation: {},
+            reserveDifferentialAnalyzer: {},
+            dexAggregator: {},
+            whaleTracker: {},
+            statisticalArbitrageDetector: {},
+            workerCoordinator: {},
+            crossChainDetector: {},
+            mempoolMonitor: {},
+        };
+
+        // Reset setup flags
+        this.singleChainHandlersSetup = false;
+        this.eventDrivenHandlersSetup = false;
+        this.multiChainHandlersSetup = false;
+
+        log.debug('All event handlers removed');
+    }
+
+    /**
      * Stop single-chain mode components
+     * FIX v3.4: Added event handler cleanup
      */
     async stopSingleChain() {
+        // FIX v3.4: Remove event handlers first to prevent memory leaks
+        this._removeAllEventHandlers();
+
         // Stop cleanup interval timer (prevents memory leak)
         if (this.cleanupIntervalTimer) {
             clearInterval(this.cleanupIntervalTimer);
@@ -1492,8 +1623,12 @@ class ArbitrageBot {
 
     /**
      * Stop multi-chain mode components
+     * FIX v3.4: Added event handler cleanup
      */
     async stopMultiChain() {
+        // FIX v3.4: Remove event handlers first to prevent memory leaks
+        this._removeAllEventHandlers();
+
         // Stop worker coordinator
         if (this.workerCoordinator) {
             await this.workerCoordinator.stopAll();

@@ -1100,6 +1100,126 @@ if (this.processingEvent) {
 
 ---
 
+### ADR-013: Event Handler Reference Storage for Cleanup
+
+**Status:** Accepted
+**Date:** 2026-01-08 (v3.4)
+**Context:**
+
+Node.js EventEmitter handlers cannot be removed without a reference to the original function. The codebase used anonymous arrow functions:
+
+```javascript
+// Before (anonymous - cannot be removed)
+blockMonitor.on('newBlock', async (data) => {
+    await this.handleNewBlock(data);
+});
+```
+
+This caused:
+- Memory leaks from accumulated listeners on restart/failover
+- Duplicate event processing
+- Growing listener counts warning (`MaxListenersExceededWarning`)
+
+**Options Considered:**
+
+1. **Ignore** - Accept listener accumulation
+2. **removeAllListeners()** - Nuclear option, affects other code
+3. **Store handler references** - Keep refs for targeted removal
+4. **Named function declarations** - Use function statements
+
+**Decision:**
+
+Implement **handler reference storage pattern**:
+
+```javascript
+// Store handlers in a registry
+this._handlers = {
+    blockMonitor: {},
+    rpcManager: {},
+    // ... other emitters
+};
+
+// Create and store handlers during setup
+this._handlers.blockMonitor.newBlock = async (data) => {
+    await this.handleNewBlock(data);
+};
+blockMonitor.on('newBlock', this._handlers.blockMonitor.newBlock);
+
+// Remove during cleanup
+blockMonitor.off('newBlock', this._handlers.blockMonitor.newBlock);
+```
+
+Applied in:
+- `ArbitrageBot` (index.js) - 15+ handlers across single/multi-chain modes
+- `WorkerCoordinator` - 3 handlers per worker (message, error, exit)
+- `EventDrivenDetector` - WebSocket failover handlers
+
+**Rationale:**
+
+- Targeted removal: only remove our handlers, not others
+- Verifiable: can check if handler is registered
+- Memory efficient: handlers garbage collected after removal
+- Works with arrow functions (preserves `this` binding)
+
+**Consequences:**
+
+- ✅ Zero listener accumulation on restart/failover
+- ✅ Clean shutdown without memory leaks
+- ✅ No MaxListenersExceededWarning
+- ⚠️ Additional code to manage handler registry
+- ⚠️ Must remember to store refs for all handlers
+
+---
+
+### ADR-014: Singleton Limitations in Multi-Chain Mode
+
+**Status:** Documented
+**Date:** 2026-01-08 (v3.4)
+**Context:**
+
+ADR-003 established singletons for core services. In single-chain mode, this works well. However, multi-chain mode with worker threads introduces complications:
+
+**Multi-Chain Singleton Behavior:**
+
+| Singleton | Multi-Chain Impact | Severity |
+|-----------|-------------------|----------|
+| `cacheManager` | Per-worker instance (workers have separate memory) | ✅ OK |
+| `rpcManager` | Per-worker instance | ✅ OK |
+| `profitCalculator` | Shared native token price needs chain context | ⚠️ Medium |
+| `executionManager` | Main thread only, shared across chains | ⚠️ Medium |
+
+**Why Workers Are Safe:**
+
+Worker threads in Node.js have **separate V8 isolates** with independent memory spaces. Each worker that imports a singleton module gets its own instance:
+
+```
+Main Thread                 Worker Thread (BSC)        Worker Thread (ETH)
+├── cacheManager (main)     ├── cacheManager (BSC)     ├── cacheManager (ETH)
+├── rpcManager (main)       ├── rpcManager (BSC)       ├── rpcManager (ETH)
+└── executionManager        └── (messages only)        └── (messages only)
+```
+
+Workers communicate with main thread via message passing (IPC), not shared objects.
+
+**Current Architecture:**
+
+The design leverages this worker isolation:
+1. Workers handle chain-specific detection (isolated singletons)
+2. Main thread aggregates opportunities via messages
+3. `executionManager` in main thread handles all execution
+4. `profitCalculator.setChain()` sets context before calculations
+
+**Considerations for Future:**
+
+If implementing **single-process multi-chain** (without workers):
+- Replace singletons with factory pattern
+- Pass chain context to all methods
+- Use dependency injection for chain-specific instances
+
+**Status:** Current architecture is sound for worker-based multi-chain mode. Document for future reference if refactoring to single-process.
+
+---
+
 ## ADR Index
 
 | ID | Title | Status | Date |
@@ -1116,7 +1236,9 @@ if (this.processingEvent) {
 | ADR-010 | Pre-Simulation Filtering | Accepted | 2025-12-20 |
 | ADR-011 | Whale Tracker | Accepted | 2025-11-15 |
 | ADR-012 | Event Queue | Accepted | 2026-01-07 |
+| ADR-013 | Event Handler Reference Storage | Accepted | 2026-01-08 |
+| ADR-014 | Singleton Limitations (Multi-Chain) | Documented | 2026-01-08 |
 
 ---
 
-*Last Updated: 2026-01-08 (Added Architecture Decision Records)*
+*Last Updated: 2026-01-08 (Added ADR-013, ADR-014 for v3.4 reliability improvements)*

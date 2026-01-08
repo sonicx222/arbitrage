@@ -38,6 +38,13 @@ export default class WorkerCoordinator extends EventEmitter {
         this.heartbeatTimer = null;
         this.pendingRestarts = new Set(); // Track workers being intentionally restarted
 
+        // FIX v3.4: Track worker event handlers for proper cleanup
+        // Without storing references, anonymous handlers can't be removed, causing:
+        // - Memory leaks from accumulated listeners on worker restart
+        // - Duplicate event processing
+        // Map: chainId -> { messageHandler, errorHandler, exitHandler }
+        this.workerHandlers = new Map();
+
         // Statistics
         this.stats = {
             totalOpportunities: 0,
@@ -68,13 +75,13 @@ export default class WorkerCoordinator extends EventEmitter {
             },
         });
 
-        // Handle messages from worker
-        worker.on('message', (message) => {
+        // FIX v3.4: Create named handler references for proper cleanup
+        // Anonymous handlers cannot be removed, causing listener accumulation on restart
+        const messageHandler = (message) => {
             this.handleWorkerMessage(chainId, message);
-        });
+        };
 
-        // Handle worker errors
-        worker.on('error', (error) => {
+        const errorHandler = (error) => {
             log.error(`Worker ${chainId} error`, { error: error.message, stack: error.stack });
             this.updateWorkerStatus(chainId, 'error', { error: error.message });
             this.emit('workerError', { chainId, error });
@@ -84,10 +91,9 @@ export default class WorkerCoordinator extends EventEmitter {
             if (this.isRunning) {
                 this.scheduleWorkerRestart(chainId);
             }
-        });
+        };
 
-        // Handle worker exit
-        worker.on('exit', (code) => {
+        const exitHandler = (code) => {
             log.info(`Worker ${chainId} exited with code ${code}`);
 
             // FIX v3.2: Check if this was an intentional restart (terminate() was called)
@@ -102,6 +108,18 @@ export default class WorkerCoordinator extends EventEmitter {
                 log.warn(`Worker ${chainId} crashed, scheduling restart...`);
                 this.scheduleWorkerRestart(chainId);
             }
+        };
+
+        // Register handlers with worker
+        worker.on('message', messageHandler);
+        worker.on('error', errorHandler);
+        worker.on('exit', exitHandler);
+
+        // FIX v3.4: Store handler references for cleanup
+        this.workerHandlers.set(chainId, {
+            messageHandler,
+            errorHandler,
+            exitHandler,
         });
 
         // Store worker and config
@@ -211,10 +229,44 @@ export default class WorkerCoordinator extends EventEmitter {
     }
 
     /**
+     * Remove event listeners from a worker
+     * FIX v3.4: Prevents listener accumulation on worker restart
+     *
+     * @param {number} chainId - Chain ID
+     * @param {Worker} worker - Worker instance
+     * @private
+     */
+    _removeWorkerListeners(chainId, worker) {
+        const handlers = this.workerHandlers.get(chainId);
+        if (!handlers || !worker) {
+            return;
+        }
+
+        try {
+            if (handlers.messageHandler) {
+                worker.off('message', handlers.messageHandler);
+            }
+            if (handlers.errorHandler) {
+                worker.off('error', handlers.errorHandler);
+            }
+            if (handlers.exitHandler) {
+                worker.off('exit', handlers.exitHandler);
+            }
+            log.debug(`Removed event listeners from worker ${chainId}`);
+        } catch (err) {
+            log.debug(`Error removing worker listeners for ${chainId}: ${err.message}`);
+        }
+
+        // Clean up handler references
+        this.workerHandlers.delete(chainId);
+    }
+
+    /**
      * Schedule worker restart after delay
      *
      * FIX v3.2: Added deduplication check to prevent concurrent restart scheduling
      * FIX v3.2: Added try/finally to prevent pendingRestarts leak
+     * FIX v3.4: Added listener cleanup before spawning new worker
      *
      * @param {number} chainId - Chain ID to restart
      */
@@ -247,6 +299,9 @@ export default class WorkerCoordinator extends EventEmitter {
                 // Terminate old worker if exists
                 const oldWorker = this.workers.get(chainId);
                 if (oldWorker) {
+                    // FIX v3.4: Remove listeners before terminating to prevent leaks
+                    this._removeWorkerListeners(chainId, oldWorker);
+
                     try {
                         await oldWorker.terminate();
                     } catch (e) {
@@ -415,6 +470,7 @@ export default class WorkerCoordinator extends EventEmitter {
 
     /**
      * Stop all workers
+     * FIX v3.4: Added listener cleanup before terminating workers
      */
     async stopAll() {
         this.isRunning = false;
@@ -431,6 +487,11 @@ export default class WorkerCoordinator extends EventEmitter {
         // Wait briefly for graceful shutdown
         await new Promise(resolve => setTimeout(resolve, 1000));
 
+        // FIX v3.4: Remove listeners before terminating to prevent memory leaks
+        for (const [chainId, worker] of this.workers) {
+            this._removeWorkerListeners(chainId, worker);
+        }
+
         // Terminate all workers
         const terminatePromises = [];
         for (const [chainId, worker] of this.workers) {
@@ -445,6 +506,7 @@ export default class WorkerCoordinator extends EventEmitter {
 
         this.workers.clear();
         this.workerStatus.clear();
+        this.workerHandlers.clear(); // FIX v3.4: Clear handler references
 
         log.info('All workers stopped');
     }

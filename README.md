@@ -28,6 +28,8 @@ A professional-grade, multi-chain arbitrage monitoring and detection system supp
 - **Memory Leak Protection**: Bounded Maps with automatic eviction, cleanup intervals for all caches
 - **BigInt Precision Safety**: Safe conversion helpers prevent silent precision loss on large values
 - **Event Listener Guards**: Prevents duplicate handler registration and listener accumulation
+- **Handler Reference Storage**: Named handlers stored for proper cleanup on shutdown/restart
+- **Worker Lifecycle Management**: Worker event listeners properly removed on restart/terminate
 - **Graceful Shutdown**: Waits for in-flight operations, saves persistent cache, proper cleanup
 
 ## Supported Chains & DEXes
@@ -354,6 +356,10 @@ MIT License - see LICENSE file for details
 - **Fixed**: Division by zero guards in profit calculations
 - **Fixed**: Event listener accumulation on WebSocket failover
 - **Fixed**: Duplicate event handler registration
+- **Added**: Handler reference storage pattern for proper event listener cleanup
+- **Added**: WorkerCoordinator listener cleanup on worker restart/terminate
+- **Added**: ArbitrageBot event handler cleanup in stop() methods
+- **Added**: ADR-013 and ADR-014 documenting event handler and singleton patterns
 
 ### v3.3.0 - Multi-Chain Isolation
 - **Fixed**: Chain isolation - each chain now uses its own RPC/BlockMonitor instances
