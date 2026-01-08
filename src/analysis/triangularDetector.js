@@ -226,6 +226,9 @@ class TriangularDetector {
      * Calculate exact output amount for a triangular path using reserves
      * This accounts for price impact at each step
      *
+     * FIX v3.7: Use safe BigInt-to-Number conversion to prevent precision loss
+     * for amounts exceeding Number.MAX_SAFE_INTEGER (~9e15)
+     *
      * @param {Object} opportunity - Triangular opportunity object
      * @param {BigInt} inputAmount - Amount of base token to trade
      * @param {number} tokenDecimals - Decimals of the base token
@@ -248,9 +251,10 @@ class TriangularDetector {
             );
         }
 
-        // Calculate effective rate
-        const inputFloat = Number(inputAmount) / Math.pow(10, tokenDecimals);
-        const outputFloat = Number(currentAmount) / Math.pow(10, tokenDecimals);
+        // FIX v3.7: Use safe BigInt conversion to prevent precision loss
+        // For amounts > MAX_SAFE_INTEGER, we use string-based division
+        const inputFloat = this._safeBigIntToFloat(inputAmount, tokenDecimals);
+        const outputFloat = this._safeBigIntToFloat(currentAmount, tokenDecimals);
 
         // FIX v3.2: Validate divisors to prevent Infinity/NaN propagation
         let effectiveRate = 0;
@@ -272,6 +276,40 @@ class TriangularDetector {
             effectiveRate,
             priceImpactPercent,
         };
+    }
+
+    /**
+     * Safely convert BigInt to float without precision loss
+     *
+     * FIX v3.7: For values exceeding Number.MAX_SAFE_INTEGER (~9e15),
+     * direct Number() conversion loses precision. This method uses
+     * string-based division to maintain accuracy.
+     *
+     * @private
+     * @param {BigInt} value - BigInt value to convert
+     * @param {number} decimals - Token decimals for division
+     * @returns {number} Float representation
+     */
+    _safeBigIntToFloat(value, decimals) {
+        // For small values, direct conversion is safe and faster
+        if (value <= BigInt(Number.MAX_SAFE_INTEGER)) {
+            return Number(value) / Math.pow(10, decimals);
+        }
+
+        // For large values, use high-precision BigInt division
+        // Split into integer and fractional parts
+        const divisor = 10n ** BigInt(decimals);
+        const integerPart = value / divisor;
+        const fractionalPart = value % divisor;
+
+        // Convert integer part (may still lose precision for very large values,
+        // but this is acceptable for display/comparison purposes)
+        const intFloat = Number(integerPart);
+
+        // Convert fractional part with full precision
+        const fracFloat = Number(fractionalPart) / Number(divisor);
+
+        return intFloat + fracFloat;
     }
 
     /**
@@ -322,8 +360,12 @@ class TriangularDetector {
             return { optimalAmount: 0n, maxProfitAmount: 0n, profitUSD: 0 };
         }
 
-        // Flash loan fee (0.25% = 0.0025) - must be accounted for in profit calculation
+        // FIX v3.7: Flash loan fee calculation using integer-only math for precision
+        // Flash loan fee (0.25% = 0.0025 = 25/10000) - must be accounted for in profit calculation
         const flashLoanFee = config.execution?.flashLoanFee || 0.0025;
+        // Convert fee to basis points (integer) to avoid float precision issues
+        // e.g., 0.0025 * 1000000 = 2500 (0.25% in parts per million)
+        const flashFeeBasisPointsPPM = BigInt(Math.round(flashLoanFee * 1000000));
 
         // Golden ratio for optimal convergence
         const PHI = 1.618033988749895;
@@ -342,12 +384,14 @@ class TriangularDetector {
             const amountBigInt = BigInt(Math.floor(amount));
             const result = this.calculateExactOutput(opportunity, amountBigInt, tokenDecimals);
 
-            // Deduct flash loan fee from profit
-            // Flash loan fee is calculated on the borrowed (input) amount
-            const flashFeeAmount = (amountBigInt * BigInt(Math.floor(flashLoanFee * 10000))) / 10000n;
+            // FIX v3.7: Use integer-only math for flash loan fee calculation
+            // This avoids precision loss from float→BigInt conversion
+            // flashFeeAmount = amountBigInt * flashFeeBasisPointsPPM / 1000000
+            const flashFeeAmount = (amountBigInt * flashFeeBasisPointsPPM) / 1000000n;
             const netProfit = result.profitAmount - flashFeeAmount;
 
-            return Number(netProfit);
+            // FIX v3.7: Use safe conversion for profit
+            return this._safeBigIntToFloat(netProfit, tokenDecimals) * Math.pow(10, tokenDecimals);
         };
 
         let fc = evalProfit(c);
@@ -381,11 +425,12 @@ class TriangularDetector {
         const bestAmount = BigInt(Math.floor(bestAmountFloat));
         const result = this.calculateExactOutput(opportunity, bestAmount, tokenDecimals);
 
-        // Calculate net profit after flash loan fee
-        const flashFeeAmount = (bestAmount * BigInt(Math.floor(flashLoanFee * 10000))) / 10000n;
+        // FIX v3.7: Calculate net profit after flash loan fee using integer-only math
+        const flashFeeAmount = (bestAmount * flashFeeBasisPointsPPM) / 1000000n;
         const netProfitAmount = result.profitAmount - flashFeeAmount;
 
-        const profitFloat = Number(netProfitAmount) / Math.pow(10, tokenDecimals);
+        // FIX v3.7: Use safe BigInt conversion for profit calculation
+        const profitFloat = this._safeBigIntToFloat(netProfitAmount, tokenDecimals);
         const profitUSD = profitFloat * baseTokenPriceUSD;
 
         return {
@@ -510,6 +555,16 @@ class TriangularDetector {
     /**
      * Build a unified graph with edges from all DEXes
      *
+     * FIX v3.7: Added documentation and validation for token ordering contract
+     *
+     * IMPORTANT: Token ordering contract between priceFetcher and triangularDetector:
+     * - pairKey format: "SYMBOL_A/SYMBOL_B" where token with lower address is first
+     * - priceData.reserveA: reserve of the token with lower address (matches first symbol)
+     * - priceData.reserveB: reserve of the token with higher address (matches second symbol)
+     * - priceData.price: amount of tokenB for 1 unit of tokenA
+     *
+     * This ordering is established in priceFetcher._getTokenPairs() and calculatePrice()
+     *
      * @private
      * @param {Object} prices - Price data
      * @returns {Map} token -> Map(neighbor -> Array of edges from different DEXes)
@@ -518,10 +573,18 @@ class TriangularDetector {
         const graph = new Map();
 
         for (const [pairKey, dexPrices] of Object.entries(prices)) {
+            // FIX v3.7: Validate pair key format
+            if (!pairKey || !pairKey.includes('/')) {
+                log.debug(`Invalid pair key format: ${pairKey}`);
+                continue;
+            }
+
             const [tokenA, tokenB] = pairKey.split('/');
 
             for (const [dexName, priceData] of Object.entries(dexPrices)) {
-                const fee = config.dex[dexName]?.fee || 0.003;
+                // FIX v3.7: Better fee detection - check for V3 fee tiers and specific DEX fees
+                // V3 pools include fee in priceData, V2 pools use config or default
+                const fee = priceData.fee || config.dex[dexName]?.fee || this._getDefaultFee(dexName);
 
                 // Initialize token maps if needed
                 if (!graph.has(tokenA)) graph.set(tokenA, new Map());
@@ -596,6 +659,8 @@ class TriangularDetector {
     /**
      * Calculate exact output for cross-DEX triangular with variable fees
      *
+     * FIX v3.7: Use safe BigInt-to-Number conversion
+     *
      * @param {Object} opportunity - Cross-DEX triangular opportunity
      * @param {BigInt} inputAmount - Amount of base token to trade
      * @param {number} tokenDecimals - Decimals of the base token
@@ -618,8 +683,9 @@ class TriangularDetector {
             );
         }
 
-        const inputFloat = Number(inputAmount) / Math.pow(10, tokenDecimals);
-        const outputFloat = Number(currentAmount) / Math.pow(10, tokenDecimals);
+        // FIX v3.7: Use safe BigInt conversion to prevent precision loss
+        const inputFloat = this._safeBigIntToFloat(inputAmount, tokenDecimals);
+        const outputFloat = this._safeBigIntToFloat(currentAmount, tokenDecimals);
 
         // FIX v3.2: Validate divisor to prevent Infinity/NaN propagation
         let effectiveRate = 0;
@@ -632,6 +698,47 @@ class TriangularDetector {
             profitAmount: currentAmount - inputAmount,
             effectiveRate,
         };
+    }
+
+    /**
+     * Get default fee for a DEX based on common fee structures
+     *
+     * FIX v3.7: Provides accurate default fees instead of hardcoded 0.3%
+     *
+     * @private
+     * @param {string} dexName - Name of the DEX
+     * @returns {number} Default fee as decimal (e.g., 0.003 for 0.3%)
+     */
+    _getDefaultFee(dexName) {
+        const lowerName = dexName.toLowerCase();
+
+        // Common DEX fee structures
+        const dexFees = {
+            // 0.25% fee DEXes
+            'pancakeswap': 0.0025,
+            'pancakeswapv2': 0.0025,
+            'biswap': 0.001, // BiSwap uses 0.1%
+            // 0.3% fee DEXes (Uniswap V2 standard)
+            'uniswap': 0.003,
+            'uniswapv2': 0.003,
+            'sushiswap': 0.003,
+            'quickswap': 0.003,
+            'traderjoe': 0.003,
+            'spookyswap': 0.003,
+            // Curve-style pools (typically 0.04%)
+            'curve': 0.0004,
+            // Default for unknown DEXes
+        };
+
+        // Check for exact match or partial match
+        for (const [key, fee] of Object.entries(dexFees)) {
+            if (lowerName === key || lowerName.includes(key)) {
+                return fee;
+            }
+        }
+
+        // Default to 0.3% (Uniswap V2 standard) for unknown DEXes
+        return 0.003;
     }
 
     /**

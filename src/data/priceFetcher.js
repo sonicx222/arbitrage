@@ -353,8 +353,20 @@ class PriceFetcher {
         }
 
         if (fetched.length > 0) {
-            // FIX v3.1: Properly await async cache save
-            await cacheManager.savePersistentCache();
+            // FIX v3.7: Properly handle cache save errors with explicit logging
+            // Cache save failure should not crash the bot, but should be visible
+            try {
+                await cacheManager.savePersistentCache();
+            } catch (cacheError) {
+                // FIX v3.7: Log cache save errors explicitly rather than silently swallowing
+                // This ensures operators are aware of persistent cache issues
+                log.error('Failed to save pair address cache', {
+                    error: cacheError.message,
+                    pairsToSave: fetched.length,
+                    hint: 'Check disk space and write permissions for data/pair-cache.json',
+                });
+                // Don't throw - cache failure shouldn't block price fetching
+            }
         }
 
         return fetched;

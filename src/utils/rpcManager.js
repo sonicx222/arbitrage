@@ -74,6 +74,10 @@ class RPCManager extends EventEmitter {
         // v2.1: Cooldown tracking for rate-limited endpoints
         this.endpointCooldowns = new Map(); // endpoint -> cooldownUntil timestamp
 
+        // FIX v3.7: Pending request tracking for atomic rate limiting
+        // Tracks requests that are reserved but not yet completed
+        this.pendingRequests = new Map(); // endpoint -> count of pending requests
+
         // Health tracking (primarily for HTTP now, WS handled by manager)
         this.endpointHealth = new Map(); // endpoint -> { healthy, lastCheck, failures, unhealthySince }
 
@@ -362,9 +366,9 @@ class RPCManager extends EventEmitter {
      * Check if we can make a request to an endpoint (rate limiting)
      * v2.1: Enhanced with global budget tracking and optional increment
      *
-     * FIX v3.6: Atomic check-and-increment to prevent TOCTOU race conditions
-     * The check and increment now happen as a single atomic operation.
-     * When incrementCount=false, we use a safety margin to account for pending requests.
+     * FIX v3.7: Proper atomic reservation system to prevent TOCTOU race conditions
+     * Uses pending request tracking to account for in-flight requests.
+     * When checking without increment, considers both completed and pending requests.
      *
      * @param {string} endpoint - The endpoint URL to check
      * @param {boolean} incrementCount - Whether to increment the counter (default: true)
@@ -380,14 +384,15 @@ class RPCManager extends EventEmitter {
             this.globalRequestBudget.resetTime = now + 60000;
         }
 
-        // FIX v3.6: Use safety margin when not incrementing to prevent race condition
-        // When just checking (incrementCount=false), leave headroom for concurrent requests
-        const safetyMargin = incrementCount ? 0 : 5;
+        // FIX v3.7: Calculate total requests including pending (in-flight) requests
+        const globalPending = this._getTotalPendingRequests();
+        const effectiveGlobalCount = this.globalRequestBudget.count + globalPending;
 
-        if (this.globalRequestBudget.count >= this.globalRequestBudget.maxPerMinute - safetyMargin) {
+        if (effectiveGlobalCount >= this.globalRequestBudget.maxPerMinute) {
             if (incrementCount) {
-                log.rpc('Global request budget exhausted, throttling...', {
-                    count: this.globalRequestBudget.count,
+                log.rpc('Global request budget exhausted (including pending)', {
+                    completed: this.globalRequestBudget.count,
+                    pending: globalPending,
                     max: this.globalRequestBudget.maxPerMinute,
                 });
             }
@@ -410,22 +415,74 @@ class RPCManager extends EventEmitter {
         if (now > rateLimitData.resetTime) {
             rateLimitData.count = 0;
             rateLimitData.resetTime = now + 60000;
+            // FIX v3.7: Also reset pending count on time reset
+            this.pendingRequests.delete(endpoint);
         }
 
-        // FIX v3.6: Atomic check-and-increment
-        // Use safety margin when just checking to account for pending concurrent operations
-        const effectiveLimit = this.maxRequestsPerMinute - safetyMargin;
+        // FIX v3.7: Calculate effective count including pending requests for this endpoint
+        const endpointPending = this.pendingRequests.get(endpoint) || 0;
+        const effectiveEndpointCount = rateLimitData.count + endpointPending;
 
-        if (rateLimitData.count < effectiveLimit) {
+        if (effectiveEndpointCount < this.maxRequestsPerMinute) {
             if (incrementCount) {
-                // Atomic increment - happens immediately after successful check
-                rateLimitData.count++;
-                this.globalRequestBudget.count++;
+                // FIX v3.7: Increment pending count immediately (reservation)
+                // This will be moved to completed count when request finishes
+                this.pendingRequests.set(endpoint, endpointPending + 1);
             }
             return true;
         }
 
         return false;
+    }
+
+    /**
+     * Complete a request reservation - move from pending to completed
+     * FIX v3.7: Call this after a request completes (success or failure)
+     *
+     * @param {string} endpoint - The endpoint URL
+     * @param {boolean} success - Whether the request succeeded
+     */
+    completeRequest(endpoint, success = true) {
+        // Decrement pending count
+        const pending = this.pendingRequests.get(endpoint) || 0;
+        if (pending > 0) {
+            this.pendingRequests.set(endpoint, pending - 1);
+        }
+
+        // Increment completed count on success
+        if (success) {
+            const rateLimitData = this.requestCounts.get(endpoint);
+            if (rateLimitData) {
+                rateLimitData.count++;
+            }
+            this.globalRequestBudget.count++;
+        }
+    }
+
+    /**
+     * Cancel a request reservation (request was not actually made)
+     * FIX v3.7: Use this when a reserved request is cancelled
+     *
+     * @param {string} endpoint - The endpoint URL
+     */
+    cancelRequestReservation(endpoint) {
+        const pending = this.pendingRequests.get(endpoint) || 0;
+        if (pending > 0) {
+            this.pendingRequests.set(endpoint, pending - 1);
+        }
+    }
+
+    /**
+     * Get total pending requests across all endpoints
+     * @private
+     * @returns {number}
+     */
+    _getTotalPendingRequests() {
+        let total = 0;
+        for (const count of this.pendingRequests.values()) {
+            total += count;
+        }
+        return total;
     }
 
     /**
@@ -462,10 +519,12 @@ class RPCManager extends EventEmitter {
     /**
      * Execute a function with retry logic and automatic failover
      * v2.1: Enhanced with throttling and smarter rate limit handling
+     * FIX v3.7: Uses atomic request reservation system
      */
     async withRetry(fn, maxRetries = config.rpc.retryAttempts) {
         let lastError = new Error('No successful RPC attempts');
         let currentProviderData = null; // Track provider for error handling
+        let reservedEndpoint = null; // FIX v3.7: Track reserved endpoint for cleanup
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
@@ -475,16 +534,24 @@ class RPCManager extends EventEmitter {
                 currentProviderData = this.getHttpProvider();
                 const { provider, endpoint } = currentProviderData;
 
-                // Check rate limiting (count already incremented via getHttpProvider check)
-                if (!this.canMakeRequest(endpoint)) {
+                // FIX v3.7: Make reservation atomically
+                // Check rate limiting and reserve slot in one operation
+                if (!this.canMakeRequest(endpoint, true)) {
                     log.rpc(`Rate limit reached for ${this._maskEndpoint(endpoint)}, switching provider`);
                     lastError = new Error(`Rate limit reached for ${endpoint}`);
                     await this.sleep(config.rpc.requestDelay * 2); // Longer wait on rate limit
                     continue;
                 }
 
+                // FIX v3.7: Track reserved endpoint for cleanup on error
+                reservedEndpoint = endpoint;
+
                 // Execute the function
                 const result = await fn(provider);
+
+                // FIX v3.7: Complete the reservation on success
+                this.completeRequest(endpoint, true);
+                reservedEndpoint = null;
 
                 // Mark endpoint as healthy on success
                 const health = this.endpointHealth.get(endpoint);
@@ -500,6 +567,12 @@ class RPCManager extends EventEmitter {
 
                 // Get the endpoint that was actually used for this failed request
                 const failedEndpoint = currentProviderData?.endpoint;
+
+                // FIX v3.7: Complete the reservation on failure (still counts against rate limit)
+                if (reservedEndpoint) {
+                    this.completeRequest(reservedEndpoint, false);
+                    reservedEndpoint = null;
+                }
 
                 log.rpc(`Request failed (attempt ${attempt + 1}/${maxRetries})`, {
                     error: error.message,

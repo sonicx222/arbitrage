@@ -17,6 +17,9 @@ import liquidationMonitor from './monitoring/liquidationMonitor.js';
 import v2v3Arbitrage from './analysis/v2v3Arbitrage.js';
 import v3PriceFetcher from './data/v3PriceFetcher.js';
 import statisticalArbitrageDetector from './analysis/statisticalArbitrageDetector.js';
+import StablecoinDetector from './analysis/stablecoinDetector.js';
+import newPairMonitorSingleton from './monitoring/newPairMonitor.js';
+import blockTimePredictor from './execution/blockTimePredictor.js';
 import config from './config.js';
 import log from './utils/logger.js';
 import { formatChain, formatUSD, formatPercent } from './utils/logFormatter.js';
@@ -51,6 +54,10 @@ class ArbitrageBot {
         this.multiHopDetector = null;
         this.mempoolMonitor = null;
 
+        // P1/P2 components: Stablecoin depeg & New pair monitoring
+        this.stablecoinDetector = null;
+        this.newPairMonitor = null;
+
         // Cleanup interval timer (for proper cleanup on stop)
         this.cleanupIntervalTimer = null;
 
@@ -74,6 +81,9 @@ class ArbitrageBot {
             whaleTracker: {},
             statisticalArbitrageDetector: {},
             liquidationMonitor: {},
+            // P1/P2 handlers
+            stablecoinDetector: {},
+            newPairMonitor: {},
             // Multi-chain handlers
             workerCoordinator: {},
             crossChainDetector: {},
@@ -89,6 +99,8 @@ class ArbitrageBot {
             opportunitiesFromFeeTier: 0,
             opportunitiesFromStatistical: 0,
             opportunitiesFromLiquidations: 0,
+            opportunitiesFromStablecoin: 0, // P1: Stablecoin depeg opportunities
+            opportunitiesFromNewPairs: 0,   // P2: New pair opportunities
             droppedEvents: 0, // FIX v3.1: Track dropped events
         };
 
@@ -218,6 +230,73 @@ class ArbitrageBot {
                 log.warn('Liquidation monitor failed to start', { error: error.message });
             }
         }
+
+        // ==================== P1: STABLECOIN DEPEG DETECTION ====================
+        // High-profit opportunities during market stress events
+        // Expected impact: Catch 0.5-5%+ spreads during depeg events
+        if (config.stablecoin?.enabled !== false) {
+            try {
+                this.stablecoinDetector = new StablecoinDetector({
+                    depegThreshold: config.stablecoin?.depegThreshold || 0.002,
+                    arbitrageThreshold: config.stablecoin?.arbitrageThreshold || 0.003,
+                    severeDepegThreshold: config.stablecoin?.severeDepegThreshold || 0.01,
+                });
+                this.setupStablecoinHandlers();
+                log.info('Stablecoin depeg detector started', {
+                    depegThreshold: `${(config.stablecoin?.depegThreshold || 0.002) * 100}%`,
+                    arbitrageThreshold: `${(config.stablecoin?.arbitrageThreshold || 0.003) * 100}%`,
+                });
+            } catch (error) {
+                log.warn('Stablecoin detector failed to start', { error: error.message });
+            }
+        }
+
+        // ==================== P2: NEW PAIR MONITORING ====================
+        // Detect new liquidity pools with potential price inefficiencies
+        // Expected impact: Early detection of arbitrage on new pools
+        if (config.newPairs?.enabled !== false) {
+            try {
+                const chainId = config.chainId || 56;
+                const wsProvider = rpcManager.getWebSocketProvider?.() || rpcManager.getProvider();
+
+                // Use singleton instance and configure it
+                this.newPairMonitor = newPairMonitorSingleton;
+
+                // Update configuration if provided
+                if (config.newPairs?.minLiquidityUSD) {
+                    this.newPairMonitor.minLiquidityUSD = config.newPairs.minLiquidityUSD;
+                }
+                if (config.newPairs?.minSpreadPercent) {
+                    this.newPairMonitor.minSpreadPercent = config.newPairs.minSpreadPercent;
+                }
+
+                // Configure factories for this chain
+                const factories = {};
+                for (const [dexName, dexConfig] of Object.entries(config.dex)) {
+                    if (dexConfig.enabled && dexConfig.factory) {
+                        factories[dexName] = dexConfig.factory;
+                    }
+                }
+                this.newPairMonitor.setFactories(chainId, factories);
+                this.newPairMonitor.setKnownTokens(chainId, config.tokens);
+
+                // Subscribe to factory events
+                await this.newPairMonitor.subscribe(chainId, wsProvider);
+                this.setupNewPairHandlers();
+
+                log.info('New pair monitor started', {
+                    chainId,
+                    factories: Object.keys(factories).length,
+                    minLiquidityUSD: this.newPairMonitor.minLiquidityUSD,
+                });
+            } catch (error) {
+                log.warn('New pair monitor failed to start', { error: error.message });
+            }
+        }
+
+        // Configure block time predictor for optimal transaction timing
+        const activeChainId = config.chainId || 56;
+        blockTimePredictor.setActiveChain(activeChainId);
 
         log.info(`Monitoring ${Object.keys(config.tokens).length} tokens across ${Object.keys(config.dex).filter(d => config.dex[d].enabled).length} DEXs`);
     }
@@ -882,6 +961,157 @@ class ArbitrageBot {
     }
 
     /**
+     * Set up event handlers for stablecoin depeg detection (P1)
+     * Monitors for depeg events and stablecoin arbitrage opportunities
+     */
+    setupStablecoinHandlers() {
+        if (!this.stablecoinDetector) return;
+
+        // Handle severe depeg alerts
+        this._handlers.stablecoinDetector.severeDepeg = async (depeg) => {
+            log.warn(`[STABLECOIN] SEVERE DEPEG: ${depeg.stablecoin}`, {
+                deviation: `${(depeg.deviation * 100).toFixed(3)}%`,
+                chainId: depeg.chainId,
+            });
+
+            // Alert on severe depegs (potential arbitrage opportunity)
+            await alertManager.notify({
+                type: 'stablecoin-depeg',
+                severity: 'severe',
+                stablecoin: depeg.stablecoin,
+                deviation: depeg.deviation,
+                chainId: depeg.chainId,
+                timestamp: Date.now(),
+            });
+        };
+
+        // Handle stablecoin arbitrage opportunities
+        this._handlers.stablecoinDetector.opportunity = async (opportunity) => {
+            this.eventDrivenStats.opportunitiesFromStablecoin++;
+            dashboard.recordOpportunities(1);
+
+            log.info(`[STABLECOIN] Arbitrage opportunity`, {
+                type: opportunity.type,
+                pair: opportunity.pairKey,
+                profit: `$${opportunity.estimatedProfitUSD?.toFixed(2)}`,
+                spread: `${(opportunity.spreadPercent * 100).toFixed(3)}%`,
+            });
+
+            // Record with adaptive prioritizer
+            if (opportunity.pairKey) {
+                adaptivePrioritizer.recordOpportunity(`${opportunity.pairKey}:stablecoin`, {
+                    volumeUSD: opportunity.estimatedProfitUSD * 100, // Approximate trade size
+                    priority: 2, // High priority for stablecoin opps
+                });
+            }
+
+            // Send alert
+            await alertManager.notify({
+                ...opportunity,
+                source: 'stablecoin-detector',
+            });
+
+            // Execute if enabled
+            if (config.execution?.enabled && config.execution?.stablecoinEnabled) {
+                if (this.shouldExecuteWithWhaleCheck(opportunity)) {
+                    const result = await executionManager.execute(opportunity);
+                    if (result.simulated) {
+                        dashboard.recordSimulation(result.success);
+                    } else if (result.success) {
+                        dashboard.recordExecution(true, opportunity.estimatedProfitUSD || 0);
+                    } else {
+                        dashboard.recordExecution(false);
+                    }
+                }
+            }
+        };
+
+        // Register handlers
+        this.stablecoinDetector.on('severeDepeg', this._handlers.stablecoinDetector.severeDepeg);
+        this.stablecoinDetector.on('opportunity', this._handlers.stablecoinDetector.opportunity);
+
+        log.info('Stablecoin detection handlers registered');
+    }
+
+    /**
+     * Set up event handlers for new pair monitoring (P2)
+     * Monitors DEX factory contracts for new pool creation
+     */
+    setupNewPairHandlers() {
+        if (!this.newPairMonitor) return;
+
+        // Handle new pair creation events
+        this._handlers.newPairMonitor.newPair = async (pairData) => {
+            log.info(`[NEW PAIR] Detected: ${pairData.token0Symbol}/${pairData.token1Symbol}`, {
+                dex: pairData.dexName,
+                pairAddress: pairData.pairAddress?.slice(0, 14) + '...',
+                blockNumber: pairData.blockNumber,
+            });
+
+            // Add to token list for monitoring (if known tokens)
+            if (pairData.token0Address && pairData.token1Address) {
+                // Cache the new pair for price fetching
+                cacheManager.recordNewPair(pairData);
+            }
+        };
+
+        // Handle new pair arbitrage opportunities
+        this._handlers.newPairMonitor.opportunity = async (opportunity) => {
+            this.eventDrivenStats.opportunitiesFromNewPairs++;
+            dashboard.recordOpportunities(1);
+
+            log.info(`[NEW PAIR] Arbitrage opportunity on new pool`, {
+                pair: opportunity.pairKey,
+                dex: opportunity.dexName,
+                spread: `${opportunity.spreadPercent?.toFixed(3)}%`,
+                liquidityUSD: `$${opportunity.liquidityUSD?.toFixed(0)}`,
+                ageMinutes: opportunity.ageMinutes?.toFixed(1),
+            });
+
+            // Record with adaptive prioritizer (high priority for new pairs)
+            adaptivePrioritizer.recordOpportunity(`${opportunity.pairKey}:newpair`, {
+                volumeUSD: opportunity.liquidityUSD || 1000,
+                priority: 3, // Very high priority for new pair opps
+            });
+
+            // Send alert
+            await alertManager.notify({
+                ...opportunity,
+                type: 'new-pair-arbitrage',
+                source: 'new-pair-monitor',
+            });
+
+            // Execute if enabled (careful with new pairs - lower liquidity)
+            if (config.execution?.enabled && config.execution?.newPairEnabled) {
+                // Additional liquidity check for new pairs
+                if (opportunity.liquidityUSD >= (config.newPairs?.minLiquidityUSD || 5000)) {
+                    if (this.shouldExecuteWithWhaleCheck(opportunity)) {
+                        const result = await executionManager.execute(opportunity);
+                        if (result.simulated) {
+                            dashboard.recordSimulation(result.success);
+                        } else if (result.success) {
+                            dashboard.recordExecution(true, opportunity.profitCalculation?.netProfitUSD || 0);
+                        } else {
+                            dashboard.recordExecution(false);
+                        }
+                    }
+                } else {
+                    log.debug('[NEW PAIR] Skipping execution - insufficient liquidity', {
+                        liquidityUSD: opportunity.liquidityUSD,
+                        minRequired: config.newPairs?.minLiquidityUSD || 5000,
+                    });
+                }
+            }
+        };
+
+        // Register handlers
+        this.newPairMonitor.on('newPair', this._handlers.newPairMonitor.newPair);
+        this.newPairMonitor.on('opportunity', this._handlers.newPairMonitor.opportunity);
+
+        log.info('New pair monitoring handlers registered');
+    }
+
+    /**
      * Check whale competition before executing an opportunity
      * Returns true if we should proceed, false if we should skip
      *
@@ -1382,7 +1612,31 @@ class ArbitrageBot {
                 log.debug('Statistical arbitrage error', { error: error.message });
             }
 
-            const allOpportunities = [...opportunities, ...multiHopOpportunities, ...v2v3Opportunities];
+            // ==================== P1: STABLECOIN DEPEG DETECTION ====================
+            // Analyze stablecoin pairs for depeg opportunities
+            // High-profit during market stress events
+            let stablecoinOpportunities = [];
+            if (this.stablecoinDetector) {
+                try {
+                    const chainId = config.chainId || 56;
+                    stablecoinOpportunities = this.stablecoinDetector.analyzeStablecoins(
+                        chainId,
+                        prices,
+                        blockNumber
+                    );
+
+                    if (stablecoinOpportunities.length > 0) {
+                        this.eventDrivenStats.opportunitiesFromStablecoin += stablecoinOpportunities.length;
+                        log.info(`[STABLECOIN] Found ${stablecoinOpportunities.length} stablecoin opportunities`, {
+                            bestProfit: `$${stablecoinOpportunities[0]?.estimatedProfitUSD?.toFixed(2)}`,
+                        });
+                    }
+                } catch (error) {
+                    log.debug('Stablecoin detection error', { error: error.message });
+                }
+            }
+
+            const allOpportunities = [...opportunities, ...multiHopOpportunities, ...v2v3Opportunities, ...stablecoinOpportunities];
 
             // Update dashboard with opportunities found
             dashboard.recordOpportunities(allOpportunities.length);
@@ -1594,6 +1848,24 @@ class ArbitrageBot {
             liquidationMonitor.off('liquidation', this._handlers.liquidationMonitor.liquidation);
         }
 
+        // Remove P1/P2 handlers (stablecoin & new pair)
+        if (this.stablecoinDetector) {
+            if (this._handlers.stablecoinDetector.severeDepeg) {
+                this.stablecoinDetector.off('severeDepeg', this._handlers.stablecoinDetector.severeDepeg);
+            }
+            if (this._handlers.stablecoinDetector.opportunity) {
+                this.stablecoinDetector.off('opportunity', this._handlers.stablecoinDetector.opportunity);
+            }
+        }
+        if (this.newPairMonitor) {
+            if (this._handlers.newPairMonitor.newPair) {
+                this.newPairMonitor.off('newPair', this._handlers.newPairMonitor.newPair);
+            }
+            if (this._handlers.newPairMonitor.opportunity) {
+                this.newPairMonitor.off('opportunity', this._handlers.newPairMonitor.opportunity);
+            }
+        }
+
         // Remove multi-chain handlers
         if (this.workerCoordinator) {
             if (this._handlers.workerCoordinator.opportunities) {
@@ -1627,6 +1899,8 @@ class ArbitrageBot {
             whaleTracker: {},
             statisticalArbitrageDetector: {},
             liquidationMonitor: {},
+            stablecoinDetector: {},
+            newPairMonitor: {},
             workerCoordinator: {},
             crossChainDetector: {},
             mempoolMonitor: {},
@@ -1716,6 +1990,22 @@ class ArbitrageBot {
             stats: v2v3Arbitrage.getStats(),
         });
 
+        // Stop P1/P2 components: stablecoin detector and new pair monitor
+        if (this.stablecoinDetector) {
+            log.info('Stablecoin detector stats:', {
+                stats: this.stablecoinDetector.stats,
+            });
+            this.stablecoinDetector = null;
+        }
+
+        if (this.newPairMonitor) {
+            this.newPairMonitor.unsubscribeAll?.();
+            log.info('New pair monitor stats:', {
+                stats: this.newPairMonitor.stats,
+            });
+            this.newPairMonitor = null;
+        }
+
         // Log event-driven vs block-based stats
         log.info('Detection source statistics:', {
             fromEvents: this.eventDrivenStats.opportunitiesFromEvents,
@@ -1725,6 +2015,8 @@ class ArbitrageBot {
             fromFeeTier: this.eventDrivenStats.opportunitiesFromFeeTier,
             fromStatistical: this.eventDrivenStats.opportunitiesFromStatistical,
             fromLiquidations: this.eventDrivenStats.opportunitiesFromLiquidations,
+            fromStablecoin: this.eventDrivenStats.opportunitiesFromStablecoin,
+            fromNewPairs: this.eventDrivenStats.opportunitiesFromNewPairs,
         });
 
         // Log execution stats if enabled

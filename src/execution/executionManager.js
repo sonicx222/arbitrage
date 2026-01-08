@@ -12,6 +12,9 @@ import log from '../utils/logger.js';
 import { FACTORY_ABI } from '../contracts/abis.js';
 import gasPriceCache from '../utils/gasPriceCache.js';
 import speedMetrics from '../utils/speedMetrics.js';
+import blockTimePredictor from './blockTimePredictor.js';
+import l2GasCalculator from './l2GasCalculator.js';
+import profitCalculator from '../analysis/profitCalculator.js';
 
 /**
  * Execution Manager
@@ -107,6 +110,32 @@ class ExecutionManager {
         log.info('Flash loan optimizer initialized', {
             chainId,
             providers: flashLoanOptimizer.getAvailableProviders().map(p => p.name),
+        });
+
+        // ==================== L2 GAS CALCULATOR INTEGRATION (P1) ====================
+        // Configure profitCalculator for accurate L2 gas cost estimation
+        // This enables proper L1 data fee calculation for Arbitrum/Base/Optimism
+        const chainName = this._getChainName(chainId);
+        const provider = await this._getProvider();
+        profitCalculator.setChain(chainId, chainName, provider);
+
+        // Set native token symbol for accurate pricing
+        const nativeSymbol = config.nativeToken?.symbol || this._getNativeSymbol(chainId);
+        profitCalculator.setNativeTokenSymbol(nativeSymbol);
+
+        log.info('Profit calculator configured for chain', {
+            chainId,
+            chainName,
+            nativeSymbol,
+            isL2: l2GasCalculator.isL2Chain(chainId),
+        });
+
+        // ==================== BLOCK TIME PREDICTOR INTEGRATION (P2) ====================
+        // Set active chain for optimal submission timing
+        blockTimePredictor.setActiveChain(chainId);
+        log.info('Block time predictor configured', {
+            chainId,
+            expectedBlockTime: blockTimePredictor.expectedBlockTimes[chainId] || 'unknown',
         });
 
         // Initialize signer for live mode
@@ -729,9 +758,26 @@ class ExecutionManager {
                 return this._executeWithFlashbots(tx, opportunity);
             }
 
+            // ==================== BLOCK TIME PREDICTOR INTEGRATION (P2) ====================
+            // Wait for optimal submission window to reduce frontrunning risk
+            // and improve inclusion probability
+            const submissionWindow = await blockTimePredictor.waitForOptimalWindow(
+                blockTimePredictor.activeChainId,
+                2000 // Max wait 2s to avoid stale opportunities
+            );
+
+            if (submissionWindow.delay > 0) {
+                log.debug('[TIMING] Waited for optimal submission window', {
+                    delayMs: submissionWindow.delay,
+                    reason: submissionWindow.reason,
+                    confidence: submissionWindow.confidence,
+                });
+            }
+
             log.info('Sending live transaction...', {
                 type: opportunity.type,
                 expectedProfit: `$${opportunity.profitCalculation?.netProfitUSD?.toFixed(2)}`,
+                blockTiming: submissionWindow.urgency,
             });
 
             // Send transaction (standard mempool path)
@@ -1616,6 +1662,50 @@ class ExecutionManager {
         if (this.recentExecutions.length > this.maxRecentExecutions) {
             this.recentExecutions.shift();
         }
+    }
+
+    /**
+     * Get chain name from chain ID for L2 gas calculation
+     *
+     * @private
+     * @param {number} chainId - Chain ID
+     * @returns {string} Chain name (lowercase)
+     */
+    _getChainName(chainId) {
+        const chainNames = {
+            1: 'ethereum',
+            56: 'bsc',
+            137: 'polygon',
+            42161: 'arbitrum',
+            8453: 'base',
+            10: 'optimism',
+            43114: 'avalanche',
+            250: 'fantom',
+            324: 'zksync',
+        };
+        return chainNames[chainId] || 'unknown';
+    }
+
+    /**
+     * Get native token symbol from chain ID
+     *
+     * @private
+     * @param {number} chainId - Chain ID
+     * @returns {string} Native token symbol
+     */
+    _getNativeSymbol(chainId) {
+        const nativeSymbols = {
+            1: 'WETH',
+            56: 'WBNB',
+            137: 'WMATIC',
+            42161: 'WETH',
+            8453: 'WETH',
+            10: 'WETH',
+            43114: 'WAVAX',
+            250: 'WFTM',
+            324: 'WETH',
+        };
+        return nativeSymbols[chainId] || 'WETH';
     }
 
     /**

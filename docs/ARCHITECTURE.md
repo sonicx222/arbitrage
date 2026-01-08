@@ -33,13 +33,15 @@ src/
 │   ├── multiHopDetector.js   # 4+ token path detection
 │   ├── CrossChainDetector.js # Cross-chain opportunities
 │   ├── MempoolMonitor.js     # Pending transaction analysis
-│   ├── profitCalculator.js   # Net profit calculations
+│   ├── profitCalculator.js   # Net profit calculations (L2 gas integrated)
 │   ├── adaptivePrioritizer.js # Tier-based pair monitoring
 │   ├── reserveDifferentialAnalyzer.js # Cross-DEX lag detection
-│   ├── v3LiquidityAnalyzer.js # V3 tick-level analysis
+│   ├── v3LiquidityAnalyzer.js # V3 tick-level analysis + fee tier arbitrage [P1]
+│   ├── v2v3Arbitrage.js      # V2/V3 cross-version arbitrage [P1/P2]
+│   ├── stablecoinDetector.js # Stablecoin depeg detection [P1]
 │   ├── dexAggregator.js      # 1inch/Paraswap integration
 │   ├── crossPoolCorrelation.js # Price correlation matrix
-│   └── whaleTracker.js       # Large trader tracking (mempool alt)
+│   └── whaleTracker.js       # Large trader tracking [P2]
 │
 ├── chains/                   # Chain abstraction layer
 │   ├── BaseChain.js          # Abstract base class
@@ -83,7 +85,8 @@ src/
 ├── monitoring/               # Blockchain monitoring
 │   ├── blockMonitor.js       # New block detection
 │   ├── alertManager.js       # Opportunity alerts
-│   └── eventDrivenDetector.js # Real-time Sync event monitoring
+│   ├── eventDrivenDetector.js # Real-time Sync event monitoring
+│   └── newPairMonitor.js     # Factory event monitoring for new pools [P2]
 │
 ├── utils/                    # Utilities
 │   ├── logger.js             # Winston logging
@@ -267,7 +270,115 @@ Free mempool monitoring alternative:
 - Emits `whaleActivity` signals for prioritization
 - Import/export whale data for persistence
 
-### 14. WebSocket Resilience Layer
+### 14. StablecoinDetector (`src/analysis/stablecoinDetector.js`) [P1]
+
+Stablecoin depeg detection and arbitrage:
+- Monitors stablecoin prices for deviations from $1 peg
+- Configurable thresholds: depeg (0.2%), arbitrage (0.3%), severe (1%)
+- Emits events: `depeg`, `severeDepeg`, `opportunity`
+- Analyzes cross-DEX spreads for stablecoin pairs
+- Tracks depeg statistics and history
+
+```javascript
+// Threshold Configuration
+{
+    depegThreshold: 0.002,      // 0.2% - Minor deviation alert
+    arbitrageThreshold: 0.003,  // 0.3% - Actionable opportunity
+    severeDepegThreshold: 0.01, // 1% - Critical alert
+}
+```
+
+### 15. NewPairMonitor (`src/monitoring/newPairMonitor.js`) [P2]
+
+Factory event monitoring for new liquidity pools:
+- Subscribes to PairCreated events from DEX factories
+- Filters for pairs containing known tokens
+- Emits `newPair` and `opportunity` events
+- Validates minimum liquidity before alerting
+- Tracks new pair statistics per DEX
+
+```
+New Pair Detection Flow:
+1. Subscribe to Factory.PairCreated events
+2. Filter: token0 OR token1 is known token
+3. Fetch initial reserves
+4. Calculate initial price vs reference DEXes
+5. If spread > threshold → emit opportunity
+```
+
+### 16. V2V3Arbitrage (`src/analysis/v2v3Arbitrage.js`) [P1/P2]
+
+Cross-version AMM arbitrage detection:
+- **Fee Tier Arbitrage** [P1]: Same pair across V3 fee tiers (100bp, 500bp, 3000bp, 10000bp)
+- **Cross-Version Arbitrage** [P2]: Same pair on V2 vs V3
+- Accounts for different fee structures
+- Calculates optimal trade direction and size
+
+```
+V3 Fee Tier Arbitrage:
+┌─────────────────────────────────────────────────┐
+│  WETH/USDC Pool Comparison                       │
+├─────────────────────────────────────────────────┤
+│  Fee Tier    │ Price      │ Liquidity           │
+│  500bp (0.05%)│ 3500.10   │ $10M               │
+│  3000bp (0.3%)│ 3501.50   │ $50M               │
+│  10000bp (1%) │ 3502.00   │ $5M                │
+├─────────────────────────────────────────────────┤
+│  Opportunity: Buy 500bp, Sell 10000bp            │
+│  Spread: 0.054% (after fees: profitable)         │
+└─────────────────────────────────────────────────┘
+```
+
+### 17. L2GasCalculator (`src/execution/l2GasCalculator.js`) [P1]
+
+L2-specific gas cost calculation with L1 data fees:
+- Supports Arbitrum, Base, Optimism
+- Queries precompile contracts for L1 data fees
+- Accounts for calldata compression (Arbitrum Nitro)
+- Provides accurate total transaction cost
+
+```javascript
+// Chain Support
+{
+    42161: 'arbitrum',  // ArbGasInfo precompile at 0x6c
+    8453: 'base',       // L1Block precompile
+    10: 'optimism',     // GasPriceOracle at 0x420...0F
+}
+
+// Cost Breakdown
+{
+    l2CostUSD: 0.01,      // L2 execution gas
+    l1DataFeeUSD: 0.02,   // L1 calldata posting
+    totalCostUSD: 0.03,   // Total transaction cost
+}
+```
+
+### 18. BlockTimePredictor (`src/execution/blockTimePredictor.js`) [P2]
+
+Optimal transaction submission timing:
+- Tracks block timestamps per chain
+- Predicts next block arrival time
+- Calculates optimal submission window
+- Reduces frontrunning risk
+
+```javascript
+// Expected Block Times (ms)
+{
+    1: 12000,     // Ethereum
+    56: 3000,     // BSC
+    137: 2000,    // Polygon
+    42161: 250,   // Arbitrum
+    8453: 2000,   // Base
+}
+
+// waitForOptimalWindow() returns
+{
+    delay: 500,        // Recommended wait (ms)
+    confidence: 0.85,  // Prediction confidence
+}
+```
+
+### 19. WebSocket Resilience Layer
 
 The WebSocket infrastructure provides robust, self-healing connections:
 
@@ -360,22 +471,28 @@ Opportunities are tagged with their detection source:
 | `aggregator-arbitrage` | handleAggregatorOpportunity | Split-route via 1inch/Paraswap |
 | `whale-trade` | handleWhaleActivity | Large trader activity signal |
 | `block-polling` | handleNewBlock | Traditional block-based scan |
+| `stablecoin-depeg` | handleStablecoinOpportunity | Stablecoin deviation detection [P1] |
+| `new-pair` | handleNewPairOpportunity | New liquidity pool detection [P2] |
+| `v3-fee-tier` | handleFeeTierArbitrage | V3 fee tier spread [P1] |
+| `v2v3-cross` | handleV2V3Opportunity | V2 vs V3 same-pair arbitrage [P2] |
 
 ### Execution Flow
 
 ```
 1. ExecutionManager receives opportunity
-2. WhaleTracker competition check (skip if high competition)
+2. WhaleTracker competition check (skip if high competition) [P2]
 3. Pre-flight validation (profit threshold, age check)
-4. FlashLoanOptimizer selects best provider:
+4. ProfitCalculator with L2 gas fees (for L2 chains) [P1]
+5. FlashLoanOptimizer selects best provider:
    - dYdX (0%) → Balancer (0%) → Aave V3 (0.09%) → PancakeSwap (0.25%)
    - Based on asset availability and chain support
-5. Resolve flash pair address (cached or fetched from factory)
-6. GasOptimizer determines optimal gas price
-7. TransactionBuilder constructs TX with provider-specific params
-8. Simulation via eth_call
-9. Live execution (if enabled)
-10. Result tracking and statistics
+6. Resolve flash pair address (cached or fetched from factory)
+7. GasOptimizer determines optimal gas price
+8. BlockTimePredictor.waitForOptimalWindow() [P2]
+9. TransactionBuilder constructs TX with provider-specific params
+10. Simulation via eth_call
+11. Live execution (if enabled)
+12. Result tracking and statistics
 ```
 
 ---
@@ -1331,6 +1448,249 @@ src/config/
 
 ---
 
+### ADR-016: L2 Gas Fee Integration via Precompile Contracts [P1]
+
+**Status:** Accepted
+**Date:** 2026-01-08 (v3.6)
+**Context:**
+
+L2 chains (Arbitrum, Base, Optimism) have fundamentally different gas economics than L1. The total transaction cost includes:
+1. L2 execution gas (very cheap, ~0.01 gwei)
+2. L1 data fee (posting calldata to Ethereum, the dominant cost)
+
+Without accurate L1 data fee calculation, profit estimates are wildly inaccurate on L2 chains, leading to unprofitable trades.
+
+**Options Considered:**
+
+1. **Fixed estimates** - Use hardcoded average costs per chain
+2. **Precompile queries** - Query chain-specific precompile contracts
+3. **External API** - Use gas estimation APIs (Alchemy, Infura)
+4. **Hybrid** - Precompile with fallback to estimates
+
+**Decision:**
+
+Implement **precompile contract integration** with synchronous fallbacks:
+
+```javascript
+// Chain-specific precompile addresses
+{
+    arbitrum: '0x000000000000000000000000000000000000006C', // ArbGasInfo
+    base: '0x4200000000000000000000000000000000000015',     // L1Block
+    optimism: '0x420000000000000000000000000000000000000F', // GasPriceOracle
+}
+
+// Integration points
+1. l2GasCalculator.isL2Chain(chainId) - Check if L2
+2. l2GasCalculator.calculateGasCostUSD() - Full cost with L1 fee
+3. profitCalculator.setChain() - Configure chain context
+4. profitCalculator.calculateNetProfitAsync() - Async with provider
+```
+
+**Rationale:**
+
+- Precompiles are free to query (view functions)
+- Most accurate L1 fee data available
+- Synchronous fallback ensures operation without provider
+- Each L2 has different precompile interface, abstraction layer handles this
+
+**Consequences:**
+
+- ✅ Accurate profit calculation on L2 chains
+- ✅ Prevents unprofitable trades due to underestimated gas
+- ✅ Zero additional RPC cost (precompile queries are free)
+- ⚠️ Different precompile interfaces per chain
+- ⚠️ Async version requires provider availability
+
+---
+
+### ADR-017: Stablecoin Depeg Detection Strategy [P1]
+
+**Status:** Accepted
+**Date:** 2026-01-08 (v3.6)
+**Context:**
+
+Stablecoin depegs create significant arbitrage opportunities. During the USDC depeg (March 2023), spreads reached 2-5% across DEXes. Detection must be:
+- Real-time (opportunities are brief)
+- Configurable (different risk tolerance)
+- Multi-threshold (minor vs severe depegs)
+
+**Options Considered:**
+
+1. **External oracles** - Use Chainlink price feeds
+2. **DEX-based detection** - Monitor on-chain prices vs $1 peg
+3. **Cross-DEX spread** - Compare stablecoin prices across DEXes
+4. **Hybrid** - DEX prices with oracle validation
+
+**Decision:**
+
+Implement **DEX-based detection with tiered thresholds**:
+
+```javascript
+// Threshold Configuration
+{
+    depegThreshold: 0.002,      // 0.2% - Minor alert
+    arbitrageThreshold: 0.003,  // 0.3% - Actionable opportunity
+    severeDepegThreshold: 0.01, // 1% - Critical (USDC 2023 level)
+}
+
+// Event Hierarchy
+StablecoinDetector.on('depeg')        // Minor deviation
+StablecoinDetector.on('opportunity')  // Arbitrageable spread
+StablecoinDetector.on('severeDepeg')  // Critical alert
+```
+
+**Integration:**
+
+1. `StablecoinDetector` instantiated in `ArbitrageBot.initialize()`
+2. `analyzeStablecoins()` called in `handleNewBlock()` loop
+3. Event handlers route opportunities to execution pipeline
+4. Handler references stored for clean shutdown
+
+**Rationale:**
+
+- No external dependencies (oracles cost gas, have latency)
+- Tiered thresholds allow graduated response
+- Event-driven architecture matches existing bot patterns
+- Cross-DEX spread detection captures actionable opportunities
+
+**Consequences:**
+
+- ✅ Sub-second depeg detection
+- ✅ Configurable risk tolerance
+- ✅ Integrated with existing opportunity pipeline
+- ⚠️ May miss off-chain depeg signals
+- ⚠️ Requires sufficient DEX liquidity for price accuracy
+
+---
+
+### ADR-018: New Pair Factory Event Monitoring [P2]
+
+**Status:** Accepted
+**Date:** 2026-01-08 (v3.6)
+**Context:**
+
+New liquidity pools often have mispriced initial liquidity, creating brief arbitrage windows. Early detection is critical as:
+- Initial liquidity providers may set suboptimal prices
+- Arbitrageurs compete aggressively for first-mover advantage
+- Opportunities disappear within minutes
+
+**Options Considered:**
+
+1. **Block polling** - Check factory for new pairs each block
+2. **Event subscription** - Subscribe to PairCreated events
+3. **Mempool monitoring** - Watch pending factory transactions
+4. **Third-party feeds** - Use DEX Screener or similar APIs
+
+**Decision:**
+
+Implement **WebSocket event subscription** to factory contracts:
+
+```javascript
+// Factory Event Subscription
+const filter = {
+    address: factoryAddress,
+    topics: [ethers.id('PairCreated(address,address,address,uint256)')],
+};
+wsProvider.on(filter, handlePairCreated);
+
+// Detection Flow
+1. PairCreated event received
+2. Filter: known token in pair?
+3. Fetch initial reserves
+4. Compare price to existing DEX prices
+5. Emit opportunity if spread > threshold
+```
+
+**Integration:**
+
+1. `newPairMonitor` singleton configured with factory addresses
+2. `subscribe(chainId, wsProvider)` called on startup
+3. Event handlers for `newPair` and `opportunity`
+4. Cleanup on shutdown via stored handler references
+
+**Rationale:**
+
+- WebSocket events are faster than polling (~100ms vs ~3s)
+- Filtering by known tokens reduces noise
+- No additional infrastructure (uses existing WS connections)
+- Event-driven matches existing architecture
+
+**Consequences:**
+
+- ✅ Sub-second new pair detection
+- ✅ First-mover advantage on mispriced pools
+- ✅ Integrated with existing WebSocket infrastructure
+- ⚠️ Requires WebSocket connectivity (HTTP fallback not available)
+- ⚠️ May receive many low-value pairs (filtering helps)
+
+---
+
+### ADR-019: Block Time Prediction for Optimal Submission [P2]
+
+**Status:** Accepted
+**Date:** 2026-01-08 (v3.6)
+**Context:**
+
+Transaction submission timing affects:
+1. **Frontrunning risk** - Submitting early exposes opportunity
+2. **Inclusion probability** - Submitting late may miss the block
+3. **Competition** - Other bots optimize their timing
+
+Different chains have different block times (12s ETH, 3s BSC, 250ms Arbitrum), requiring chain-specific timing strategies.
+
+**Options Considered:**
+
+1. **Immediate submission** - Submit as soon as opportunity detected
+2. **Fixed delay** - Wait fixed time before submission
+3. **Predictive timing** - Predict next block, submit optimally
+4. **MEV-aware** - Use Flashbots for timing protection
+
+**Decision:**
+
+Implement **predictive block timing** with chain-specific models:
+
+```javascript
+// Expected Block Times (ms)
+{
+    1: 12000,     // Ethereum
+    56: 3000,     // BSC
+    137: 2000,    // Polygon
+    42161: 250,   // Arbitrum (very fast)
+    8453: 2000,   // Base
+}
+
+// waitForOptimalWindow(chainId, maxWait)
+// Returns: { delay: ms, confidence: 0-1 }
+
+// Integration in ExecutionManager
+const window = await blockTimePredictor.waitForOptimalWindow(chainId, 2000);
+// Wait `window.delay` ms before transaction submission
+```
+
+**Rationale:**
+
+- Historical block times provide good predictions
+- Chain-specific models handle different networks
+- Max wait prevents stale opportunities
+- Confidence score allows risk-based decisions
+
+**Integration:**
+
+1. `BlockTimePredictor` initialized in `ExecutionManager`
+2. `recordBlock()` called on each new block
+3. `waitForOptimalWindow()` called before transaction submission
+4. 2-second max wait prevents opportunity staleness
+
+**Consequences:**
+
+- ✅ Reduced frontrunning exposure
+- ✅ Improved block inclusion probability
+- ✅ Chain-specific optimization
+- ⚠️ Added latency (up to 2s) to execution
+- ⚠️ Prediction accuracy varies by chain congestion
+
+---
+
 ## ADR Index
 
 | ID | Title | Status | Date |
@@ -1350,7 +1710,11 @@ src/config/
 | ADR-013 | Event Handler Reference Storage | Accepted | 2026-01-08 |
 | ADR-014 | Singleton Limitations (Multi-Chain) | Documented | 2026-01-08 |
 | ADR-015 | Multi-Chain Configuration Architecture | Accepted | 2026-01-08 |
+| ADR-016 | L2 Gas Fee Integration (Precompiles) | Accepted | 2026-01-08 |
+| ADR-017 | Stablecoin Depeg Detection | Accepted | 2026-01-08 |
+| ADR-018 | New Pair Factory Event Monitoring | Accepted | 2026-01-08 |
+| ADR-019 | Block Time Prediction | Accepted | 2026-01-08 |
 
 ---
 
-*Last Updated: 2026-01-08 (Added ADR-015 for configuration architecture standardization)*
+*Last Updated: 2026-01-08 (Added ADR-016 through ADR-019 for P1/P2 feature integrations in v3.6)*

@@ -72,6 +72,15 @@ class EventDrivenDetector extends EventEmitter {
         this.cleanupInterval = null;
         this.cleanupIntervalMs = 30000; // Clean up every 30 seconds
 
+        // FIX v3.7: Mutex for failover operations to prevent race conditions
+        // When failover is in progress, event processing should wait
+        this._failoverInProgress = false;
+        this._failoverPromise = null;
+
+        // FIX v3.7: Periodic cleanup for blockUpdates Map (not just on new block)
+        this.blockCleanupInterval = null;
+        this.blockCleanupIntervalMs = 60000; // Clean up every 60 seconds
+
         // Statistics
         this.stats = {
             eventsReceived: 0,
@@ -166,6 +175,9 @@ class EventDrivenDetector extends EventEmitter {
             // FIX v3.2: Start periodic cleanup for recentlyProcessed Map
             this._startCleanupInterval();
 
+            // FIX v3.7: Start periodic cleanup for blockUpdates Map
+            this._startBlockCleanupInterval();
+
             log.info('EventDrivenDetector started (resilient mode)', {
                 pairsSubscribed: this.addressToPairInfo.size,
                 v3PoolsSubscribed: this.addressToV3PoolInfo.size,
@@ -221,73 +233,115 @@ class EventDrivenDetector extends EventEmitter {
 
     /**
      * Handle WebSocket failover event - update provider reference
+     *
+     * FIX v3.7: Added mutex to prevent race conditions during failover
+     * Events received during failover are paused until re-subscription completes
+     *
      * @private
      */
     async _handleWsFailover(data) {
         if (!this.isRunning) return;
+
+        // FIX v3.7: Set failover mutex to pause event processing
+        this._failoverInProgress = true;
+
+        // Create a promise that will be resolved when failover completes
+        let resolveFailover;
+        this._failoverPromise = new Promise(resolve => {
+            resolveFailover = resolve;
+        });
 
         log.info('EventDrivenDetector handling WebSocket failover', {
             from: data.from,
             to: data.to,
         });
 
-        // FIX v3.1: Clean up old provider's listeners before switching
-        // This prevents duplicate event handlers and memory leaks
-        const oldProvider = this.wsProvider;
-        if (oldProvider) {
-            try {
-                oldProvider.removeAllListeners();
-                log.debug('Removed event listeners from old provider');
-            } catch (cleanupError) {
-                log.debug('Error cleaning up old provider', { error: cleanupError.message });
+        try {
+            // FIX v3.1: Clean up old provider's listeners before switching
+            // This prevents duplicate event handlers and memory leaks
+            const oldProvider = this.wsProvider;
+            if (oldProvider) {
+                try {
+                    oldProvider.removeAllListeners();
+                    log.debug('Removed event listeners from old provider');
+                } catch (cleanupError) {
+                    log.debug('Error cleaning up old provider', { error: cleanupError.message });
+                }
             }
-        }
 
-        // Get the new provider after failover
-        const wsData = rpcManager.getWsProvider();
-        if (wsData) {
-            this.wsProvider = wsData.provider;
-            // Re-subscribe to all events on the new provider
-            try {
-                await this._subscribeToAllEvents();
-                log.info('EventDrivenDetector re-subscribed to events after failover');
-            } catch (error) {
-                log.error('Failed to re-subscribe after failover', { error: error.message });
-                this.stats.errors++;
+            // Get the new provider after failover
+            const wsData = rpcManager.getWsProvider();
+            if (wsData) {
+                this.wsProvider = wsData.provider;
+                // Re-subscribe to all events on the new provider
+                try {
+                    await this._subscribeToAllEvents();
+                    log.info('EventDrivenDetector re-subscribed to events after failover');
+                } catch (error) {
+                    log.error('Failed to re-subscribe after failover', { error: error.message });
+                    this.stats.errors++;
+                }
             }
+        } finally {
+            // FIX v3.7: Release mutex after failover completes (success or failure)
+            this._failoverInProgress = false;
+            this._failoverPromise = null;
+            resolveFailover();
         }
     }
 
     /**
      * Handle WebSocket recovery event - re-subscribe if needed
+     *
+     * FIX v3.7: Added mutex to prevent race conditions during recovery
+     *
      * @private
      */
     async _handleWsRecovery(endpoint) {
         if (!this.isRunning) return;
+
+        // FIX v3.7: Wait for any ongoing failover to complete first
+        if (this._failoverInProgress && this._failoverPromise) {
+            await this._failoverPromise;
+        }
 
         log.info('EventDrivenDetector handling WebSocket recovery');
 
         // Get the recovered provider
         const wsData = rpcManager.getWsProvider();
         if (wsData && wsData.provider !== this.wsProvider) {
-            // FIX v3.1: Clean up old provider's listeners before switching
-            const oldProvider = this.wsProvider;
-            if (oldProvider) {
-                try {
-                    oldProvider.removeAllListeners();
-                } catch (cleanupError) {
-                    log.debug('Error cleaning up old provider', { error: cleanupError.message });
-                }
-            }
+            // FIX v3.7: Set mutex during recovery
+            this._failoverInProgress = true;
+            let resolveRecovery;
+            this._failoverPromise = new Promise(resolve => {
+                resolveRecovery = resolve;
+            });
 
-            this.wsProvider = wsData.provider;
-            // Re-subscribe to all events on the recovered provider
             try {
-                await this._subscribeToAllEvents();
-                log.info('EventDrivenDetector re-subscribed to events after recovery');
-            } catch (error) {
-                log.error('Failed to re-subscribe after recovery', { error: error.message });
-                this.stats.errors++;
+                // FIX v3.1: Clean up old provider's listeners before switching
+                const oldProvider = this.wsProvider;
+                if (oldProvider) {
+                    try {
+                        oldProvider.removeAllListeners();
+                    } catch (cleanupError) {
+                        log.debug('Error cleaning up old provider', { error: cleanupError.message });
+                    }
+                }
+
+                this.wsProvider = wsData.provider;
+                // Re-subscribe to all events on the recovered provider
+                try {
+                    await this._subscribeToAllEvents();
+                    log.info('EventDrivenDetector re-subscribed to events after recovery');
+                } catch (error) {
+                    log.error('Failed to re-subscribe after recovery', { error: error.message });
+                    this.stats.errors++;
+                }
+            } finally {
+                // FIX v3.7: Release mutex
+                this._failoverInProgress = false;
+                this._failoverPromise = null;
+                resolveRecovery();
             }
         }
     }
@@ -977,13 +1031,41 @@ class EventDrivenDetector extends EventEmitter {
         // Calculate price from sqrtPriceX96
         // price = (sqrtPriceX96 / 2^96)^2 = sqrtPriceX96^2 / 2^192
         // This gives price of token1 in terms of token0
-        const Q96 = 2n ** 96n;
         const sqrtPrice = swapData.sqrtPriceX96;
+
+        // FIX v3.7: Handle edge case where sqrtPriceX96 is 0 (pool initialization/error)
+        // This prevents downstream division by zero errors
+        if (sqrtPrice === 0n) {
+            log.debug('V3 sqrtPriceX96 is 0, skipping price calculation');
+            return { amountUSD, direction, price: 0 };
+        }
+
         // Use high precision calculation
         const priceX192 = sqrtPrice * sqrtPrice;
-        // Adjust for decimals: price = priceX192 * 10^(decimals0 - decimals1) / 2^192
-        const decimalAdjust = Math.pow(10, token0.decimals - token1.decimals);
-        const price = (Number(priceX192) / Number(2n ** 192n)) * decimalAdjust;
+
+        // FIX v3.7: Safe conversion to prevent NaN/Infinity
+        // For very large sqrtPrice values, priceX192 could overflow Number precision
+        const divisor = 2n ** 192n;
+        let price = 0;
+
+        try {
+            // Adjust for decimals: price = priceX192 * 10^(decimals0 - decimals1) / 2^192
+            const decimalAdjust = Math.pow(10, token0.decimals - token1.decimals);
+
+            // Use BigInt division first to keep precision, then convert
+            // priceX192 / 2^192 can be very small, so we scale up first
+            const scaleFactor = 10n ** 18n;
+            const scaledPrice = (priceX192 * scaleFactor) / divisor;
+            price = (Number(scaledPrice) / 1e18) * decimalAdjust;
+
+            // Validate the result
+            if (!Number.isFinite(price) || price < 0) {
+                price = 0;
+            }
+        } catch (calcError) {
+            log.debug('V3 price calculation error', { error: calcError.message });
+            price = 0;
+        }
 
         return { amountUSD, direction, price };
     }
@@ -1034,9 +1116,17 @@ class EventDrivenDetector extends EventEmitter {
 
     /**
      * Handle incoming Sync event
+     *
+     * FIX v3.7: Added failover mutex check to prevent processing during provider swap
+     *
      * @param {Object} eventLog - Event log from provider
      */
     handleSyncEvent(eventLog) {
+        // FIX v3.7: Skip processing during failover to prevent inconsistent state
+        if (this._failoverInProgress) {
+            return;
+        }
+
         try {
             this.stats.eventsReceived++;
             this.stats.lastEventTime = Date.now();
@@ -1322,6 +1412,84 @@ class EventDrivenDetector extends EventEmitter {
     }
 
     /**
+     * Start periodic cleanup interval for blockUpdates Map
+     * FIX v3.7: blockUpdates was only cleaned when new blocks arrived
+     * During chain stalls or disconnections, old entries would accumulate
+     * @private
+     */
+    _startBlockCleanupInterval() {
+        if (this.blockCleanupInterval) {
+            return; // Already running
+        }
+
+        this.blockCleanupInterval = setInterval(() => {
+            this._periodicBlockCleanup();
+        }, this.blockCleanupIntervalMs);
+
+        // Unref to not block process exit
+        this.blockCleanupInterval.unref();
+
+        log.debug('Started blockUpdates cleanup interval', {
+            intervalMs: this.blockCleanupIntervalMs,
+        });
+    }
+
+    /**
+     * Stop blockUpdates cleanup interval
+     * FIX v3.7: Called during graceful shutdown
+     * @private
+     */
+    _stopBlockCleanupInterval() {
+        if (this.blockCleanupInterval) {
+            clearInterval(this.blockCleanupInterval);
+            this.blockCleanupInterval = null;
+            log.debug('Stopped blockUpdates cleanup interval');
+        }
+    }
+
+    /**
+     * Periodic cleanup for blockUpdates Map
+     * FIX v3.7: Removes old entries even when no new blocks are arriving
+     * @private
+     */
+    _periodicBlockCleanup() {
+        if (this.blockUpdates.size === 0) {
+            return;
+        }
+
+        // Find the highest block number we've seen
+        let maxBlock = 0;
+        for (const block of this.blockUpdates.keys()) {
+            if (block > maxBlock) {
+                maxBlock = block;
+            }
+        }
+
+        // If we have a max block, clean up relative to it
+        if (maxBlock > 0) {
+            const minBlock = maxBlock - this.maxBlockHistory;
+            const keysToDelete = [];
+
+            for (const block of this.blockUpdates.keys()) {
+                if (block < minBlock) {
+                    keysToDelete.push(block);
+                }
+            }
+
+            for (const key of keysToDelete) {
+                this.blockUpdates.delete(key);
+            }
+
+            if (keysToDelete.length > 0) {
+                log.debug(`Periodic cleanup: removed ${keysToDelete.length} old block entries`, {
+                    remaining: this.blockUpdates.size,
+                    maxBlock,
+                });
+            }
+        }
+    }
+
+    /**
      * Track a pair update for a specific block
      *
      * FIX v3.2: Added blockNumber validation to prevent "null"/"undefined" keys
@@ -1417,6 +1585,9 @@ class EventDrivenDetector extends EventEmitter {
         try {
             // FIX v3.2: Stop cleanup interval
             this._stopCleanupInterval();
+
+            // FIX v3.7: Stop blockUpdates cleanup interval
+            this._stopBlockCleanupInterval();
 
             // Unsubscribe from rpcManager events
             rpcManager.off('wsFailover', this._boundHandleWsFailover);

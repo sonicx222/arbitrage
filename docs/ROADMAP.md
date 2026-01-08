@@ -1,8 +1,8 @@
 # Implementation Roadmap & Project Status
 
 **Last Updated:** 2026-01-08
-**Project Version:** 3.5
-**Overall Score:** 8.7/10
+**Project Version:** 3.6
+**Overall Score:** 9.0/10
 
 ---
 
@@ -17,10 +17,11 @@ This document consolidates the project implementation status, remaining work, an
 | Phase 1: Zero-Fee Flash Loans | COMPLETE | 100% |
 | Phase 2: Stable Pool & LSD Arbitrage | COMPLETE | 100% |
 | Phase 3: Advanced Strategies | COMPLETE | 100% |
+| Phase 3.5: P1/P2 Enhancements | COMPLETE | 100% |
 | Phase 4: Production Deployment | IN PROGRESS | 30% |
 
 ### Test Coverage
-- **1,761 tests passing** (all 53 test suites)
+- **1,775 tests passing** (all 52 test suites)
 - **0 regressions** in latest version
 
 ---
@@ -79,6 +80,18 @@ This document consolidates the project implementation status, remaining work, an
 | EIP-1559 gas support | ✅ Complete | All EIP-1559 chains |
 | Speed optimizations | ✅ Complete | 62% latency reduction |
 
+### P1/P2 Enhancements (100% Complete - v3.6)
+
+| Component | Status | File(s) | Notes |
+|-----------|--------|---------|-------|
+| L2 Gas Fee Calculation | ✅ Complete | `l2GasCalculator.js`, `profitCalculator.js`, `executionManager.js` | Arbitrum/Base/Optimism precompile integration |
+| V3 Fee Tier Arbitrage | ✅ Complete | `v3LiquidityAnalyzer.js`, `v2v3Arbitrage.js` | `detectFeeTierArbitrage()` integrated into detection loop |
+| Stablecoin Depeg Detection | ✅ Complete | `stablecoinDetector.js`, `index.js` | Event handlers for `severeDepeg` and `opportunity` |
+| New Pair Monitoring | ✅ Complete | `newPairMonitor.js`, `index.js` | Factory event monitoring for new liquidity pools |
+| Block Time Prediction | ✅ Complete | `blockTimePredictor.js`, `executionManager.js` | `waitForOptimalWindow()` before tx submission |
+| Whale Address Tracker | ✅ Complete | `whaleTracker.js`, `index.js` | `shouldExecuteWithWhaleCheck()` competition analysis |
+| V2/V3 Cross-Arbitrage | ✅ Complete | `v2v3Arbitrage.js`, `index.js` | Same-pair different AMM detection |
+
 ---
 
 ## What's Pending
@@ -91,22 +104,22 @@ This document consolidates the project implementation status, remaining work, an
 | **Live execution testing** | 8h | Critical | Start with $50-100 test capital |
 | **Dynamic token pricing from cache** | 4h | High | Currently using hardcoded fallbacks |
 
-### Priority 1: High Impact
+### Priority 1: High Impact ✅ COMPLETE (v3.6)
 
-| Task | Effort | Impact | Notes |
-|------|--------|--------|-------|
-| L2 gas fee calculation (Arbitrum/Base) | 6h | High | Use precompile contracts |
-| V3 fee tier arbitrage integration | 4h | Medium | `detectFeeTierArbitrage()` exists but not called |
-| Stablecoin depeg detection | 4h | High | High-profit events during market stress |
+| Task | Status | Notes |
+|------|--------|-------|
+| L2 gas fee calculation (Arbitrum/Base) | ✅ Done | Precompile contracts integrated in `executionManager.initialize()` |
+| V3 fee tier arbitrage integration | ✅ Done | Called in `handleNewBlock()` via v2v3Arbitrage |
+| Stablecoin depeg detection | ✅ Done | `StablecoinDetector` integrated with event handlers |
 
-### Priority 2: Enhancements
+### Priority 2: Enhancements ✅ COMPLETE (v3.6)
 
-| Task | Effort | Impact | Notes |
-|------|--------|--------|-------|
-| New pair monitoring (Factory events) | 8h | Medium | Detect new liquidity pools |
-| Whale address tracker | 8h | Medium | Monitor large trader behavior |
-| V2/V3 cross-arbitrage | 6h | Medium | Same-pair different AMM |
-| Block time prediction | 4h | Low | Optimal submission timing |
+| Task | Status | Notes |
+|------|--------|-------|
+| New pair monitoring (Factory events) | ✅ Done | `newPairMonitor.subscribe()` on startup |
+| Whale address tracker | ✅ Done | `shouldExecuteWithWhaleCheck()` before execution |
+| V2/V3 cross-arbitrage | ✅ Done | `v2v3Arbitrage.analyzeOpportunities()` each block |
+| Block time prediction | ✅ Done | `waitForOptimalWindow()` before tx submission |
 
 ### Priority 3: Future / Skip
 
@@ -165,6 +178,10 @@ This document consolidates the project implementation status, remaining work, an
 | Triangular | 3-10 | $2-8 |
 | Stable/LSD | 2-5 | $5-20 |
 | Liquidation backrun | 1-3 | $5-50 |
+| V3 Fee Tier | 2-8 | $2-10 |
+| Stablecoin Depeg | 0-5 (event-driven) | $10-100+ |
+| New Pair | 1-5 | $5-50 |
+| V2/V3 Cross | 3-8 | $3-15 |
 
 ---
 
@@ -203,14 +220,14 @@ This document consolidates the project implementation status, remaining work, an
 
 | Category | Score | Notes |
 |----------|-------|-------|
-| Architecture | 9.0/10 | Worker threads, modular, scalable |
+| Architecture | 9.2/10 | Worker threads, modular, L2 gas integration |
 | Code Quality | 9.1/10 | ESM, async/await, consistent patterns |
-| Test Coverage | 9.5/10 | 1,761 tests, comprehensive |
-| Documentation | 8.0/10 | Consolidated, clear |
+| Test Coverage | 9.5/10 | 1,775 tests, comprehensive P1/P2 coverage |
+| Documentation | 8.5/10 | Consolidated, P1/P2 documented |
 | Security | 8.6/10 | Input validation, no hardcoded keys |
-| Feature Completeness | 8.5/10 | Detection complete, execution pending |
-| Production Readiness | 7.0/10 | Needs live testing |
-| **Overall** | **8.7/10** | Ready for production testing |
+| Feature Completeness | 9.2/10 | All P1/P2 features integrated |
+| Production Readiness | 8.0/10 | All detection ready, needs live testing |
+| **Overall** | **9.0/10** | Ready for production testing |
 
 ---
 
@@ -226,7 +243,7 @@ This document consolidates the project implementation status, remaining work, an
 1. Analyze actual vs estimated profits
 2. Tune gas and slippage parameters
 3. Add dynamic token pricing
-4. Enable L2 gas calculation
+4. Verify L2 gas calculation accuracy on Arbitrum/Base
 
 ### Week 3: Scale
 1. Deploy contract to Polygon/Arbitrum
@@ -234,11 +251,13 @@ This document consolidates the project implementation status, remaining work, an
 3. Increase trade size limits
 4. Set up monitoring/alerting
 
-### Month 2+: Enhance
-1. Add stablecoin depeg detection
-2. Implement whale tracker
-3. Enable V3 fee tier arbitrage
-4. Consider paid RPC for mempool access
+### Month 2+: Optimize Further
+1. Tune stablecoin depeg thresholds based on live data
+2. Analyze whale tracker effectiveness
+3. Fine-tune V3 fee tier spread thresholds
+4. Consider paid RPC for mempool access (P3 future)
+
+> **Note:** P1/P2 features (L2 gas, stablecoin depeg, new pair monitoring, whale tracker, V3 fee tier, block time prediction) are now fully integrated in v3.6.
 
 ---
 

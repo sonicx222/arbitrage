@@ -93,10 +93,20 @@ class AdaptivePrioritizer extends EventEmitter {
 
     /**
      * Register a pair for priority tracking
+     *
+     * FIX v3.7: Auto-start decay timer on first registration
+     * This prevents the bug where pairs stay HOT forever if start() is never called
+     *
      * @param {string} pairKey - Unique pair identifier (e.g., "WBNB/USDT:pancakeswap")
      * @param {Object} options - { volumeUSD, liquidityUSD }
      */
     registerPair(pairKey, options = {}) {
+        // FIX v3.7: Auto-start on first registration to prevent timer leak
+        // This ensures decay mechanism runs even if start() is never explicitly called
+        if (!this.decayTimer && this.pairPriority.size === 0) {
+            this.start();
+        }
+
         if (this.pairPriority.has(pairKey)) {
             return;
         }

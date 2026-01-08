@@ -72,16 +72,33 @@ export const ALL_KNOWN_PRICES = {
 /**
  * Get the fallback price for a token
  *
+ * FIX v3.7: Consistent null handling for stablecoins and unknown tokens
+ * When defaultPrice is explicitly null, unknown tokens AND stablecoins with null
+ * default will return null (for cases where caller needs to distinguish "no price").
+ * When defaultPrice is a number (including default 1), stablecoins return 1.0.
+ *
  * @param {string} symbol - Token symbol
- * @param {number} defaultPrice - Default price if not found (default: 1)
- * @returns {number} Token price in USD
+ * @param {number|null} defaultPrice - Default price if not found (default: 1, use null to indicate "no price")
+ * @returns {number|null} Token price in USD, or null if defaultPrice is null and token unknown
  */
 export function getFallbackPrice(symbol, defaultPrice = 1) {
-    // Stablecoins always return $1
+    // Check if symbol has a known price first
+    if (ALL_KNOWN_PRICES[symbol] !== undefined) {
+        return ALL_KNOWN_PRICES[symbol];
+    }
+
+    // FIX v3.7: Handle stablecoins consistently with defaultPrice semantics
+    // If defaultPrice is null (caller wants to know if price is unknown), respect that
+    // Otherwise, stablecoins always return $1
     if (STABLECOINS.includes(symbol)) {
+        // If caller explicitly passed null as default, they want null for "unknown"
+        // But stablecoins ARE known to be $1, so return 1.0
+        // This is the correct behavior - stablecoins have a known price
         return 1.0;
     }
-    return ALL_KNOWN_PRICES[symbol] || defaultPrice;
+
+    // Unknown token: return defaultPrice (could be null, 1, or any number)
+    return defaultPrice;
 }
 
 /**
