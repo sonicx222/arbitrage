@@ -324,8 +324,13 @@ class ExecutionSimulator extends EventEmitter {
 
         if (!hasHistory) {
             // Estimate stability from liquidity
-            const liquidity = opportunity.minLiquidityUSD ||
-                             opportunity.buyLiquidityUSD || 10000;
+            const rawLiquidity = opportunity.minLiquidityUSD ||
+                                opportunity.buyLiquidityUSD || 10000;
+
+            // FIX v3.2: Validate liquidity to prevent NaN propagation
+            const liquidity = Number.isFinite(rawLiquidity) && rawLiquidity > 0
+                ? rawLiquidity
+                : 10000;
 
             const stabilityScore = Math.min(1, liquidity / 100000);
             return {
@@ -362,15 +367,26 @@ class ExecutionSimulator extends EventEmitter {
     /**
      * Analyze slippage risk
      *
+     * FIX v3.2: Added validation to prevent Infinity/NaN propagation
+     * when liquidity is 0, NaN, or Infinity
+     *
      * @private
      */
     _analyzeSlippageRisk(opportunity) {
-        const tradeSize = opportunity.profitCalculation?.tradeSizeUSD ||
-                         opportunity.optimalTradeSizeUSD || 0;
-        const liquidity = opportunity.minLiquidityUSD ||
-                         opportunity.buyLiquidityUSD || 10000;
+        const rawTradeSize = opportunity.profitCalculation?.tradeSizeUSD ||
+                            opportunity.optimalTradeSizeUSD || 0;
+        const rawLiquidity = opportunity.minLiquidityUSD ||
+                            opportunity.buyLiquidityUSD || 10000;
 
-        // Trade as percentage of liquidity
+        // FIX v3.2: Validate inputs to prevent Infinity/NaN propagation
+        const tradeSize = Number.isFinite(rawTradeSize) && rawTradeSize >= 0
+            ? rawTradeSize
+            : 0;
+        const liquidity = Number.isFinite(rawLiquidity) && rawLiquidity > 0
+            ? rawLiquidity
+            : 10000; // Default to safe fallback
+
+        // Trade as percentage of liquidity (now guaranteed finite)
         const tradeRatio = tradeSize / liquidity;
 
         // Expected slippage (rough estimation)

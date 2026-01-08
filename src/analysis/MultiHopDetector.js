@@ -68,7 +68,8 @@ export default class MultiHopDetector {
                 if (liquidityUSD < this.minLiquidityUSD) continue;
 
                 const price = priceData.price;
-                if (!price || price <= 0) continue;
+                // FIX v3.2: Also check for Infinity/NaN to prevent division by zero in sort
+                if (!price || price <= 0 || !Number.isFinite(price)) continue;
 
                 dexOptions.push({
                     dex: dexName,

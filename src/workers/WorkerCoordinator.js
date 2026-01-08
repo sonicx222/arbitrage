@@ -90,10 +90,10 @@ export default class WorkerCoordinator extends EventEmitter {
         worker.on('exit', (code) => {
             log.info(`Worker ${chainId} exited with code ${code}`);
 
-            // Check if this was an intentional restart (terminate() was called)
+            // FIX v3.2: Check if this was an intentional restart (terminate() was called)
+            // Don't delete from pendingRestarts here - let the finally block in
+            // scheduleWorkerRestart handle cleanup to prevent race conditions
             if (this.pendingRestarts.has(chainId)) {
-                // Intentional restart - don't schedule another one
-                this.pendingRestarts.delete(chainId);
                 log.debug(`Worker ${chainId} terminated for intentional restart`);
                 return;
             }
@@ -212,41 +212,61 @@ export default class WorkerCoordinator extends EventEmitter {
 
     /**
      * Schedule worker restart after delay
+     *
+     * FIX v3.2: Added deduplication check to prevent concurrent restart scheduling
+     * FIX v3.2: Added try/finally to prevent pendingRestarts leak
+     *
      * @param {number} chainId - Chain ID to restart
      */
     scheduleWorkerRestart(chainId) {
+        // FIX v3.2: Prevent concurrent restart scheduling (Bug #5)
+        // If a restart is already pending for this chain, skip
+        if (this.pendingRestarts.has(chainId)) {
+            log.debug(`Restart already pending for worker ${chainId}, skipping duplicate`);
+            return;
+        }
+
         const config = this.workerConfigs.get(chainId);
         if (!config) {
             log.error(`Cannot restart worker ${chainId}: config not found`);
             return;
         }
 
+        // Mark as pending restart before the timeout
+        this.pendingRestarts.add(chainId);
+
         setTimeout(async () => {
-            if (!this.isRunning) return;
-
-            log.info(`Restarting worker ${chainId}...`);
-
-            // Terminate old worker if exists
-            const oldWorker = this.workers.get(chainId);
-            if (oldWorker) {
-                // Mark as intentional restart to prevent exit handler from scheduling another restart
-                this.pendingRestarts.add(chainId);
-                try {
-                    await oldWorker.terminate();
-                } catch (e) {
-                    // Ignore termination errors
+            // FIX v3.2: Use try/finally to ensure pendingRestarts cleanup (Bug #6)
+            try {
+                if (!this.isRunning) {
+                    return;
                 }
-                this.workers.delete(chainId);
+
+                log.info(`Restarting worker ${chainId}...`);
+
+                // Terminate old worker if exists
+                const oldWorker = this.workers.get(chainId);
+                if (oldWorker) {
+                    try {
+                        await oldWorker.terminate();
+                    } catch (e) {
+                        log.debug(`Error terminating old worker ${chainId}: ${e.message}`);
+                    }
+                    this.workers.delete(chainId);
+                }
+
+                // Spawn new worker
+                this.spawnWorker(chainId, config);
+                this.stats.workerRestarts++;
+
+                // Wait for initialization then start
+                await this.waitForWorker(chainId, 'initialized', 15000);
+                this.sendToWorker(chainId, MessageType.START);
+
+            } finally {
+                // FIX v3.2: Always clean up pendingRestarts to prevent leak
+                this.pendingRestarts.delete(chainId);
             }
-
-            // Spawn new worker
-            this.spawnWorker(chainId, config);
-            this.stats.workerRestarts++;
-
-            // Wait for initialization then start
-            await this.waitForWorker(chainId, 'initialized', 15000);
-            this.sendToWorker(chainId, MessageType.START);
-
         }, this.restartDelay);
     }
 

@@ -129,6 +129,10 @@ class GasOptimizer {
     /**
      * Record gas price in history
      *
+     * FIX v3.2: Replaced O(n) Array.shift() with batched slice() for better performance
+     * Old approach: shift() on every insert above maxHistorySize = O(n) per insert
+     * New approach: slice() when 20% over limit = O(1) amortized
+     *
      * @param {BigInt} gasPrice - Gas price in wei
      */
     recordGasPrice(gasPrice) {
@@ -137,20 +141,43 @@ class GasOptimizer {
             timestamp: Date.now(),
         });
 
-        // Trim history
-        if (this.gasPriceHistory.length > this.maxHistorySize) {
-            this.gasPriceHistory.shift();
+        // FIX v3.2: Trim history with batched slice instead of O(n) shift
+        // Only trim when 20% over limit (reduces frequency of O(n) operations)
+        const trimThreshold = Math.floor(this.maxHistorySize * 1.2);
+        if (this.gasPriceHistory.length > trimThreshold) {
+            // Keep most recent maxHistorySize entries
+            this.gasPriceHistory = this.gasPriceHistory.slice(-this.maxHistorySize);
         }
     }
 
     /**
      * Check if current gas price is favorable for trading
      *
+     * FIX v3.2: Added validation to prevent NaN/Infinity from division by zero
+     *
      * @param {number} profitUSD - Expected profit in USD
      * @param {number} gasCostUSD - Estimated gas cost in USD
      * @returns {boolean} True if gas conditions are favorable
      */
     async isGasFavorable(profitUSD, gasCostUSD) {
+        // FIX v3.2: Validate inputs to prevent NaN/Infinity
+        // profitUSD of 0 or negative means unfavorable by definition
+        if (!Number.isFinite(profitUSD) || profitUSD <= 0) {
+            log.debug('Gas conditions unfavorable: invalid or non-positive profit', {
+                profitUSD,
+                gasCostUSD,
+            });
+            return false;
+        }
+
+        if (!Number.isFinite(gasCostUSD) || gasCostUSD < 0) {
+            log.debug('Gas conditions unfavorable: invalid gas cost', {
+                profitUSD,
+                gasCostUSD,
+            });
+            return false;
+        }
+
         // Gas should be less than 50% of profit
         const gasCostRatio = gasCostUSD / profitUSD;
         const isFavorable = gasCostRatio < 0.5;

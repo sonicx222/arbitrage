@@ -67,6 +67,11 @@ class EventDrivenDetector extends EventEmitter {
         this.blockUpdates = new Map();
         this.maxBlockHistory = 10; // Keep last N blocks of update history
 
+        // FIX v3.2: Cleanup interval for recentlyProcessed Map
+        // (cleanupDebounceMap existed but was never called - memory leak)
+        this.cleanupInterval = null;
+        this.cleanupIntervalMs = 30000; // Clean up every 30 seconds
+
         // Statistics
         this.stats = {
             eventsReceived: 0,
@@ -157,6 +162,10 @@ class EventDrivenDetector extends EventEmitter {
             await this._subscribeToAllEvents();
 
             this.isRunning = true;
+
+            // FIX v3.2: Start periodic cleanup for recentlyProcessed Map
+            this._startCleanupInterval();
+
             log.info('EventDrivenDetector started (resilient mode)', {
                 pairsSubscribed: this.addressToPairInfo.size,
                 v3PoolsSubscribed: this.addressToV3PoolInfo.size,
@@ -1248,18 +1257,69 @@ class EventDrivenDetector extends EventEmitter {
         const now = Date.now();
         const expiry = this.debounceMs * 10; // Keep for 10x debounce time
 
+        let cleaned = 0;
         for (const [address, timestamp] of this.recentlyProcessed) {
             if (now - timestamp > expiry) {
                 this.recentlyProcessed.delete(address);
+                cleaned++;
             }
+        }
+
+        if (cleaned > 0) {
+            log.debug(`Cleaned ${cleaned} entries from recentlyProcessed map`, {
+                remaining: this.recentlyProcessed.size,
+            });
+        }
+    }
+
+    /**
+     * Start periodic cleanup interval for recentlyProcessed Map
+     * FIX v3.2: cleanupDebounceMap() existed but was never called - memory leak
+     * @private
+     */
+    _startCleanupInterval() {
+        if (this.cleanupInterval) {
+            return; // Already running
+        }
+
+        this.cleanupInterval = setInterval(() => {
+            this.cleanupDebounceMap();
+        }, this.cleanupIntervalMs);
+
+        // Unref to not block process exit
+        this.cleanupInterval.unref();
+
+        log.debug('Started recentlyProcessed cleanup interval', {
+            intervalMs: this.cleanupIntervalMs,
+        });
+    }
+
+    /**
+     * Stop cleanup interval
+     * FIX v3.2: Called during graceful shutdown
+     * @private
+     */
+    _stopCleanupInterval() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+            log.debug('Stopped recentlyProcessed cleanup interval');
         }
     }
 
     /**
      * Track a pair update for a specific block
+     *
+     * FIX v3.2: Added blockNumber validation to prevent "null"/"undefined" keys
+     *
      * @private
      */
     _trackBlockUpdate(blockNumber, pairKey, dexName) {
+        // FIX v3.2: Validate blockNumber to prevent invalid Map keys
+        if (!Number.isInteger(blockNumber) || blockNumber < 0) {
+            return;
+        }
+
         if (!this.blockUpdates.has(blockNumber)) {
             this.blockUpdates.set(blockNumber, new Set());
 
@@ -1274,15 +1334,25 @@ class EventDrivenDetector extends EventEmitter {
 
     /**
      * Clean up block update history older than maxBlockHistory
+     *
+     * FIX v3.2: Collect keys before deleting to prevent iteration-during-modification race
+     *
      * @private
      */
     _cleanupOldBlockUpdates(currentBlock) {
         const minBlock = currentBlock - this.maxBlockHistory;
 
+        // FIX v3.2: Collect keys first to avoid modifying Map during iteration
+        const keysToDelete = [];
         for (const block of this.blockUpdates.keys()) {
             if (block < minBlock) {
-                this.blockUpdates.delete(block);
+                keysToDelete.push(block);
             }
+        }
+
+        // Delete after iteration completes
+        for (const key of keysToDelete) {
+            this.blockUpdates.delete(key);
         }
     }
 
@@ -1331,6 +1401,9 @@ class EventDrivenDetector extends EventEmitter {
         this.isRunning = false;
 
         try {
+            // FIX v3.2: Stop cleanup interval
+            this._stopCleanupInterval();
+
             // Unsubscribe from rpcManager events
             rpcManager.off('wsFailover', this._boundHandleWsFailover);
             rpcManager.off('endpointRecovered', this._boundHandleWsRecovery);

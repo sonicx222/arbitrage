@@ -210,6 +210,10 @@ class ReserveDifferentialAnalyzer extends EventEmitter {
 
     /**
      * Calculate price from raw reserve values
+     *
+     * FIX v3.2: Added overflow protection when converting BigInt to Number
+     * to prevent precision loss with very large reserves
+     *
      * @private
      */
     calculatePriceFromRaw(reserve0, reserve1, tokenA, tokenB) {
@@ -218,11 +222,40 @@ class ReserveDifferentialAnalyzer extends EventEmitter {
 
         if (r0 === 0n) return 0;
 
-        const factorA = 10n ** BigInt(tokenA.decimals);
-        const factorB = 10n ** BigInt(tokenB.decimals);
+        // FIX v3.2: Validate token decimals to prevent BigInt errors
+        const decimalsA = Number.isInteger(tokenA?.decimals) && tokenA.decimals >= 0
+            ? tokenA.decimals
+            : 18;
+        const decimalsB = Number.isInteger(tokenB?.decimals) && tokenB.decimals >= 0
+            ? tokenB.decimals
+            : 18;
+
+        const factorA = 10n ** BigInt(decimalsA);
+        const factorB = 10n ** BigInt(decimalsB);
         const precision = 10n ** 18n;
 
         const priceBI = (r1 * factorA * precision) / (r0 * factorB);
+
+        // FIX v3.2: Check for overflow before converting to Number
+        // Number.MAX_SAFE_INTEGER is 2^53 - 1 = 9007199254740991
+        const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+
+        if (priceBI > MAX_SAFE) {
+            // Scale down to prevent precision loss
+            // Use a lower precision scaling factor
+            const scaledPriceBI = priceBI / 10n ** 12n; // Reduce precision from 18 to 6 decimals
+            if (scaledPriceBI > MAX_SAFE) {
+                // Still too large - use floating point calculation as fallback
+                // This has some precision loss but prevents complete failure
+                log.debug('Price calculation overflow, using fallback', {
+                    r0: r0.toString().slice(0, 10) + '...',
+                    r1: r1.toString().slice(0, 10) + '...',
+                });
+                return Number(r1) / Number(r0) * Math.pow(10, decimalsA - decimalsB);
+            }
+            return Number(scaledPriceBI) / 1e6;
+        }
+
         return Number(priceBI) / 1e18;
     }
 
