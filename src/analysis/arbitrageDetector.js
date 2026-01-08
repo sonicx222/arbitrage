@@ -40,6 +40,18 @@ class ArbitrageDetector {
      * 3. Parallel cross-DEX + triangular detection (-40-60%)
      */
     async detectOpportunities(prices, blockNumber) {
+        // FIX v3.1: Input validation to prevent runtime errors
+        if (!prices || typeof prices !== 'object') {
+            log.debug('detectOpportunities: Invalid prices object received');
+            return [];
+        }
+
+        if (!Number.isInteger(blockNumber) || blockNumber < 0) {
+            log.warn('detectOpportunities: Invalid blockNumber', { blockNumber });
+            // Use current cached block as fallback
+            blockNumber = cacheManager.currentBlockNumber || 0;
+        }
+
         const startTime = Date.now();
         const trace = speedMetrics.startTrace(`detection_${blockNumber}`);
         let opportunities = [];

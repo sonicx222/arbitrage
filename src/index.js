@@ -1201,21 +1201,38 @@ class ArbitrageBot {
 
     /**
      * Stop the arbitrage bot
+     * FIX v3.1: Added graceful shutdown with in-flight operation handling
      */
     async stop() {
         if (!this.isRunning) {
             return;
         }
 
-        log.info('Stopping Arbitrage Bot...');
+        log.info('Stopping Arbitrage Bot (graceful shutdown)...');
         this.isRunning = false;
 
+        // FIX v3.1: Set up shutdown timeout to prevent hanging
+        const shutdownTimeout = setTimeout(() => {
+            log.warn('Graceful shutdown timeout reached, forcing exit');
+            process.exit(1);
+        }, 30000); // 30 second timeout
+
         try {
+            // FIX v3.1: Wait for in-flight operations to complete
+            await this._waitForInFlightOperations();
+
             if (this.multiChainMode) {
                 await this.stopMultiChain();
             } else {
                 await this.stopSingleChain();
             }
+
+            // FIX v3.1: Stop execution manager cleanup interval
+            executionManager.stopCleanup();
+
+            // FIX v3.1: Save persistent cache before shutdown
+            await cacheManager.savePersistentCache();
+            log.info('Persistent cache saved');
 
             // Stop dashboard server
             dashboard.stop();
@@ -1230,7 +1247,57 @@ class ArbitrageBot {
 
         } catch (error) {
             log.error('Error stopping bot', { error: error.message });
+        } finally {
+            clearTimeout(shutdownTimeout);
         }
+    }
+
+    /**
+     * Wait for in-flight operations to complete
+     * FIX v3.1: Prevents data loss/corruption during shutdown
+     * @private
+     */
+    async _waitForInFlightOperations() {
+        const maxWait = 10000; // 10 seconds max wait
+        const startTime = Date.now();
+
+        // Wait for block processing to complete
+        if (this.processingBlock) {
+            log.info('Waiting for block processing to complete...');
+            while (this.processingBlock && Date.now() - startTime < maxWait) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            if (this.processingBlock) {
+                log.warn('Block processing still in progress after timeout');
+            }
+        }
+
+        // Wait for event processing to complete
+        if (this.processingEvent) {
+            log.info('Waiting for event processing to complete...');
+            while (this.processingEvent && Date.now() - startTime < maxWait) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+
+        // Drain event queue
+        if (this.eventQueue.length > 0) {
+            log.info(`Draining ${this.eventQueue.length} queued events...`);
+            this.eventQueue = []; // Clear queue rather than processing during shutdown
+        }
+
+        // Wait for execution to complete
+        if (executionManager.isExecuting) {
+            log.info('Waiting for execution to complete...');
+            while (executionManager.isExecuting && Date.now() - startTime < maxWait) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            if (executionManager.isExecuting) {
+                log.warn('Execution still in progress after timeout');
+            }
+        }
+
+        log.debug('In-flight operations completed or timed out');
     }
 
     /**
@@ -1274,8 +1341,9 @@ class ArbitrageBot {
             stats: dexAggregator.getStats(),
         });
 
-        // Log whale tracker stats
-        log.info('Whale tracker stats:', {
+        // FIX v3.1: Stop whale tracker cleanup interval
+        whaleTracker.stop();
+        log.info('Whale tracker stopped', {
             stats: whaleTracker.getStats(),
         });
 

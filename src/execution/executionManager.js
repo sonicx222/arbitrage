@@ -61,6 +61,10 @@ class ExecutionManager {
         this.recentExecutions = [];
         this.maxRecentExecutions = 100;
 
+        // FIX v3.1: Cleanup interval for timedOutTxs to prevent unbounded growth
+        this.timedOutTxCleanupInterval = null;
+        this.timedOutTxMaxAge = 24 * 60 * 60 * 1000; // 24 hours
+
         log.info('Execution Manager initialized', {
             mode: this.mode,
             contractConfigured: !!config.execution?.contractAddress,
@@ -100,7 +104,59 @@ class ExecutionManager {
         // Expected improvement: -50-200ms on first execution
         await this._warmFlashPairCache();
 
+        // FIX v3.1: Start cleanup interval for timedOutTxs
+        this._startTimedOutTxCleanup();
+
         log.info('Execution Manager ready', { mode: this.mode });
+    }
+
+    /**
+     * Start periodic cleanup of timed-out transactions
+     * FIX v3.1: Prevents unbounded memory growth from timedOutTxs Map
+     * @private
+     */
+    _startTimedOutTxCleanup() {
+        // Clean up every hour
+        this.timedOutTxCleanupInterval = setInterval(() => {
+            this._cleanupTimedOutTxs();
+        }, 60 * 60 * 1000);
+
+        log.debug('Started timedOutTxs cleanup interval');
+    }
+
+    /**
+     * Clean up old timed-out transactions
+     * FIX v3.1: Removes transactions older than 24 hours
+     * @private
+     */
+    _cleanupTimedOutTxs() {
+        const now = Date.now();
+        let cleaned = 0;
+
+        for (const [hash, data] of this.timedOutTxs.entries()) {
+            if (now - data.timestamp > this.timedOutTxMaxAge) {
+                this.timedOutTxs.delete(hash);
+                cleaned++;
+            }
+        }
+
+        if (cleaned > 0) {
+            log.debug(`Cleaned up ${cleaned} timed-out transactions`, {
+                remaining: this.timedOutTxs.size,
+            });
+        }
+    }
+
+    /**
+     * Stop cleanup interval and perform final cleanup
+     * FIX v3.1: Called during graceful shutdown
+     */
+    stopCleanup() {
+        if (this.timedOutTxCleanupInterval) {
+            clearInterval(this.timedOutTxCleanupInterval);
+            this.timedOutTxCleanupInterval = null;
+            log.debug('Stopped timedOutTxs cleanup interval');
+        }
     }
 
     /**
@@ -209,6 +265,32 @@ class ExecutionManager {
      * @returns {Object} Execution result
      */
     async execute(opportunity) {
+        // FIX v3.1: Comprehensive input validation
+        if (!opportunity || typeof opportunity !== 'object') {
+            return {
+                success: false,
+                reason: 'Invalid opportunity: must be an object',
+                stage: 'validation',
+            };
+        }
+
+        // Validate required fields
+        if (!opportunity.type) {
+            return {
+                success: false,
+                reason: 'Invalid opportunity: missing type field',
+                stage: 'validation',
+            };
+        }
+
+        if (!['cross-dex', 'triangular', 'cross-dex-triangular', 'v2v3', 'fee-tier'].includes(opportunity.type)) {
+            return {
+                success: false,
+                reason: `Invalid opportunity type: ${opportunity.type}`,
+                stage: 'validation',
+            };
+        }
+
         // Prevent concurrent executions
         if (this.isExecuting) {
             return {

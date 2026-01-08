@@ -37,6 +37,10 @@ class WhaleTracker extends EventEmitter {
             signalsEmitted: 0,
         };
 
+        // FIX v3.1: Periodic cleanup interval for tradesByPair
+        this.cleanupInterval = null;
+        this._startCleanup();
+
         log.info('WhaleTracker initialized', {
             minTradeUSD: this.minTradeUSD,
             minTradesForWhale: this.minTradesForWhale,
@@ -452,6 +456,60 @@ class WhaleTracker extends EventEmitter {
             tradesRecorded: 0,
             signalsEmitted: 0,
         };
+    }
+
+    /**
+     * Start periodic cleanup for tradesByPair
+     * FIX v3.1: Prevents unbounded memory growth
+     * @private
+     */
+    _startCleanup() {
+        // Clean up every 5 minutes
+        this.cleanupInterval = setInterval(() => {
+            this._cleanupTradesByPair();
+        }, 5 * 60 * 1000);
+    }
+
+    /**
+     * Clean up empty or stale entries in tradesByPair
+     * FIX v3.1: Removes pairs with no recent trades
+     * @private
+     */
+    _cleanupTradesByPair() {
+        const cutoff = Date.now() - this.activityWindowMs;
+        let cleaned = 0;
+
+        for (const [pairKey, trades] of this.tradesByPair.entries()) {
+            // Remove stale trades
+            const recentTrades = trades.filter(t => t.trade.timestamp > cutoff);
+
+            if (recentTrades.length === 0) {
+                // Remove empty pair entries
+                this.tradesByPair.delete(pairKey);
+                cleaned++;
+            } else if (recentTrades.length !== trades.length) {
+                // Update with only recent trades
+                this.tradesByPair.set(pairKey, recentTrades);
+            }
+        }
+
+        if (cleaned > 0) {
+            log.debug(`WhaleTracker: Cleaned ${cleaned} stale pair entries`, {
+                remaining: this.tradesByPair.size,
+            });
+        }
+    }
+
+    /**
+     * Stop cleanup interval
+     * FIX v3.1: Called during graceful shutdown
+     */
+    stop() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+            log.debug('WhaleTracker cleanup interval stopped');
+        }
     }
 }
 
