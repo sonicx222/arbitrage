@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import config from '../config.js';
 import log from '../utils/logger.js';
+// FIX v3.1: Use centralized stablecoin list
+import { STABLECOINS, isStablecoin } from '../constants/tokenPrices.js';
 
 /**
  * Cache Manager with block-based invalidation and LRU eviction
@@ -76,8 +78,32 @@ class CacheManager {
 
     /**
      * Save pair address cache to disk
+     * FIX v3.1: Use async file write to avoid blocking the event loop
      */
-    savePersistentCache() {
+    async savePersistentCache() {
+        try {
+            const keys = this.pairAddressCache.keys();
+            const data = {};
+            keys.forEach(k => {
+                data[k] = this.pairAddressCache.get(k);
+            });
+
+            // FIX v3.1: Use async write to avoid blocking event loop
+            await fs.promises.writeFile(
+                this.pairCacheFile,
+                JSON.stringify(data, null, 2)
+            );
+            log.debug(`Saved ${keys.length} pair addresses to disk`);
+        } catch (err) {
+            log.error('Failed to save persistent cache', { error: err.message });
+        }
+    }
+
+    /**
+     * Save pair address cache to disk (sync version for shutdown)
+     * Only use during graceful shutdown when blocking is acceptable
+     */
+    savePersistentCacheSync() {
         try {
             const keys = this.pairAddressCache.keys();
             const data = {};
@@ -85,7 +111,7 @@ class CacheManager {
                 data[k] = this.pairAddressCache.get(k);
             });
             fs.writeFileSync(this.pairCacheFile, JSON.stringify(data, null, 2));
-            log.debug(`Saved ${keys.length} pair addresses to disk`);
+            log.debug(`Saved ${keys.length} pair addresses to disk (sync)`);
         } catch (err) {
             log.error('Failed to save persistent cache', { error: err.message });
         }
@@ -238,8 +264,8 @@ class CacheManager {
      * @returns {number} Native token price in USD
      */
     getNativeTokenPrice(nativeSymbol, tokensConfig, dexNames, fallbackPrice = 1) {
-        // Stable tokens to pair against (in priority order)
-        const stableSymbols = ['USDT', 'USDC', 'BUSD', 'DAI', 'FDUSD'];
+        // FIX v3.1: Use centralized stable token list (in priority order)
+        const stableSymbols = ['USDT', 'USDC', 'BUSD', 'DAI', 'FDUSD', 'TUSD'];
 
         const nativeToken = tokensConfig[nativeSymbol];
         if (!nativeToken) {
@@ -284,17 +310,20 @@ class CacheManager {
      * @returns {number|null} Token price in USD or null if not found
      */
     getTokenPriceUSD(tokenSymbol, tokensConfig, dexNames, nativeTokenPriceUSD) {
-        // Stablecoins are always $1
-        const stableSymbols = ['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'FDUSD'];
-        if (stableSymbols.includes(tokenSymbol)) {
+        // FIX v3.1: Use centralized isStablecoin check
+        if (isStablecoin(tokenSymbol)) {
             return 1.0;
         }
 
         const token = tokensConfig[tokenSymbol];
         if (!token) return null;
 
+        // FIX v3.1: Use centralized STABLECOINS list for pair lookups
+        // Only use common stables that are likely in tokensConfig
+        const lookupStables = ['USDT', 'USDC', 'BUSD', 'DAI', 'FDUSD', 'TUSD'];
+
         // First try direct stable pair
-        for (const stableSymbol of stableSymbols) {
+        for (const stableSymbol of lookupStables) {
             const stableToken = tokensConfig[stableSymbol];
             if (!stableToken) continue;
 

@@ -19,7 +19,9 @@
       "Bash(npm list:*)",
       "Bash(RUN_HARDHAT_TESTS=true npx hardhat:*)",
       "Bash(npx hardhat:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(cd:*)",
+      "Bash(cat:*)"
     ]
   }
 }

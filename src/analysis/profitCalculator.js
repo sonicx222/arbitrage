@@ -183,7 +183,10 @@ class ProfitCalculator {
             slippageRate = slippageInfo.slippage;
         }
 
-        const slippageUSD = grossProfitUSD * slippageRate;
+        // FIX v3.1: Apply slippage to trade size, not profit
+        // Slippage represents expected loss from price impact during trade execution
+        // This is a percentage of the trade amount, not the profit
+        const slippageUSD = optimalTradeSizeUSD * slippageRate;
 
         // Net profit: grossProfitUSD already has flash fee deducted, only subtract gas and slippage
         const netProfitUSD = grossProfitUSD - gasCostUSD - slippageUSD;
@@ -276,7 +279,8 @@ class ProfitCalculator {
             slippageRate = slippageInfo.slippage;
         }
 
-        const slippageUSD = grossProfitUSD * slippageRate;
+        // FIX v3.1: Apply slippage to trade size, not profit
+        const slippageUSD = actualTradeSizeUSD * slippageRate;
 
         // Net profit
         const netProfitUSD = grossProfitUSD - flashFeeUSD - gasCostUSD - slippageUSD;

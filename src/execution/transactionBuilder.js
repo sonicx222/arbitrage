@@ -4,6 +4,8 @@ import log from '../utils/logger.js';
 import { FLASH_ARBITRAGE_ABI, getWrappedNativeAddress } from '../contracts/abis.js';
 import cacheManager from '../data/cacheManager.js';
 import gasPriceManager from '../utils/gasPriceManager.js';
+// FIX v3.1: Use centralized stablecoin check
+import { isStablecoin } from '../constants/tokenPrices.js';
 
 /**
  * Transaction Builder
@@ -357,8 +359,8 @@ class TransactionBuilder {
      * @returns {number} Price in USD
      */
     _getTokenPriceUSD(tokenSymbol) {
-        // Stablecoins - always $1
-        if (['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'FDUSD'].includes(tokenSymbol)) {
+        // FIX v3.1: Use centralized isStablecoin check
+        if (isStablecoin(tokenSymbol)) {
             return 1.0;
         }
 

@@ -9,6 +9,8 @@ import blockMonitor from '../monitoring/blockMonitor.js';
 import config from '../config.js';
 import log from '../utils/logger.js';
 import { FACTORY_ABI } from '../contracts/abis.js';
+import gasPriceCache from '../utils/gasPriceCache.js';
+import speedMetrics from '../utils/speedMetrics.js';
 
 /**
  * Execution Manager
@@ -35,6 +37,10 @@ class ExecutionManager {
         // Execution state
         this.isExecuting = false;
         this.pendingTx = null;
+
+        // FIX v3.1: Track potentially pending transactions from timeouts
+        // These txs may still confirm later even though we timed out waiting
+        this.timedOutTxs = new Map(); // hash -> { timestamp, opportunity }
 
         // Statistics
         this.stats = {
@@ -89,7 +95,111 @@ class ExecutionManager {
             log.info('Signer initialized', { address: this.signer.address });
         }
 
+        // ==================== SPEED OPT: WARM FLASH PAIR CACHE ====================
+        // Pre-resolve top trading pairs to eliminate RPC latency during execution
+        // Expected improvement: -50-200ms on first execution
+        await this._warmFlashPairCache();
+
         log.info('Execution Manager ready', { mode: this.mode });
+    }
+
+    /**
+     * Pre-warm flash pair cache with common trading pairs
+     *
+     * SPEED OPTIMIZATION: Resolves flash pair addresses at startup
+     * to avoid RPC calls during time-critical execution.
+     *
+     * @private
+     */
+    async _warmFlashPairCache() {
+        const startTime = performance.now();
+
+        try {
+            // Get top tokens from config
+            const tokens = Object.entries(config.tokens || {})
+                .filter(([_, token]) => token.address)
+                .slice(0, 20); // Top 20 tokens
+
+            if (tokens.length < 2) {
+                log.debug('Not enough tokens to warm flash pair cache');
+                return;
+            }
+
+            // Get primary DEX factory
+            const primaryDex = Object.entries(config.dex || {})
+                .find(([_, d]) => d.enabled && d.factory);
+
+            if (!primaryDex) {
+                log.debug('No DEX factory configured for flash pair cache');
+                return;
+            }
+
+            const [dexName, dexConfig] = primaryDex;
+            const factory = new ethers.Contract(
+                dexConfig.factory,
+                FACTORY_ABI,
+                (await rpcManager.getHttpProvider()).provider
+            );
+
+            // Resolve pairs for top tokens with wrapped native
+            const nativeToken = config.nativeToken?.address;
+            const stablecoins = tokens.filter(([symbol]) =>
+                ['USDT', 'USDC', 'BUSD', 'DAI', 'FDUSD'].includes(symbol)
+            );
+
+            const pairsToResolve = [];
+
+            // Native token pairs
+            if (nativeToken) {
+                for (const [symbol, token] of tokens) {
+                    if (token.address !== nativeToken) {
+                        pairsToResolve.push({ tokenA: nativeToken, tokenB: token.address, dex: dexName });
+                    }
+                }
+            }
+
+            // Stablecoin pairs
+            for (const [stableSymbol, stableToken] of stablecoins) {
+                for (const [symbol, token] of tokens) {
+                    if (token.address !== stableToken.address) {
+                        pairsToResolve.push({ tokenA: stableToken.address, tokenB: token.address, dex: dexName });
+                    }
+                }
+            }
+
+            // Resolve in parallel with rate limiting
+            let resolved = 0;
+            const batchSize = 10;
+            for (let i = 0; i < pairsToResolve.length; i += batchSize) {
+                const batch = pairsToResolve.slice(i, i + batchSize);
+                const results = await Promise.allSettled(
+                    batch.map(async ({ tokenA, tokenB, dex }) => {
+                        // Check cache first
+                        const cached = cacheManager.getPairAddress(tokenA, tokenB, dex);
+                        if (cached) return cached;
+
+                        // Resolve from factory
+                        const pairAddress = await factory.getPair(tokenA, tokenB);
+                        if (pairAddress && pairAddress !== ethers.ZeroAddress) {
+                            cacheManager.setPairAddress(tokenA, tokenB, dex, pairAddress);
+                            return pairAddress;
+                        }
+                        return null;
+                    })
+                );
+                resolved += results.filter(r => r.status === 'fulfilled' && r.value).length;
+            }
+
+            const duration = performance.now() - startTime;
+            log.info('Flash pair cache warmed', {
+                resolved,
+                attempted: pairsToResolve.length,
+                durationMs: duration.toFixed(2),
+            });
+
+        } catch (error) {
+            log.debug('Flash pair cache warming failed (non-critical)', { error: error.message });
+        }
     }
 
     /**
@@ -282,12 +392,46 @@ class ExecutionManager {
 
             // Wait for confirmation with timeout (2 minutes max to prevent hanging)
             const txTimeout = config.execution?.txTimeoutMs || 120000;
-            const receipt = await Promise.race([
-                response.wait(1),
-                new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Transaction confirmation timeout')), txTimeout)
-                ),
-            ]);
+            let receipt;
+            let isTimeout = false;
+
+            try {
+                receipt = await Promise.race([
+                    response.wait(1),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('TIMEOUT')), txTimeout)
+                    ),
+                ]);
+            } catch (waitError) {
+                // FIX v3.1: Handle timeout separately from other errors
+                if (waitError.message === 'TIMEOUT') {
+                    isTimeout = true;
+                    log.warn('Transaction confirmation timeout - tx may still be pending', {
+                        hash: response.hash,
+                        timeoutMs: txTimeout,
+                    });
+
+                    // Track timed-out transaction for later resolution
+                    this.timedOutTxs.set(response.hash, {
+                        timestamp: Date.now(),
+                        opportunity: {
+                            type: opportunity.type,
+                            profitUSD: opportunity.profitCalculation?.netProfitUSD || 0,
+                        },
+                    });
+
+                    // Don't count as failed - status is uncertain
+                    this.pendingTx = null;
+                    return {
+                        success: false,
+                        hash: response.hash,
+                        reason: 'Transaction confirmation timeout - may still confirm',
+                        status: 'PENDING_TIMEOUT',
+                        // Don't count towards failure stats
+                    };
+                }
+                throw waitError;
+            }
 
             this.pendingTx = null;
 
@@ -388,11 +532,14 @@ class ExecutionManager {
      */
     async _runPreSimulation(opportunity) {
         this.stats.preSimulationsRun++;
+        speedMetrics.markPhaseStart('preSimulation');
 
         try {
-            // Get current gas price for simulation
-            const gasPrice = await rpcManager.withRetry(async (provider) => {
-                return await provider.getFeeData();
+            // ==================== SPEED OPT: CACHED GAS PRICE ====================
+            // Uses shared gas price cache to avoid redundant RPC calls
+            // Expected improvement: -50-100ms per pre-simulation
+            const gasPrice = await gasPriceCache.getGasPrice(async () => {
+                return await rpcManager.withRetry(async (provider) => provider.getFeeData());
             });
 
             const currentBlock = blockMonitor.getCurrentBlock() || cacheManager.currentBlockNumber;
@@ -471,6 +618,7 @@ class ExecutionManager {
                 urgency: recommendation.urgency,
             });
 
+            speedMetrics.markPhaseEnd('preSimulation');
             return {
                 shouldProceed: true,
                 simulation,
@@ -479,6 +627,7 @@ class ExecutionManager {
             };
 
         } catch (error) {
+            speedMetrics.markPhaseEnd('preSimulation');
             log.debug('[PRE-SIM] Simulation error, proceeding with caution', {
                 error: error.message,
             });

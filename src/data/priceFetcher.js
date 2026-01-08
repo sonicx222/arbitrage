@@ -315,7 +315,8 @@ class PriceFetcher {
         }
 
         if (fetched.length > 0) {
-            cacheManager.savePersistentCache();
+            // FIX v3.1: Properly await async cache save
+            await cacheManager.savePersistentCache();
         }
 
         return fetched;

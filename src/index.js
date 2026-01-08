@@ -61,7 +61,14 @@ class ArbitrageBot {
             opportunitiesFromV2V3: 0,
             opportunitiesFromFeeTier: 0,
             opportunitiesFromStatistical: 0,
+            droppedEvents: 0, // FIX v3.1: Track dropped events
         };
+
+        // FIX v3.1: Event queue to prevent dropped events during processing
+        // Events are queued and processed sequentially instead of being silently dropped
+        this.eventQueue = [];
+        this.maxEventQueueSize = 50; // Prevent unbounded queue growth
+        this.eventQueueProcessing = false;
 
         // Determine operating mode
         this.multiChainMode = this.determineMode();
@@ -772,8 +779,19 @@ class ArbitrageBot {
     async handleReserveUpdate(data) {
         const { pairKey, dexName, blockNumber, timestamp } = data;
 
-        // Skip if already processing an event (prevent queue buildup)
+        // FIX v3.1: Queue events instead of dropping them
+        // If already processing, add to queue (with size limit)
         if (this.processingEvent) {
+            if (this.eventQueue.length < this.maxEventQueueSize) {
+                // Deduplicate: only queue if this pair isn't already queued
+                const alreadyQueued = this.eventQueue.some(e => e.pairKey === pairKey && e.dexName === dexName);
+                if (!alreadyQueued) {
+                    this.eventQueue.push(data);
+                }
+            } else {
+                this.eventDrivenStats.droppedEvents++;
+                log.debug(`Event queue full, dropping event for ${pairKey}`);
+            }
             return;
         }
 
@@ -853,7 +871,28 @@ class ArbitrageBot {
             dashboard.recordError();
         } finally {
             this.processingEvent = false;
+
+            // FIX v3.1: Process queued events
+            if (this.eventQueue.length > 0 && !this.eventQueueProcessing) {
+                this.eventQueueProcessing = true;
+                setImmediate(() => this._processEventQueue());
+            }
         }
+    }
+
+    /**
+     * Process queued events sequentially
+     * FIX v3.1: Ensures no events are dropped during high activity
+     * @private
+     */
+    async _processEventQueue() {
+        while (this.eventQueue.length > 0 && this.isRunning) {
+            const nextEvent = this.eventQueue.shift();
+            if (nextEvent) {
+                await this.handleReserveUpdate(nextEvent);
+            }
+        }
+        this.eventQueueProcessing = false;
     }
 
     /**

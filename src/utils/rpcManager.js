@@ -257,10 +257,18 @@ class RPCManager extends EventEmitter {
             return this.httpProviders[0];
         }
 
-        // v2.1: True round-robin across ALL available providers
-        // This spreads load evenly instead of hammering Alchemy first
-        this.currentHttpIndex = (this.currentHttpIndex + 1) % availableProviders.length;
-        return availableProviders[this.currentHttpIndex];
+        // v2.1 FIX: True round-robin across ALL available providers
+        // Use global counter modulo available length to handle dynamic provider availability
+        // The counter increments globally, but we always select based on current available set
+        const selectedIndex = this.currentHttpIndex % availableProviders.length;
+        this.currentHttpIndex++;
+
+        // Prevent counter overflow (reset when very large)
+        if (this.currentHttpIndex > 1000000) {
+            this.currentHttpIndex = 0;
+        }
+
+        return availableProviders[selectedIndex];
     }
 
     /**

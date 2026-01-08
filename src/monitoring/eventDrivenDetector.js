@@ -208,6 +208,18 @@ class EventDrivenDetector extends EventEmitter {
             to: data.to,
         });
 
+        // FIX v3.1: Clean up old provider's listeners before switching
+        // This prevents duplicate event handlers and memory leaks
+        const oldProvider = this.wsProvider;
+        if (oldProvider) {
+            try {
+                oldProvider.removeAllListeners();
+                log.debug('Removed event listeners from old provider');
+            } catch (cleanupError) {
+                log.debug('Error cleaning up old provider', { error: cleanupError.message });
+            }
+        }
+
         // Get the new provider after failover
         const wsData = rpcManager.getWsProvider();
         if (wsData) {
@@ -235,6 +247,16 @@ class EventDrivenDetector extends EventEmitter {
         // Get the recovered provider
         const wsData = rpcManager.getWsProvider();
         if (wsData && wsData.provider !== this.wsProvider) {
+            // FIX v3.1: Clean up old provider's listeners before switching
+            const oldProvider = this.wsProvider;
+            if (oldProvider) {
+                try {
+                    oldProvider.removeAllListeners();
+                } catch (cleanupError) {
+                    log.debug('Error cleaning up old provider', { error: cleanupError.message });
+                }
+            }
+
             this.wsProvider = wsData.provider;
             // Re-subscribe to all events on the recovered provider
             try {
