@@ -64,6 +64,8 @@ class ExecutionManager {
         // FIX v3.1: Cleanup interval for timedOutTxs to prevent unbounded growth
         this.timedOutTxCleanupInterval = null;
         this.timedOutTxMaxAge = 24 * 60 * 60 * 1000; // 24 hours
+        // FIX v3.4: Maximum size limit to prevent memory issues from burst timeouts
+        this.timedOutTxMaxSize = 1000;
 
         log.info('Execution Manager initialized', {
             mode: this.mode,
@@ -473,17 +475,31 @@ class ExecutionManager {
             log.info('Transaction sent', { hash: response.hash });
 
             // Wait for confirmation with timeout (2 minutes max to prevent hanging)
+            // FIX v3.4: Proper timeout handling without orphaned promises
             const txTimeout = config.execution?.txTimeoutMs || 120000;
             let receipt;
             let isTimeout = false;
+            let timeoutHandle = null;
 
             try {
-                receipt = await Promise.race([
-                    response.wait(1),
-                    new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('TIMEOUT')), txTimeout)
-                    ),
-                ]);
+                // FIX v3.4: Create timeout promise with cleanup capability
+                const timeoutPromise = new Promise((_, reject) => {
+                    timeoutHandle = setTimeout(() => {
+                        timeoutHandle = null; // Clear reference
+                        reject(new Error('TIMEOUT'));
+                    }, txTimeout);
+                });
+
+                // FIX v3.4: Wrap wait() to clear timeout on success
+                const waitPromise = response.wait(1).then(result => {
+                    if (timeoutHandle) {
+                        clearTimeout(timeoutHandle);
+                        timeoutHandle = null;
+                    }
+                    return result;
+                });
+
+                receipt = await Promise.race([waitPromise, timeoutPromise]);
             } catch (waitError) {
                 // FIX v3.1: Handle timeout separately from other errors
                 if (waitError.message === 'TIMEOUT') {
@@ -494,6 +510,18 @@ class ExecutionManager {
                     });
 
                     // Track timed-out transaction for later resolution
+                    // FIX v3.4: Enforce size limit before adding
+                    if (this.timedOutTxs.size >= this.timedOutTxMaxSize) {
+                        // Remove oldest entry (Maps maintain insertion order)
+                        const oldestKey = this.timedOutTxs.keys().next().value;
+                        if (oldestKey) {
+                            this.timedOutTxs.delete(oldestKey);
+                            log.debug('Evicted oldest timed-out tx due to size limit', {
+                                evictedHash: oldestKey.slice(0, 10) + '...',
+                                currentSize: this.timedOutTxs.size,
+                            });
+                        }
+                    }
                     this.timedOutTxs.set(response.hash, {
                         timestamp: Date.now(),
                         opportunity: {

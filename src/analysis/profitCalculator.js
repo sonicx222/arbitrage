@@ -174,7 +174,8 @@ class ProfitCalculator {
         let slippageInfo = null;
 
         if (this.useDynamicSlippage && tokenA && tokenB) {
-            const poolLiquidity = minLiquidityUSD || optimalTradeSizeUSD * 10;
+            // FIX v3.4: Ensure poolLiquidity is never 0 to prevent division by zero
+            const poolLiquidity = minLiquidityUSD || optimalTradeSizeUSD * 10 || 1000; // Fallback to $1000
             slippageInfo = slippageManager.calculateSlippage(
                 tokenA,
                 tokenB,

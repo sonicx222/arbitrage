@@ -16,12 +16,19 @@ A professional-grade, multi-chain arbitrage monitoring and detection system supp
 - **Rate Limit Optimization**: Intelligent RPC management with failover
 - **Multi-Channel Alerts**: Console, Discord, Telegram notifications
 
-### Infrastructure Features (New)
+### Infrastructure Features
 - **Self-Healing RPC Pool**: Automatically re-tests unhealthy RPC endpoints every 5 minutes and recovers them when they become available again
 - **EIP-1559 Gas Pricing**: Native support for EIP-1559 gas pricing on Ethereum, Polygon, Arbitrum, Base, and Avalanche chains with automatic fallback to legacy pricing on BSC
 - **Dynamic Slippage Adjustment**: Token-specific slippage rates based on volatility and liquidity
 - **Stale Block Detection**: Automatically reconnects WebSocket connections when no blocks are received for 30+ seconds
 - **Dynamic Native Token Pricing**: Real-time native token price updates from DEX reserves for accurate gas cost calculations
+
+### Reliability Features (v3.4)
+- **Race Condition Prevention**: Atomic event queue processing prevents dropped or duplicate events
+- **Memory Leak Protection**: Bounded Maps with automatic eviction, cleanup intervals for all caches
+- **BigInt Precision Safety**: Safe conversion helpers prevent silent precision loss on large values
+- **Event Listener Guards**: Prevents duplicate handler registration and listener accumulation
+- **Graceful Shutdown**: Waits for in-flight operations, saves persistent cache, proper cleanup
 
 ## Supported Chains & DEXes
 
@@ -336,6 +343,32 @@ fly deploy
 ## License
 
 MIT License - see LICENSE file for details
+
+## Version History
+
+### v3.4.0 - Bug Fixes & Reliability
+- **Fixed**: Race condition in event processing with atomic queue handling
+- **Fixed**: Promise.race orphaned timeout promises in execution manager
+- **Fixed**: BigInt overflow/precision loss with safe conversion helpers
+- **Fixed**: Unbounded Map growth with size limits and eviction
+- **Fixed**: Division by zero guards in profit calculations
+- **Fixed**: Event listener accumulation on WebSocket failover
+- **Fixed**: Duplicate event handler registration
+
+### v3.3.0 - Multi-Chain Isolation
+- **Fixed**: Chain isolation - each chain now uses its own RPC/BlockMonitor instances
+- **Fixed**: Log context - all logs include chain name for multi-chain mode
+- **Changed**: Constructor logs reduced to debug level to reduce noise
+
+### v3.2.0 - Memory & Cleanup
+- **Fixed**: Memory leaks in debounce maps and block update tracking
+- **Fixed**: Cleanup intervals now properly started and stopped
+- **Added**: Validation for block numbers to prevent invalid Map keys
+
+### v3.1.0 - Input Validation
+- **Added**: Comprehensive input validation across all modules
+- **Fixed**: Timeout handling for transaction confirmations
+- **Fixed**: Graceful shutdown with in-flight operation handling
 
 ## Disclaimer
 

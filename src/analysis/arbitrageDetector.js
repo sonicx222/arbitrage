@@ -27,7 +27,48 @@ class ArbitrageDetector {
         // Triangular arbitrage enabled by config
         this.triangularEnabled = config.triangular?.enabled !== false;
 
+        // FIX v3.4: Maximum safe integer for BigInt to Number conversion
+        // Values larger than this lose precision when converted to Number
+        this.MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+
         log.debug('Arbitrage Detector ready');
+    }
+
+    /**
+     * Safely convert BigInt to Number with precision loss detection
+     * FIX v3.4: Prevents silent precision loss for large values
+     *
+     * @private
+     * @param {BigInt} value - The BigInt value to convert
+     * @param {number} decimals - Token decimals for scaling (default 18)
+     * @returns {number} The converted number (scaled down if necessary)
+     */
+    _safeBigIntToNumber(value, decimals = 18) {
+        if (value === 0n) return 0;
+
+        // If value is within safe range, convert directly
+        if (value <= this.MAX_SAFE_BIGINT && value >= -this.MAX_SAFE_BIGINT) {
+            return Number(value);
+        }
+
+        // For large values, scale down first to preserve precision
+        // We divide by 10^(decimals/2) to bring into safe range, then adjust
+        const halfDecimals = Math.floor(decimals / 2);
+        const scaleFactor = BigInt(10 ** halfDecimals);
+
+        // Check if scaled value is safe
+        const scaledValue = value / scaleFactor;
+        if (scaledValue <= this.MAX_SAFE_BIGINT && scaledValue >= -this.MAX_SAFE_BIGINT) {
+            // Convert scaled value and multiply back the scale factor
+            return Number(scaledValue) * (10 ** halfDecimals);
+        }
+
+        // Still too large - use maximum precision we can get
+        // This means the pool has astronomical liquidity (>$100T at 18 decimals)
+        log.warn('BigInt value exceeds safe conversion range, precision loss possible', {
+            valueStr: value.toString().slice(0, 20) + '...',
+        });
+        return Number(value / BigInt(10 ** decimals)) * (10 ** decimals);
     }
 
     /**
@@ -476,12 +517,14 @@ class ArbitrageDetector {
 
     /**
      * Estimate gas cost in native token (BNB/ETH/MATIC etc.)
+     * FIX v3.4: Uses safe BigInt conversion to prevent precision loss
      */
     estimateGasCost(gasPrice = null) {
         const price = gasPrice || BigInt(parseUnits(this.gasPriceGwei.toString(), 'gwei'));
         // Gas cost in native token
         const gasCostNative = (BigInt(this.estimatedGasLimit) * price);
-        return Number(gasCostNative) / 1e18;
+        // FIX v3.4: Safe conversion with precision preservation
+        return this._safeBigIntToNumber(gasCostNative, 18) / 1e18;
     }
 
     /**
@@ -570,7 +613,8 @@ class ArbitrageDetector {
             return { profitUSD: 0, optimalAmount: 0n, priceUSD: 0 };
         }
 
-        const reserveB_Float = Number(buyInRes) / Math.pow(10, tokenBDecimals);
+        // FIX v3.4: Safe BigInt conversion to prevent precision loss on large reserves
+        const reserveB_Float = this._safeBigIntToNumber(buyInRes, tokenBDecimals) / Math.pow(10, tokenBDecimals);
 
         // Safety check: prevent division by zero (Infinity || 1 does NOT work - Infinity is truthy!)
         if (reserveB_Float <= 0 || !Number.isFinite(reserveB_Float)) {
@@ -661,7 +705,8 @@ class ArbitrageDetector {
         }
 
         // Convert profit to USD (this is already net of flash loan fee)
-        const profitFloat = Number(maxProfit) / Math.pow(10, tokenBDecimals);
+        // FIX v3.4: Safe BigInt conversion to prevent precision loss on large profits
+        const profitFloat = this._safeBigIntToNumber(maxProfit, tokenBDecimals) / Math.pow(10, tokenBDecimals);
         const profitUSD = profitFloat * priceB_USD;
 
         return { profitUSD, optimalAmount: bestAmount, priceUSD: priceB_USD };

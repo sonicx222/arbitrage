@@ -53,6 +53,11 @@ class ArbitrageBot {
         // Cleanup interval timer (for proper cleanup on stop)
         this.cleanupIntervalTimer = null;
 
+        // FIX v3.4: Track whether handlers have been set up to prevent duplicate listeners
+        this.singleChainHandlersSetup = false;
+        this.eventDrivenHandlersSetup = false;
+        this.multiChainHandlersSetup = false;
+
         // Event-driven detection stats
         this.eventDrivenStats = {
             opportunitiesFromEvents: 0,
@@ -239,8 +244,15 @@ class ArbitrageBot {
 
     /**
      * Set up event handlers for single-chain mode
+     * FIX v3.4: Guard against duplicate handler registration
      */
     setupSingleChainEventHandlers() {
+        if (this.singleChainHandlersSetup) {
+            log.debug('Single-chain handlers already set up, skipping');
+            return;
+        }
+        this.singleChainHandlersSetup = true;
+
         // Handle new blocks
         blockMonitor.on('newBlock', async (blockData) => {
             await this.handleNewBlock(blockData);
@@ -260,8 +272,15 @@ class ArbitrageBot {
     /**
      * Set up event handlers for event-driven detection
      * Processes Sync events in real-time for faster opportunity detection
+     * FIX v3.4: Guard against duplicate handler registration
      */
     setupEventDrivenHandlers() {
+        if (this.eventDrivenHandlersSetup) {
+            log.debug('Event-driven handlers already set up, skipping');
+            return;
+        }
+        this.eventDrivenHandlersSetup = true;
+
         // Handle real-time reserve updates from Sync events
         eventDrivenDetector.on('reserveUpdate', async (data) => {
             // First, run reserve differential analysis (detects cross-DEX lag opportunities)
@@ -872,27 +891,108 @@ class ArbitrageBot {
         } finally {
             this.processingEvent = false;
 
-            // FIX v3.1: Process queued events
-            if (this.eventQueue.length > 0 && !this.eventQueueProcessing) {
-                this.eventQueueProcessing = true;
-                setImmediate(() => this._processEventQueue());
-            }
+            // FIX v3.4: Atomically check and schedule queue processing
+            // Use synchronous flag check to prevent race condition
+            this._scheduleQueueProcessing();
+        }
+    }
+
+    /**
+     * Safely schedule queue processing without race conditions
+     * FIX v3.4: Atomic check-and-set pattern
+     * @private
+     */
+    _scheduleQueueProcessing() {
+        // Only schedule if queue has items AND not already processing
+        if (this.eventQueue.length > 0 && !this.eventQueueProcessing) {
+            this.eventQueueProcessing = true;
+            // Use setImmediate to allow other I/O to complete first
+            setImmediate(() => this._processEventQueue());
         }
     }
 
     /**
      * Process queued events sequentially
-     * FIX v3.1: Ensures no events are dropped during high activity
+     * FIX v3.4: Safe queue processing with proper flag management
      * @private
      */
     async _processEventQueue() {
-        while (this.eventQueue.length > 0 && this.isRunning) {
-            const nextEvent = this.eventQueue.shift();
-            if (nextEvent) {
-                await this.handleReserveUpdate(nextEvent);
+        try {
+            while (this.eventQueue.length > 0 && this.isRunning) {
+                // Atomically remove item from queue
+                const nextEvent = this.eventQueue.shift();
+                if (nextEvent) {
+                    // Process without recursive flag manipulation
+                    await this._processQueuedEvent(nextEvent);
+                }
+            }
+        } finally {
+            // Reset flag AFTER loop completes
+            this.eventQueueProcessing = false;
+
+            // FIX v3.4: Re-check queue - items may have been added during processing
+            // This prevents missed events from race window
+            if (this.eventQueue.length > 0 && this.isRunning) {
+                this._scheduleQueueProcessing();
             }
         }
-        this.eventQueueProcessing = false;
+    }
+
+    /**
+     * Process a single queued event (called from queue processor)
+     * FIX v3.4: Separate handler to avoid recursive processingEvent manipulation
+     * @private
+     */
+    async _processQueuedEvent(data) {
+        const { pairKey, blockNumber } = data;
+        const startTime = Date.now();
+
+        try {
+            const prices = {};
+            const affectedPairs = this.getRelatedPairs(pairKey);
+
+            for (const pair of affectedPairs) {
+                const cacheKey = `price:${pair.dexName}:${pair.token0}:${pair.token1}`;
+                const priceData = cacheManager.priceCache.get(cacheKey);
+                if (priceData && priceData.data) {
+                    if (!prices[pair.pairKey]) {
+                        prices[pair.pairKey] = {};
+                    }
+                    prices[pair.pairKey][pair.dexName] = priceData.data;
+                }
+            }
+
+            if (prices[pairKey] && Object.keys(prices[pairKey]).length >= 2) {
+                const opportunities = await arbitrageDetector.detectOpportunities(prices, blockNumber);
+
+                if (opportunities.length > 0) {
+                    this.eventDrivenStats.opportunitiesFromEvents += opportunities.length;
+                    dashboard.recordOpportunities(opportunities.length);
+
+                    for (const opportunity of opportunities) {
+                        opportunity.source = 'queued-event';
+                        opportunity.detectionLatencyMs = Date.now() - data.timestamp;
+                        await alertManager.notify(opportunity);
+
+                        if (config.execution?.enabled) {
+                            if (this.shouldExecuteWithWhaleCheck(opportunity)) {
+                                const result = await executionManager.execute(opportunity);
+                                if (result.simulated) {
+                                    dashboard.recordSimulation(result.success);
+                                } else if (result.success) {
+                                    dashboard.recordExecution(true, opportunity.profitCalculation?.netProfitUSD || 0);
+                                } else {
+                                    dashboard.recordExecution(false);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            log.error('Error processing queued event', { error: error.message, pairKey });
+            dashboard.recordError();
+        }
     }
 
     /**
@@ -932,9 +1032,16 @@ class ArbitrageBot {
 
     /**
      * Set up event handlers for multi-chain mode
+     * FIX v3.4: Guard against duplicate handler registration
      */
     setupMultiChainEventHandlers() {
         if (!this.workerCoordinator) return;
+
+        if (this.multiChainHandlersSetup) {
+            log.debug('Multi-chain handlers already set up, skipping');
+            return;
+        }
+        this.multiChainHandlersSetup = true;
 
         // Handle opportunities from workers
         this.workerCoordinator.on('opportunities', async (data) => {

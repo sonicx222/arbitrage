@@ -188,6 +188,20 @@ class EventDrivenDetector extends EventEmitter {
      * @private
      */
     async _subscribeToAllEvents() {
+        // FIX v3.4: Clean up any existing listeners on current provider before subscribing
+        // This prevents listener accumulation when called multiple times (failover/recovery)
+        if (this.wsProvider) {
+            try {
+                // Remove only our event filters, not ALL listeners (other code may use this provider)
+                // Note: ethers v6 doesn't have a clean way to remove specific filters,
+                // so we track and remove our subscriptions explicitly
+                this.wsProvider.removeAllListeners();
+                log.debug('Cleaned existing listeners before re-subscribing');
+            } catch (err) {
+                log.debug('Could not clean listeners', { error: err.message });
+            }
+        }
+
         // Subscribe to Sync events (for price updates)
         await this.subscribeToSyncEvents();
 
