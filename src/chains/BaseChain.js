@@ -186,25 +186,31 @@ export default class BaseChain extends EventEmitter {
 
     /**
      * Set up event handlers for block monitoring
+     * FIX v3.6: Store handler references for proper cleanup to prevent memory leaks
      */
     setupEventHandlers() {
         if (!this.blockMonitor) {
             throw new Error('Block monitor not initialized');
         }
 
-        this.blockMonitor.on('newBlock', async (blockData) => {
+        // FIX v3.6: Store bound handlers for later removal
+        // Prevents listener accumulation on start/stop cycles
+        this._boundHandleNewBlock = async (blockData) => {
             await this.handleNewBlock(blockData);
-        });
-
-        this.blockMonitor.on('error', (error) => {
+        };
+        this._boundHandleBlockError = (error) => {
             this.log('error', 'Block monitor error', { error: error.message });
             this.emit('error', { chainId: this.chainId, error });
-        });
+        };
+        this._boundHandleEndpointUnhealthy = (endpoint) => {
+            this.log('warn', `RPC endpoint unhealthy: ${endpoint}`);
+        };
+
+        this.blockMonitor.on('newBlock', this._boundHandleNewBlock);
+        this.blockMonitor.on('error', this._boundHandleBlockError);
 
         if (this.rpcManager) {
-            this.rpcManager.on('endpointUnhealthy', (endpoint) => {
-                this.log('warn', `RPC endpoint unhealthy: ${endpoint}`);
-            });
+            this.rpcManager.on('endpointUnhealthy', this._boundHandleEndpointUnhealthy);
         }
     }
 
@@ -251,13 +257,29 @@ export default class BaseChain extends EventEmitter {
     async cleanup() {
         this.log('info', 'Cleaning up chain resources...');
 
+        // FIX v3.6: Remove event handlers BEFORE stopping components
+        // This prevents listener accumulation on start/stop cycles
         if (this.blockMonitor) {
+            if (this._boundHandleNewBlock) {
+                this.blockMonitor.off('newBlock', this._boundHandleNewBlock);
+            }
+            if (this._boundHandleBlockError) {
+                this.blockMonitor.off('error', this._boundHandleBlockError);
+            }
             await this.blockMonitor.stop?.();
         }
 
         if (this.rpcManager) {
+            if (this._boundHandleEndpointUnhealthy) {
+                this.rpcManager.off('endpointUnhealthy', this._boundHandleEndpointUnhealthy);
+            }
             await this.rpcManager.cleanup?.();
         }
+
+        // Clear handler references
+        this._boundHandleNewBlock = null;
+        this._boundHandleBlockError = null;
+        this._boundHandleEndpointUnhealthy = null;
 
         this.removeAllListeners();
         this.isRunning = false;

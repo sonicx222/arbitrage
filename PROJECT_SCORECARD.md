@@ -428,6 +428,18 @@ The DeFi Arbitrage Bot has been significantly improved with the v3.6 release. Th
 - ✅ Eliminated redundant caches in rpcManager and gasOptimizer
 - 📊 **Improvement: -100-500ms per detection/execution cycle**
 
+*Memory Leak Fix (BaseChain)*:
+- ✅ Store handler references (`_boundHandleNewBlock`, etc.) for proper cleanup
+- ✅ Remove listeners in `cleanup()` before stopping components
+- 📊 **Impact: Prevents memory exhaustion during 24/7 operation with start/stop cycles**
+
+*Deep Analysis - False Positives Verified*:
+- ✅ Event queue race condition: False positive (JS is single-threaded, check-and-set is atomic)
+- ✅ handleNewBlock await: False positive (function is synchronous)
+- ✅ Division by zero: Already has early exit check (arbitrageDetector.js:556-558)
+- ✅ timedOutTxs size limit: Already implemented (executionManager.js:514-524)
+- ✅ eventDrivenDetector listeners: stop() properly removes handlers (lines 1422-1427)
+
 **Key Achievements (Cumulative)**:
 - All 9 chains now enabled by default with opt-out pattern
 - 81 DEXes across 9 chains fully configured
