@@ -62,7 +62,27 @@ class V3LiquidityAnalyzer extends EventEmitter {
             crossTickCalculations: 0,
             cacheHits: 0,
             cacheMisses: 0,
+            // v3.1 Enhanced stats
+            tickCrossingsDetected: 0,
+            jitLiquidityEvents: 0,
+            depthAnalyses: 0,
+            optimalRouteCalculations: 0,
         };
+
+        // v3.1 Enhancement: Tick crossing tracking for real-time detection
+        // Maps poolAddress -> { lastTick, lastLiquidity, lastUpdate }
+        this.tickCrossingTracker = new Map();
+        this.tickCrossingThreshold = config.tickCrossingThreshold || 10; // Ticks crossed to trigger event
+
+        // v3.1 Enhancement: JIT liquidity tracking
+        // Maps poolAddress -> { liquidityChanges: [{timestamp, delta, tick}], window: 60000 }
+        this.jitTracker = new Map();
+        this.jitWindow = config.jitWindow || 60000; // 60 seconds
+        this.jitThreshold = config.jitThreshold || 0.1; // 10% liquidity change
+
+        // v3.1 Enhancement: Liquidity depth profiling
+        this.depthCache = new Map();
+        this.depthCacheMaxAge = config.depthCacheMaxAge || 15000; // 15 seconds
 
         log.info('V3LiquidityAnalyzer initialized', {
             tickWindow: this.tickWindow,
@@ -650,6 +670,419 @@ class V3LiquidityAnalyzer extends EventEmitter {
         return (tradeSizeUSD / liquidityUSD) * 50;
     }
 
+    // ==================== v3.1 Enhanced Methods ====================
+
+    /**
+     * Track tick crossing for real-time detection
+     *
+     * Call this method when receiving Swap events from V3 pools.
+     * Emits 'tickCrossing' event when significant ticks are crossed.
+     *
+     * @param {string} poolAddress - V3 pool address
+     * @param {number} newTick - Current tick after swap
+     * @param {BigInt} newLiquidity - Current liquidity after swap
+     * @param {Object} metadata - Additional swap data { blockNumber, txHash, etc. }
+     * @returns {Object|null} Tick crossing info if threshold exceeded
+     */
+    trackTickCrossing(poolAddress, newTick, newLiquidity, metadata = {}) {
+        const tracker = this.tickCrossingTracker.get(poolAddress);
+        const now = Date.now();
+
+        if (!tracker) {
+            // First observation - just store state
+            this.tickCrossingTracker.set(poolAddress, {
+                lastTick: newTick,
+                lastLiquidity: newLiquidity,
+                lastUpdate: now,
+            });
+            return null;
+        }
+
+        const ticksCrossed = Math.abs(newTick - tracker.lastTick);
+        const liquidityDelta = newLiquidity - tracker.lastLiquidity;
+        const timeDelta = now - tracker.lastUpdate;
+
+        // Update tracker
+        this.tickCrossingTracker.set(poolAddress, {
+            lastTick: newTick,
+            lastLiquidity: newLiquidity,
+            lastUpdate: now,
+        });
+
+        // Check if significant ticks crossed
+        if (ticksCrossed >= this.tickCrossingThreshold) {
+            this.stats.tickCrossingsDetected++;
+
+            const crossingEvent = {
+                poolAddress,
+                previousTick: tracker.lastTick,
+                newTick,
+                ticksCrossed,
+                direction: newTick > tracker.lastTick ? 'up' : 'down',
+                liquidityDelta: liquidityDelta.toString(),
+                timeDeltaMs: timeDelta,
+                priceChangePercent: this._ticksToPercent(ticksCrossed),
+                ...metadata,
+                timestamp: now,
+            };
+
+            this.emit('tickCrossing', crossingEvent);
+
+            log.debug('V3 tick crossing detected', {
+                pool: poolAddress.slice(0, 10) + '...',
+                ticksCrossed,
+                direction: crossingEvent.direction,
+            });
+
+            return crossingEvent;
+        }
+
+        return null;
+    }
+
+    /**
+     * Track liquidity changes for JIT detection
+     *
+     * JIT (Just-In-Time) liquidity is when MEV searchers add liquidity
+     * just before a large swap and remove it right after, capturing fees.
+     *
+     * @param {string} poolAddress - V3 pool address
+     * @param {BigInt} liquidityDelta - Change in liquidity (+ for add, - for remove)
+     * @param {number} tick - Tick where liquidity changed
+     * @param {Object} metadata - { blockNumber, txHash, provider, etc. }
+     */
+    trackLiquidityChange(poolAddress, liquidityDelta, tick, metadata = {}) {
+        const now = Date.now();
+
+        if (!this.jitTracker.has(poolAddress)) {
+            this.jitTracker.set(poolAddress, {
+                liquidityChanges: [],
+                baseLiquidity: 0n,
+            });
+        }
+
+        const tracker = this.jitTracker.get(poolAddress);
+
+        // Add new change
+        tracker.liquidityChanges.push({
+            timestamp: now,
+            delta: liquidityDelta,
+            tick,
+            ...metadata,
+        });
+
+        // Clean old entries outside window
+        const cutoff = now - this.jitWindow;
+        tracker.liquidityChanges = tracker.liquidityChanges.filter(
+            c => c.timestamp > cutoff
+        );
+
+        // Check for JIT pattern
+        const jitPattern = this._detectJitPattern(tracker.liquidityChanges, tick);
+        if (jitPattern) {
+            this.stats.jitLiquidityEvents++;
+            this.emit('jitLiquidity', {
+                poolAddress,
+                pattern: jitPattern,
+                timestamp: now,
+            });
+
+            log.info('Potential JIT liquidity detected', {
+                pool: poolAddress.slice(0, 10) + '...',
+                pattern: jitPattern.type,
+                magnitude: jitPattern.magnitude,
+            });
+        }
+    }
+
+    /**
+     * Detect JIT liquidity pattern from recent changes
+     * @private
+     */
+    _detectJitPattern(changes, currentTick) {
+        if (changes.length < 2) return null;
+
+        // Group by tick
+        const byTick = new Map();
+        for (const change of changes) {
+            if (!byTick.has(change.tick)) {
+                byTick.set(change.tick, []);
+            }
+            byTick.get(change.tick).push(change);
+        }
+
+        // Look for add-then-remove pattern at same tick
+        for (const [tick, tickChanges] of byTick) {
+            if (tickChanges.length < 2) continue;
+
+            // Sort by timestamp
+            tickChanges.sort((a, b) => a.timestamp - b.timestamp);
+
+            // Look for large add followed by removal
+            for (let i = 0; i < tickChanges.length - 1; i++) {
+                const add = tickChanges[i];
+                const remove = tickChanges[i + 1];
+
+                if (add.delta > 0n && remove.delta < 0n) {
+                    const addAmount = add.delta;
+                    const removeAmount = -remove.delta;
+                    const timeBetween = remove.timestamp - add.timestamp;
+
+                    // JIT pattern: add and remove similar amounts within short window
+                    const similarity = Number(removeAmount) / Number(addAmount);
+                    if (similarity > 0.8 && similarity < 1.2 && timeBetween < 30000) {
+                        return {
+                            type: 'add-remove',
+                            tick,
+                            addedLiquidity: addAmount.toString(),
+                            removedLiquidity: removeAmount.toString(),
+                            timeBetweenMs: timeBetween,
+                            magnitude: Number(addAmount) / 1e18, // Normalized
+                            isNearCurrentTick: Math.abs(tick - currentTick) < 100,
+                        };
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Calculate liquidity depth at various price levels
+     *
+     * Returns how much can be traded at each price deviation level.
+     * Useful for optimal trade sizing.
+     *
+     * @param {string} poolAddress - V3 pool address
+     * @param {Object} slot0 - Current pool state { sqrtPriceX96, tick }
+     * @param {BigInt} currentLiquidity - Current tick's liquidity
+     * @param {number} feeTier - Pool fee tier
+     * @param {number} maxPriceDeviation - Maximum price deviation to analyze (default 5%)
+     * @returns {Object} Liquidity depth profile
+     */
+    async calculateLiquidityDepth(poolAddress, slot0, currentLiquidity, feeTier, maxPriceDeviation = 5) {
+        this.stats.depthAnalyses++;
+
+        // Check cache first
+        const cacheKey = `depth:${poolAddress}:${slot0.tick}`;
+        const cached = this.depthCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < this.depthCacheMaxAge) {
+            return cached.data;
+        }
+
+        const currentTick = Number(slot0.tick);
+        const tickSpace = this.tickSpacing[feeTier] || 60;
+
+        // Fetch tick data if not already cached
+        const ticks = await this._fetchTickData(poolAddress, currentTick, tickSpace, feeTier);
+
+        // Calculate depth at various levels (0.5%, 1%, 2%, 3%, 5%)
+        const levels = [0.5, 1, 2, 3, 5].filter(l => l <= maxPriceDeviation);
+        const depthProfile = {
+            poolAddress,
+            currentTick,
+            currentLiquidity: currentLiquidity.toString(),
+            feeTier,
+            levels: {},
+            timestamp: Date.now(),
+        };
+
+        for (const level of levels) {
+            const ticksForLevel = Math.floor(level * 100); // ~1% = 100 ticks
+
+            // Calculate capacity in each direction
+            const buyDepth = this._calculateDirectionalDepth(
+                ticks, currentTick, currentLiquidity, ticksForLevel, true // zeroForOne
+            );
+            const sellDepth = this._calculateDirectionalDepth(
+                ticks, currentTick, currentLiquidity, ticksForLevel, false
+            );
+
+            depthProfile.levels[`${level}%`] = {
+                buyCapacity: buyDepth.capacity.toString(),
+                sellCapacity: sellDepth.capacity.toString(),
+                ticksTraversed: Math.max(buyDepth.ticks, sellDepth.ticks),
+                liquidityUtilized: buyDepth.liquidityUsed.toString(),
+            };
+        }
+
+        // Compute overall depth score (0-1)
+        depthProfile.depthScore = this._computeDepthScore(depthProfile, ticks);
+
+        // Cache result
+        this.depthCache.set(cacheKey, {
+            data: depthProfile,
+            timestamp: Date.now(),
+        });
+
+        return depthProfile;
+    }
+
+    /**
+     * Calculate directional depth (how much can be traded in one direction)
+     * @private
+     */
+    _calculateDirectionalDepth(ticks, currentTick, currentLiquidity, maxTicks, zeroForOne) {
+        let capacity = 0n;
+        let liquidityUsed = 0n;
+        let ticksTraversed = 0;
+        let liquidity = currentLiquidity;
+
+        const relevantTicks = this._getRelevantTicks(ticks, currentTick, zeroForOne);
+
+        for (const tick of relevantTicks) {
+            const tickDistance = Math.abs(tick.index - currentTick);
+            if (tickDistance > maxTicks) break;
+
+            // Simplified capacity calculation based on liquidity at this tick
+            const tickCapacity = liquidity / 1000n; // Very rough estimate
+            capacity += tickCapacity;
+            liquidityUsed += liquidity;
+            ticksTraversed++;
+
+            // Update liquidity after crossing
+            liquidity = this._updateLiquidity(liquidity, tick.index, relevantTicks, zeroForOne);
+            if (liquidity <= 0n) break;
+        }
+
+        return { capacity, liquidityUsed, ticks: ticksTraversed };
+    }
+
+    /**
+     * Compute overall depth score
+     * @private
+     */
+    _computeDepthScore(profile, ticks) {
+        // Score based on:
+        // 1. Number of initialized ticks (depth)
+        // 2. Liquidity concentration around current price
+        // 3. Balance between buy and sell sides
+
+        const tickScore = Math.min(1, ticks.length / 50); // 50+ ticks = perfect
+
+        // Balance score
+        const level1 = profile.levels['1%'];
+        if (!level1) return tickScore * 0.5;
+
+        const buyCapacity = BigInt(level1.buyCapacity);
+        const sellCapacity = BigInt(level1.sellCapacity);
+        const total = buyCapacity + sellCapacity;
+
+        if (total === 0n) return 0;
+
+        const buyRatio = Number(buyCapacity) / Number(total);
+        const balanceScore = 1 - Math.abs(buyRatio - 0.5) * 2; // Perfect at 0.5
+
+        return (tickScore * 0.6 + balanceScore * 0.4);
+    }
+
+    /**
+     * Find optimal swap route through ticks
+     *
+     * For large trades that cross multiple ticks, find the optimal
+     * execution strategy considering liquidity at each level.
+     *
+     * @param {BigInt} amountIn - Input amount
+     * @param {Object} slot0 - Current pool state
+     * @param {BigInt} currentLiquidity - Current liquidity
+     * @param {Array} ticks - Tick data
+     * @param {number} feeTier - Fee tier
+     * @param {boolean} zeroForOne - Trade direction
+     * @returns {Object} Optimal route analysis
+     */
+    findOptimalSwapRoute(amountIn, slot0, currentLiquidity, ticks, feeTier, zeroForOne) {
+        this.stats.optimalRouteCalculations++;
+
+        const currentTick = Number(slot0.tick);
+        const sqrtPriceX96 = slot0.sqrtPriceX96;
+
+        // Get relevant ticks in swap direction
+        const relevantTicks = this._getRelevantTicks(ticks, currentTick, zeroForOne);
+
+        // Simulate swap step by step
+        const route = [];
+        let remainingIn = amountIn;
+        let totalOut = 0n;
+        let liquidity = currentLiquidity;
+        let sqrtPrice = sqrtPriceX96;
+        let tick = currentTick;
+
+        // Apply fee upfront
+        const fee = BigInt(feeTier);
+        remainingIn = (remainingIn * (1000000n - fee)) / 1000000n;
+
+        let stepCount = 0;
+        const maxSteps = 20; // Safety limit
+
+        while (remainingIn > 0n && stepCount < maxSteps) {
+            const nextTick = this._findNextTick(relevantTicks, tick, zeroForOne);
+
+            let stepOutput;
+            let amountUsed;
+
+            if (nextTick === null) {
+                // No more ticks - process all remaining
+                stepOutput = this._calculateOutputInRange(remainingIn, sqrtPrice, liquidity, zeroForOne);
+                amountUsed = remainingIn;
+            } else {
+                // Calculate output to next tick
+                const sqrtPriceNext = this._tickToSqrtPrice(nextTick);
+                const output = this._calculateOutputToTick(
+                    remainingIn, sqrtPrice, sqrtPriceNext, liquidity, zeroForOne
+                );
+                stepOutput = output;
+                amountUsed = output.amountUsed;
+            }
+
+            route.push({
+                step: stepCount + 1,
+                fromTick: tick,
+                toTick: nextTick || tick,
+                amountIn: amountUsed.toString(),
+                amountOut: stepOutput.amountOut.toString(),
+                liquidityUsed: liquidity.toString(),
+            });
+
+            totalOut += stepOutput.amountOut;
+            remainingIn -= amountUsed;
+
+            if (nextTick !== null && remainingIn > 0n) {
+                tick = nextTick;
+                sqrtPrice = this._tickToSqrtPrice(nextTick);
+                liquidity = this._updateLiquidity(liquidity, nextTick, relevantTicks, zeroForOne);
+            }
+
+            stepCount++;
+        }
+
+        // Calculate effective metrics
+        const startPrice = this._sqrtPriceToPrice(sqrtPriceX96);
+        const avgPrice = Number(amountIn) > 0 ? Number(totalOut) / Number(amountIn) : 0;
+
+        return {
+            route,
+            totalAmountIn: amountIn.toString(),
+            totalAmountOut: totalOut.toString(),
+            stepsRequired: stepCount,
+            startPrice,
+            avgExecutionPrice: avgPrice,
+            priceImpactPercent: startPrice > 0 ? Math.abs((avgPrice - startPrice) / startPrice) * 100 : 0,
+            ticksCrossed: stepCount > 1 ? route.length - 1 : 0,
+            isComplete: remainingIn === 0n,
+            unfilledAmount: remainingIn.toString(),
+        };
+    }
+
+    /**
+     * Convert tick distance to approximate price change percent
+     * @private
+     */
+    _ticksToPercent(ticks) {
+        // Each tick is ~0.01% price change (1.0001^tick)
+        return (Math.pow(1.0001, ticks) - 1) * 100;
+    }
+
     // ==================== Public API ====================
 
     /**
@@ -677,6 +1110,11 @@ class V3LiquidityAnalyzer extends EventEmitter {
             crossTickCalculations: 0,
             cacheHits: 0,
             cacheMisses: 0,
+            // v3.1 Enhanced stats
+            tickCrossingsDetected: 0,
+            jitLiquidityEvents: 0,
+            depthAnalyses: 0,
+            optimalRouteCalculations: 0,
         };
     }
 
@@ -694,6 +1132,7 @@ class V3LiquidityAnalyzer extends EventEmitter {
         const now = Date.now();
         let cleaned = 0;
 
+        // Clean tick cache
         for (const [key, data] of this.tickCache) {
             if (now - data.timestamp > this.cacheMaxAge * 2) {
                 this.tickCache.delete(key);
@@ -701,9 +1140,50 @@ class V3LiquidityAnalyzer extends EventEmitter {
             }
         }
 
-        if (cleaned > 0) {
-            log.debug(`Cleaned ${cleaned} old V3 tick cache entries`);
+        // v3.1: Clean depth cache
+        for (const [key, data] of this.depthCache) {
+            if (now - data.timestamp > this.depthCacheMaxAge * 2) {
+                this.depthCache.delete(key);
+                cleaned++;
+            }
         }
+
+        // v3.1: Clean old tick crossing trackers (inactive for > 5 minutes)
+        const trackerCutoff = now - 300000;
+        for (const [poolAddress, tracker] of this.tickCrossingTracker) {
+            if (tracker.lastUpdate < trackerCutoff) {
+                this.tickCrossingTracker.delete(poolAddress);
+                cleaned++;
+            }
+        }
+
+        // v3.1: Clean JIT tracker old entries
+        for (const [poolAddress, tracker] of this.jitTracker) {
+            const cutoff = now - this.jitWindow;
+            tracker.liquidityChanges = tracker.liquidityChanges.filter(
+                c => c.timestamp > cutoff
+            );
+            // Remove tracker if empty
+            if (tracker.liquidityChanges.length === 0) {
+                this.jitTracker.delete(poolAddress);
+                cleaned++;
+            }
+        }
+
+        if (cleaned > 0) {
+            log.debug(`Cleaned ${cleaned} old V3 cache/tracker entries`);
+        }
+    }
+
+    /**
+     * Clear all caches and trackers
+     * v3.1: Extended to include new caches
+     */
+    clearAllTrackers() {
+        this.tickCrossingTracker.clear();
+        this.jitTracker.clear();
+        this.depthCache.clear();
+        log.debug('V3 trackers cleared');
     }
 }
 

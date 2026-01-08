@@ -193,7 +193,16 @@ class PriceFetcher {
             const cacheKey = cacheManager.getPriceKey(pair.tokenA.address, pair.tokenB.address, pair.dexName);
             const cached = cacheManager.priceCache.get(cacheKey);
 
-            if (cached && cached.blockNumber === blockNumber && cached.data?.source === 'sync-event') {
+            // FIX v3.5: Allow 2-block tolerance for sync event data freshness
+            // Sync events from block N are still valid at block N+1 or N+2
+            // This reduces unnecessary RPC calls while maintaining data quality
+            const maxBlockAge = 2;
+            const isFreshSyncEvent = cached &&
+                cached.data?.source === 'sync-event' &&
+                cached.blockNumber !== undefined &&
+                (blockNumber - cached.blockNumber) <= maxBlockAge;
+
+            if (isFreshSyncEvent) {
                 // Fresh data from Sync event - no need to fetch
                 if (!freshPrices[pairKey]) freshPrices[pairKey] = {};
                 freshPrices[pairKey][pair.dexName] = cached.data;

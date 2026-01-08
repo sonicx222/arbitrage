@@ -90,7 +90,20 @@ class TransactionBuilder {
         }
 
         // Find flash pair (borrow from PancakeSwap by default)
-        const flashPair = this._findFlashPair(tokenBorrow, tokenTarget);
+        // FIX v3.5: Use pre-resolved flashPair from opportunity if available
+        let flashPair = opportunity.flashPair;
+        if (!flashPair || flashPair === 'RESOLVE_PAIR') {
+            flashPair = this._findFlashPair(tokenBorrow, tokenTarget);
+        }
+
+        // FIX v3.5: Validate flashPair is a valid address before encoding
+        // Prevents 'RESOLVE_PAIR' placeholder from being sent to contract
+        if (!flashPair || flashPair === 'RESOLVE_PAIR' || !ethers.isAddress(flashPair)) {
+            throw new Error(
+                `Invalid flash pair address: ${flashPair}. ` +
+                `Ensure executionManager._resolveFlashPair() is called before building transaction.`
+            );
+        }
 
         // Calculate borrow amount
         const tokenBDecimals = config.tokens[tokenB]?.decimals || 18;
@@ -177,18 +190,9 @@ class TransactionBuilder {
         const baseToken = tokenPath[0];
         const tokenBorrow = pathAddresses[0];
 
-        // Find flash pair
-        const flashPair = this._findFlashPair(tokenBorrow, pathAddresses[1]);
-
-        // Calculate borrow amount
-        const tokenDecimals = config.tokens[baseToken]?.decimals || 18;
-        const tokenPriceUSD = this._getTokenPriceUSD(baseToken);
-        const borrowAmount = parseUnits(
-            (profitCalculation.tradeSizeUSD / tokenPriceUSD).toFixed(tokenDecimals),
-            tokenDecimals
-        );
-
         // Router selection - contract currently only supports single-router triangular
+        // FIX v3.5: Check router validation FIRST (contract limitation)
+        // This check must happen before flash pair validation
         let router;
         if (type === 'cross-dex-triangular' && dexPath) {
             // Cross-DEX triangular requires multiple routers, but the current contract
@@ -212,6 +216,29 @@ class TransactionBuilder {
                 throw new Error(`Router not found for DEX: ${dexName}`);
             }
         }
+
+        // Find flash pair
+        // FIX v3.5: Use pre-resolved flashPair from opportunity if available
+        let flashPair = opportunity.flashPair;
+        if (!flashPair || flashPair === 'RESOLVE_PAIR') {
+            flashPair = this._findFlashPair(tokenBorrow, pathAddresses[1]);
+        }
+
+        // FIX v3.5: Validate flashPair is a valid address before encoding
+        if (!flashPair || flashPair === 'RESOLVE_PAIR' || !ethers.isAddress(flashPair)) {
+            throw new Error(
+                `Invalid flash pair address for triangular: ${flashPair}. ` +
+                `Ensure executionManager._resolveFlashPair() is called before building transaction.`
+            );
+        }
+
+        // Calculate borrow amount
+        const tokenDecimals = config.tokens[baseToken]?.decimals || 18;
+        const tokenPriceUSD = this._getTokenPriceUSD(baseToken);
+        const borrowAmount = parseUnits(
+            (profitCalculation.tradeSizeUSD / tokenPriceUSD).toFixed(tokenDecimals),
+            tokenDecimals
+        );
 
         // Minimum profit with 1% buffer
         const minProfitUSD = profitCalculation.netProfitUSD * 0.99;

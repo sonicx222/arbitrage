@@ -313,7 +313,9 @@ describe('zkSync Era-Specific Tests', () => {
     });
 
     test('has limited flash loan providers', () => {
-        expect(zksyncConfig.flashLoan.providers).toHaveLength(0);
+        // zkSync has ZeroLend (Aave V3 fork) as its only flash loan provider
+        expect(zksyncConfig.flashLoan.providers).toHaveLength(1);
+        expect(zksyncConfig.flashLoan.providers).toContain('zerolend');
     });
 });
 

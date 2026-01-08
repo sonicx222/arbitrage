@@ -13,6 +13,7 @@ import reserveDifferentialAnalyzer from './analysis/reserveDifferentialAnalyzer.
 import crossPoolCorrelation from './analysis/crossPoolCorrelation.js';
 import dexAggregator from './analysis/dexAggregator.js';
 import whaleTracker from './analysis/whaleTracker.js';
+import liquidationMonitor from './monitoring/liquidationMonitor.js';
 import v2v3Arbitrage from './analysis/v2v3Arbitrage.js';
 import v3PriceFetcher from './data/v3PriceFetcher.js';
 import statisticalArbitrageDetector from './analysis/statisticalArbitrageDetector.js';
@@ -72,6 +73,7 @@ class ArbitrageBot {
             dexAggregator: {},
             whaleTracker: {},
             statisticalArbitrageDetector: {},
+            liquidationMonitor: {},
             // Multi-chain handlers
             workerCoordinator: {},
             crossChainDetector: {},
@@ -86,6 +88,7 @@ class ArbitrageBot {
             opportunitiesFromV2V3: 0,
             opportunitiesFromFeeTier: 0,
             opportunitiesFromStatistical: 0,
+            opportunitiesFromLiquidations: 0,
             droppedEvents: 0, // FIX v3.1: Track dropped events
         };
 
@@ -197,6 +200,22 @@ class ArbitrageBot {
                 this.setupEventDrivenHandlers();
             } else {
                 log.warn('Event-driven detection failed to start, falling back to block-only mode');
+            }
+        }
+
+        // Start liquidation monitoring (Aave V3 + Compound V3)
+        if (config.liquidation?.enabled !== false) {
+            try {
+                const chainId = config.chainId || 56;
+                const provider = rpcManager.getProvider();
+                await liquidationMonitor.initialize(provider, chainId);
+                await liquidationMonitor.start();
+                log.info('Liquidation monitor started', {
+                    chainId,
+                    protocols: liquidationMonitor.getSupportedProtocols().map(p => p.name),
+                });
+            } catch (error) {
+                log.warn('Liquidation monitor failed to start', { error: error.message });
             }
         }
 
@@ -399,6 +418,19 @@ class ArbitrageBot {
             });
         };
 
+        // Liquidation monitor handlers
+        this._handlers.liquidationMonitor.opportunity = async (opportunity) => {
+            await this.handleLiquidationOpportunity(opportunity);
+        };
+
+        this._handlers.liquidationMonitor.liquidation = (data) => {
+            log.debug(`Liquidation detected on ${data.protocol}`, {
+                collateral: `${data.collateralAmount?.toFixed(4)} ${data.collateralSymbol}`,
+                valueUSD: data.collateralValueUSD?.toFixed(2),
+                liquidator: data.liquidator?.slice(0, 10) + '...',
+            });
+        };
+
         // Register all handlers with their emitters
         eventDrivenDetector.on('reserveUpdate', this._handlers.eventDrivenDetector.reserveUpdate);
         crossPoolCorrelation.on('checkCorrelated', this._handlers.crossPoolCorrelation.checkCorrelated);
@@ -406,6 +438,8 @@ class ArbitrageBot {
         dexAggregator.on('opportunity', this._handlers.dexAggregator.opportunity);
         whaleTracker.on('whaleActivity', this._handlers.whaleTracker.whaleActivity);
         statisticalArbitrageDetector.on('statisticalSignal', this._handlers.statisticalArbitrageDetector.statisticalSignal);
+        liquidationMonitor.on('opportunity', this._handlers.liquidationMonitor.opportunity);
+        liquidationMonitor.on('liquidation', this._handlers.liquidationMonitor.liquidation);
         eventDrivenDetector.on('swapDetected', this._handlers.eventDrivenDetector.swapDetected);
         eventDrivenDetector.on('priceChange', this._handlers.eventDrivenDetector.priceChange);
         eventDrivenDetector.on('v3PriceUpdate', this._handlers.eventDrivenDetector.v3PriceUpdate);
@@ -735,6 +769,71 @@ class ArbitrageBot {
             log.info('[STATISTICAL] Strong signal - checking for immediate arbitrage');
             // The actual execution would require fetching current prices and
             // running through the normal arbitrage detection to verify profit
+        }
+    }
+
+    /**
+     * Handle liquidation backrun opportunity
+     * Triggered when a profitable liquidation event is detected on Aave V3 or Compound V3
+     *
+     * Strategy: When a liquidation occurs, the liquidator receives collateral at a discount.
+     * This collateral is often sold immediately on DEXes, creating price impact that can be
+     * arbitraged by buying the discounted collateral.
+     *
+     * @param {Object} opportunity - Liquidation opportunity from LiquidationMonitor
+     */
+    async handleLiquidationOpportunity(opportunity) {
+        if (!opportunity) return;
+
+        this.eventDrivenStats.opportunitiesFromLiquidations++;
+        dashboard.recordOpportunities(1);
+
+        log.info(`[LIQUIDATION] Backrun opportunity detected`, {
+            type: opportunity.type,
+            protocol: opportunity.protocol,
+            collateral: `${opportunity.collateralAmount?.toFixed(4)} ${opportunity.collateralSymbol}`,
+            valueUSD: `$${opportunity.collateralValueUSD?.toFixed(2)}`,
+            estimatedProfit: `$${opportunity.estimatedProfitUSD?.toFixed(2)}`,
+            liquidator: opportunity.liquidator?.slice(0, 10) + '...',
+            txHash: opportunity.transactionHash?.slice(0, 14) + '...',
+        });
+
+        // Record with adaptive prioritizer to boost collateral token pairs
+        const pairKeyWithSource = `${opportunity.collateralSymbol}/WETH:liquidation`;
+        adaptivePrioritizer.recordOpportunity(pairKeyWithSource, {
+            volumeUSD: opportunity.collateralValueUSD || 1000,
+            priority: 2, // High priority for liquidation backruns
+        });
+
+        // Convert to standard opportunity format for alerting
+        const standardOpportunity = {
+            type: opportunity.type,
+            protocol: opportunity.protocol,
+            pairKey: `${opportunity.collateralSymbol}/${opportunity.debtSymbol || 'USDC'}`,
+            collateralSymbol: opportunity.collateralSymbol,
+            collateralAmount: opportunity.collateralAmount,
+            collateralValueUSD: opportunity.collateralValueUSD,
+            profitUSD: opportunity.estimatedProfitUSD,
+            profitPercent: opportunity.estimatedSlippagePercent,
+            liquidationBonusPercent: opportunity.liquidationBonusPercent,
+            liquidator: opportunity.liquidator,
+            transactionHash: opportunity.transactionHash,
+            blockNumber: opportunity.blockNumber,
+            source: 'liquidation-monitor',
+            timestamp: opportunity.timestamp,
+            chainId: opportunity.chainId,
+        };
+
+        // Send alert
+        await alertManager.notify(standardOpportunity);
+
+        // Note: Liquidation backrun execution requires:
+        // 1. Fast detection (within same block or next block)
+        // 2. Knowing which DEX the liquidator will sell on
+        // 3. MEV protection (Flashbots) to avoid being frontrun
+        // For now, we alert and log - execution is a future enhancement (Task 3.3)
+        if (config.execution?.enabled && config.execution?.liquidationEnabled) {
+            log.info('[LIQUIDATION] Execution enabled but backrun logic not yet implemented (Task 3.3)');
         }
     }
 
@@ -1488,6 +1587,12 @@ class ArbitrageBot {
         if (this._handlers.statisticalArbitrageDetector.statisticalSignal) {
             statisticalArbitrageDetector.off('statisticalSignal', this._handlers.statisticalArbitrageDetector.statisticalSignal);
         }
+        if (this._handlers.liquidationMonitor.opportunity) {
+            liquidationMonitor.off('opportunity', this._handlers.liquidationMonitor.opportunity);
+        }
+        if (this._handlers.liquidationMonitor.liquidation) {
+            liquidationMonitor.off('liquidation', this._handlers.liquidationMonitor.liquidation);
+        }
 
         // Remove multi-chain handlers
         if (this.workerCoordinator) {
@@ -1521,6 +1626,7 @@ class ArbitrageBot {
             dexAggregator: {},
             whaleTracker: {},
             statisticalArbitrageDetector: {},
+            liquidationMonitor: {},
             workerCoordinator: {},
             crossChainDetector: {},
             mempoolMonitor: {},
@@ -1585,6 +1691,12 @@ class ArbitrageBot {
             stats: whaleTracker.getStats(),
         });
 
+        // Stop liquidation monitor
+        await liquidationMonitor.stop();
+        log.info('Liquidation monitor stopped', {
+            stats: liquidationMonitor.getStats(),
+        });
+
         // Stop block monitor
         await blockMonitor.stop();
 
@@ -1612,6 +1724,7 @@ class ArbitrageBot {
             fromV2V3: this.eventDrivenStats.opportunitiesFromV2V3,
             fromFeeTier: this.eventDrivenStats.opportunitiesFromFeeTier,
             fromStatistical: this.eventDrivenStats.opportunitiesFromStatistical,
+            fromLiquidations: this.eventDrivenStats.opportunitiesFromLiquidations,
         });
 
         // Log execution stats if enabled
@@ -1687,6 +1800,7 @@ class ArbitrageBot {
                 correlation: crossPoolCorrelation.getStats(),
                 aggregator: dexAggregator.getStats(),
                 whaleTracker: whaleTracker.getStats(),
+                liquidationMonitor: liquidationMonitor.getStats(),
                 detectionStats: this.eventDrivenStats,
             };
 

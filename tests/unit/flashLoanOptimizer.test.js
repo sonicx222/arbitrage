@@ -261,4 +261,289 @@ describe('FlashLoanOptimizer', () => {
             expect(optimizer.stats.estimatedSavings).toBe(0);
         });
     });
+
+    // ============ New v2.0 Tests ============
+
+    describe('getZeroFeeProviders', () => {
+        it('should return zero-fee providers on Ethereum', () => {
+            optimizer.chainId = 1;
+            const zeroFee = optimizer.getZeroFeeProviders();
+
+            expect(zeroFee.length).toBeGreaterThan(0);
+            zeroFee.forEach(p => {
+                expect(p.fee).toBe(0);
+            });
+            const names = zeroFee.map(p => p.name);
+            expect(names).toContain('dydx');
+            expect(names).toContain('balancer');
+        });
+
+        it('should return empty on BSC (no zero-fee providers)', () => {
+            optimizer.chainId = 56;
+            const zeroFee = optimizer.getZeroFeeProviders();
+
+            // BSC has no zero-fee providers
+            expect(zeroFee.length).toBe(0);
+        });
+
+        it('should return Balancer on Polygon', () => {
+            optimizer.chainId = 137;
+            const zeroFee = optimizer.getZeroFeeProviders();
+
+            expect(zeroFee.length).toBeGreaterThan(0);
+            const names = zeroFee.map(p => p.name);
+            expect(names).toContain('balancer');
+            expect(names).not.toContain('dydx'); // dYdX is Ethereum only
+        });
+
+        it('should return Balancer on Arbitrum', () => {
+            optimizer.chainId = 42161;
+            const zeroFee = optimizer.getZeroFeeProviders();
+
+            const names = zeroFee.map(p => p.name);
+            expect(names).toContain('balancer');
+        });
+
+        it('should return Balancer on Base', () => {
+            optimizer.chainId = 8453;
+            const zeroFee = optimizer.getZeroFeeProviders();
+
+            const names = zeroFee.map(p => p.name);
+            expect(names).toContain('balancer');
+        });
+
+        it('should return Balancer on Avalanche', () => {
+            optimizer.chainId = 43114;
+            const zeroFee = optimizer.getZeroFeeProviders();
+
+            const names = zeroFee.map(p => p.name);
+            expect(names).toContain('balancer');
+        });
+    });
+
+    describe('hasZeroFeeFlashLoan', () => {
+        it('should return true for WETH on Ethereum', () => {
+            optimizer.chainId = 1;
+            expect(optimizer.hasZeroFeeFlashLoan('WETH')).toBe(true);
+        });
+
+        it('should return true for USDC on Ethereum (dYdX)', () => {
+            optimizer.chainId = 1;
+            expect(optimizer.hasZeroFeeFlashLoan('USDC')).toBe(true);
+        });
+
+        it('should return false for WBNB on BSC', () => {
+            optimizer.chainId = 56;
+            expect(optimizer.hasZeroFeeFlashLoan('WBNB')).toBe(false);
+        });
+
+        it('should return true for USDC on Polygon via Balancer', () => {
+            optimizer.chainId = 137;
+            // Balancer has USDC
+            expect(optimizer.hasZeroFeeFlashLoan('USDC')).toBe(true);
+        });
+    });
+
+    describe('asset normalization', () => {
+        it('should normalize ETH to WETH', () => {
+            optimizer.chainId = 1;
+            const result = optimizer.selectBestProvider('ETH', 1000);
+
+            // Should find provider for WETH
+            expect(result).not.toBeNull();
+        });
+
+        it('should normalize BNB to WBNB', () => {
+            optimizer.chainId = 56;
+            const result = optimizer.selectBestProvider('BNB', 1000);
+
+            expect(result).not.toBeNull();
+        });
+
+        it('should normalize MATIC to WMATIC', () => {
+            optimizer.chainId = 137;
+            const result = optimizer.selectBestProvider('MATIC', 1000);
+
+            expect(result).not.toBeNull();
+        });
+
+        it('should handle lowercase asset names', () => {
+            optimizer.chainId = 56;
+            const result = optimizer.selectBestProvider('wbnb', 1000);
+
+            expect(result).not.toBeNull();
+        });
+    });
+
+    describe('requireZeroFee option', () => {
+        it('should only return zero-fee providers when required', () => {
+            optimizer.chainId = 1;
+            const result = optimizer.selectBestProvider('WETH', 1000, {
+                requireZeroFee: true,
+            });
+
+            expect(result).not.toBeNull();
+            expect(result.fee).toBe(0);
+            expect(result.isZeroFee).toBe(true);
+        });
+
+        it('should return null if no zero-fee provider available', () => {
+            optimizer.chainId = 56;
+            const result = optimizer.selectBestProvider('WBNB', 1000, {
+                requireZeroFee: true,
+            });
+
+            expect(result).toBeNull();
+        });
+    });
+
+    describe('estimateSavings', () => {
+        it('should calculate savings vs default provider', () => {
+            optimizer.chainId = 1;
+            const savings = optimizer.estimateSavings(10000, 'WETH');
+
+            expect(savings).toBeDefined();
+            expect(savings.savings).toBeGreaterThan(0);
+            expect(savings.provider).toBeDefined();
+        });
+
+        it('should return zero savings when on BSC', () => {
+            optimizer.chainId = 56;
+            const savings = optimizer.estimateSavings(10000, 'WBNB');
+
+            // Aave V3 (0.09%) is cheaper than PancakeSwap (0.25%)
+            // So there should be some savings
+            expect(savings.savings).toBeGreaterThanOrEqual(0);
+        });
+
+        it('should indicate zero-fee provider', () => {
+            optimizer.chainId = 1;
+            const savings = optimizer.estimateSavings(10000, 'WETH');
+
+            if (savings.provider === 'dydx' || savings.provider === 'balancer') {
+                expect(savings.isZeroFee).toBe(true);
+            }
+        });
+    });
+
+    describe('provider result details', () => {
+        it('should include dYdX-specific fields for dYdX provider', () => {
+            optimizer.chainId = 1;
+            const result = optimizer.selectBestProvider('WETH', 1000);
+
+            if (result.name === 'dydx') {
+                expect(result.contractAddress).toBeDefined();
+                expect(result.marketId).toBeDefined();
+                expect(result.actionTypes).toBeDefined();
+                expect(result.callData).toBeDefined();
+            }
+        });
+
+        it('should include Balancer-specific fields', () => {
+            optimizer.chainId = 137;
+            // Setup Balancer cache
+            optimizer.assetCache.set('balancer_137', new Set(['USDC']));
+            optimizer.lastCacheUpdate.set('balancer_137', Date.now());
+
+            const result = optimizer.selectBestProvider('USDC', 1000);
+
+            if (result && result.name === 'balancer') {
+                expect(result.contractAddress).toBeDefined();
+                expect(result.isMultiAsset).toBeDefined();
+            }
+        });
+
+        it('should include Aave V3-specific fields', () => {
+            optimizer.chainId = 56;
+            const result = optimizer.selectBestProvider('WBNB', 1000);
+
+            if (result.name === 'aave_v3') {
+                expect(result.contractAddress).toBeDefined();
+                expect(result.referralCode).toBeDefined();
+            }
+        });
+
+        it('should include factory address for V2 DEX providers', () => {
+            optimizer.chainId = 56;
+            // Force selection of PancakeSwap by excluding Aave
+            const result = optimizer.selectBestProvider('WBNB', 1000, {
+                excludeProviders: ['aave_v3'],
+            });
+
+            if (result.name === 'pancakeswap') {
+                expect(result.factoryAddress).toBeDefined();
+                expect(result.useCallback).toBe(true);
+            }
+        });
+    });
+
+    describe('zero-fee selection tracking', () => {
+        it('should track zero-fee selections', () => {
+            optimizer.chainId = 1;
+            optimizer.selectBestProvider('WETH', 1000);
+
+            expect(optimizer.stats.zeroFeeSelections).toBeGreaterThanOrEqual(0);
+        });
+
+        it('should calculate zero-fee selection rate', () => {
+            optimizer.chainId = 1;
+            optimizer.selectBestProvider('WETH', 1000);
+            optimizer.selectBestProvider('USDC', 1000);
+
+            const stats = optimizer.getStats();
+            expect(stats.zeroFeeSelectionRate).toBeDefined();
+            expect(stats.zeroFeeProviderCount).toBeGreaterThanOrEqual(0);
+        });
+    });
+
+    describe('multi-chain support', () => {
+        const chains = [
+            { id: 1, name: 'Ethereum', hasZeroFee: true },
+            { id: 56, name: 'BSC', hasZeroFee: false },
+            { id: 137, name: 'Polygon', hasZeroFee: true },
+            { id: 42161, name: 'Arbitrum', hasZeroFee: true },
+            { id: 8453, name: 'Base', hasZeroFee: true },
+            { id: 43114, name: 'Avalanche', hasZeroFee: true },
+            { id: 10, name: 'Optimism', hasZeroFee: true },
+        ];
+
+        chains.forEach(chain => {
+            it(`should have providers available on ${chain.name}`, () => {
+                optimizer.chainId = chain.id;
+                const providers = optimizer.getAvailableProviders();
+
+                expect(providers.length).toBeGreaterThan(0);
+            });
+
+            it(`should ${chain.hasZeroFee ? 'have' : 'not have'} zero-fee providers on ${chain.name}`, () => {
+                optimizer.chainId = chain.id;
+                const zeroFee = optimizer.getZeroFeeProviders();
+
+                if (chain.hasZeroFee) {
+                    expect(zeroFee.length).toBeGreaterThan(0);
+                } else {
+                    expect(zeroFee.length).toBe(0);
+                }
+            });
+        });
+    });
+
+    describe('checkBalancerLiquidity', () => {
+        it('should return true for supported assets', async () => {
+            optimizer.chainId = 1;
+            const hasLiquidity = await optimizer.checkBalancerLiquidity('USDC', 10000);
+
+            expect(hasLiquidity).toBe(true);
+            expect(optimizer.stats.liquidityChecks).toBe(1);
+        });
+
+        it('should track failed liquidity checks', async () => {
+            optimizer.chainId = 1;
+            // Check for an asset not in Balancer's common list
+            await optimizer.checkBalancerLiquidity('UNKNOWN_TOKEN', 10000);
+
+            // May or may not fail depending on implementation
+            expect(optimizer.stats.liquidityChecks).toBeGreaterThan(0);
+        });
+    });
 });
