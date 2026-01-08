@@ -271,11 +271,13 @@ class CrossChainFlashLoanCoordinator extends EventEmitter {
                 };
             }
 
+            // FIX v3.6: Use cancellable timeout to prevent memory leaks
+            const timeout = this._createTimeout(this.config.parallelExecutionTimeout);
             try {
                 // Use execution manager for this chain
                 const result = await Promise.race([
                     chainData.executionManager.execute(item.opportunity),
-                    this._timeout(this.config.parallelExecutionTimeout),
+                    timeout.promise,
                 ]);
 
                 return {
@@ -294,6 +296,8 @@ class CrossChainFlashLoanCoordinator extends EventEmitter {
                     success: false,
                     error: error.message,
                 };
+            } finally {
+                timeout.cancel(); // Always clean up timeout
             }
         });
 
@@ -471,6 +475,8 @@ class CrossChainFlashLoanCoordinator extends EventEmitter {
             };
         }
 
+        // FIX v3.6: Use cancellable timeout to prevent memory leaks
+        const timeout = this._createTimeout(this.config.bridgeTimeoutMs);
         try {
             const result = await Promise.race([
                 adapter.execute({
@@ -480,7 +486,7 @@ class CrossChainFlashLoanCoordinator extends EventEmitter {
                     toChain,
                     ...bridgeConfig,
                 }),
-                this._timeout(this.config.bridgeTimeoutMs),
+                timeout.promise,
             ]);
 
             return {
@@ -492,6 +498,8 @@ class CrossChainFlashLoanCoordinator extends EventEmitter {
                 success: false,
                 error: error.message,
             };
+        } finally {
+            timeout.cancel(); // Always clean up timeout
         }
     }
 
@@ -644,14 +652,42 @@ class CrossChainFlashLoanCoordinator extends EventEmitter {
     }
 
     /**
-     * Create timeout promise
+     * Create timeout promise with cleanup capability
      *
+     * FIX v3.6: Returns object with promise and cancel function to prevent memory leaks
+     * When used with Promise.race(), the caller should cancel the timeout after race completes
+     *
+     * @private
+     * @param {number} ms - Timeout in milliseconds
+     * @returns {{ promise: Promise, cancel: Function }} Timeout promise and cancel function
+     */
+    _createTimeout(ms) {
+        let timeoutHandle = null;
+        const promise = new Promise((_, reject) => {
+            timeoutHandle = setTimeout(() => {
+                timeoutHandle = null;
+                reject(new Error('Operation timed out'));
+            }, ms);
+        });
+
+        const cancel = () => {
+            if (timeoutHandle) {
+                clearTimeout(timeoutHandle);
+                timeoutHandle = null;
+            }
+        };
+
+        return { promise, cancel };
+    }
+
+    /**
+     * Create timeout promise (legacy compatibility wrapper)
+     *
+     * @deprecated Use _createTimeout for proper cleanup
      * @private
      */
     _timeout(ms) {
-        return new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Operation timed out')), ms);
-        });
+        return this._createTimeout(ms).promise;
     }
 
     /**
@@ -672,6 +708,9 @@ class CrossChainFlashLoanCoordinator extends EventEmitter {
     /**
      * Record execution in history
      *
+     * FIX v3.6: Use shift() instead of slice() for efficient O(1) removal
+     * instead of O(n) array recreation
+     *
      * @private
      */
     _recordExecution(result) {
@@ -680,9 +719,9 @@ class CrossChainFlashLoanCoordinator extends EventEmitter {
             recordedAt: Date.now(),
         });
 
-        // Trim history if needed
-        if (this.executionHistory.length > this.maxHistorySize) {
-            this.executionHistory = this.executionHistory.slice(-this.maxHistorySize);
+        // FIX v3.6: Efficient trimming - remove oldest items one at a time
+        while (this.executionHistory.length > this.maxHistorySize) {
+            this.executionHistory.shift();
         }
     }
 

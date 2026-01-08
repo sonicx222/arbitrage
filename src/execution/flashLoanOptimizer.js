@@ -129,7 +129,8 @@ class FlashLoanOptimizer extends EventEmitter {
         });
 
         // Current chain ID (set by initialize)
-        this.chainId = config.network?.chainId || 56;
+        // FIX v3.6: Standardized chainId access path with fallback chain
+        this.chainId = config.network?.chainId || config.chainId || 56;
 
         // Provider reference (set by initialize for on-chain checks)
         this.rpcProvider = null;
@@ -675,6 +676,7 @@ class FlashLoanOptimizer extends EventEmitter {
 
     /**
      * Get provider contract instance for on-chain interactions
+     * FIX v3.6: Added chain validation to ensure provider supports current chain
      * @param {string} providerName - Provider name
      * @returns {Object|null} ethers Contract instance
      */
@@ -692,24 +694,33 @@ class FlashLoanOptimizer extends EventEmitter {
         const provider = this.providers.find(p => p.name === providerName);
         if (!provider) return null;
 
+        // FIX v3.6: Validate that provider supports current chain before creating contract
+        if (!provider.chainIds.includes(this.chainId)) {
+            log.debug(`Provider ${providerName} does not support chainId ${this.chainId}`, {
+                supportedChains: provider.chainIds,
+            });
+            return null;
+        }
+
         let contract = null;
 
         switch (providerName) {
             case 'balancer':
-                const balancerAddress = provider.vaultAddresses[this.chainId];
+                const balancerAddress = provider.vaultAddresses?.[this.chainId];
                 if (balancerAddress) {
                     contract = new ethers.Contract(balancerAddress, BALANCER_VAULT_ABI, this.rpcProvider);
                 }
                 break;
 
             case 'dydx':
-                if (this.chainId === 1) { // Only on Ethereum
+                // dYdX only on Ethereum mainnet (already validated by chainIds check above)
+                if (provider.contractAddress) {
                     contract = new ethers.Contract(provider.contractAddress, DYDX_SOLO_MARGIN_ABI, this.rpcProvider);
                 }
                 break;
 
             case 'aave_v3':
-                const aaveAddress = provider.poolAddresses[this.chainId];
+                const aaveAddress = provider.poolAddresses?.[this.chainId];
                 if (aaveAddress) {
                     contract = new ethers.Contract(aaveAddress, AAVE_V3_POOL_ABI, this.rpcProvider);
                 }

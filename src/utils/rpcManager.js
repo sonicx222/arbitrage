@@ -179,6 +179,7 @@ class RPCManager extends EventEmitter {
 
     /**
      * Legacy WebSocket initialization (fallback if ResilientWebSocketManager fails)
+     * FIX v3.6: Store handler references for proper cleanup
      * @private
      */
     _initLegacyWsProviders() {
@@ -189,25 +190,32 @@ class RPCManager extends EventEmitter {
                 // FIX v3.3: Use instance chainId instead of global config
                 const provider = new ethers.WebSocketProvider(endpoint, this.chainId);
 
-                // Set up error handlers
-                if (provider._websocket) {
-                    provider._websocket.on('error', (error) => {
+                // FIX v3.6: Create named handlers so they can be removed on cleanup
+                const handlers = {
+                    wsError: (error) => {
                         log.debug(`WebSocket error on ${endpoint}: ${error.message}`);
                         this.markEndpointUnhealthy(endpoint);
-                    });
-
-                    provider._websocket.on('close', () => {
+                    },
+                    wsClose: () => {
                         log.debug(`WebSocket closed: ${endpoint}`);
                         this.markEndpointUnhealthy(endpoint);
-                    });
+                    },
+                    providerError: (error) => {
+                        log.debug(`Provider error on ${endpoint}: ${error.message}`);
+                        this.markEndpointUnhealthy(endpoint);
+                    },
+                };
+
+                // Set up error handlers
+                if (provider._websocket) {
+                    provider._websocket.on('error', handlers.wsError);
+                    provider._websocket.on('close', handlers.wsClose);
                 }
 
-                provider.on('error', (error) => {
-                    log.debug(`Provider error on ${endpoint}: ${error.message}`);
-                    this.markEndpointUnhealthy(endpoint);
-                });
+                provider.on('error', handlers.providerError);
 
-                this.wsProviders.push({ endpoint, provider, index });
+                // FIX v3.6: Store handlers reference for cleanup
+                this.wsProviders.push({ endpoint, provider, index, handlers });
                 this.endpointHealth.set(endpoint, { healthy: true, lastCheck: Date.now(), failures: 0 });
 
                 log.debug(`Legacy WebSocket Provider ${index} initialized: ${endpoint}`);
@@ -354,6 +362,10 @@ class RPCManager extends EventEmitter {
      * Check if we can make a request to an endpoint (rate limiting)
      * v2.1: Enhanced with global budget tracking and optional increment
      *
+     * FIX v3.6: Atomic check-and-increment to prevent TOCTOU race conditions
+     * The check and increment now happen as a single atomic operation.
+     * When incrementCount=false, we use a safety margin to account for pending requests.
+     *
      * @param {string} endpoint - The endpoint URL to check
      * @param {boolean} incrementCount - Whether to increment the counter (default: true)
      * @returns {boolean} - Whether the request can proceed
@@ -368,42 +380,45 @@ class RPCManager extends EventEmitter {
             this.globalRequestBudget.resetTime = now + 60000;
         }
 
-        if (this.globalRequestBudget.count >= this.globalRequestBudget.maxPerMinute) {
-            log.rpc('Global request budget exhausted, throttling...', {
-                count: this.globalRequestBudget.count,
-                max: this.globalRequestBudget.maxPerMinute,
-            });
+        // FIX v3.6: Use safety margin when not incrementing to prevent race condition
+        // When just checking (incrementCount=false), leave headroom for concurrent requests
+        const safetyMargin = incrementCount ? 0 : 5;
+
+        if (this.globalRequestBudget.count >= this.globalRequestBudget.maxPerMinute - safetyMargin) {
+            if (incrementCount) {
+                log.rpc('Global request budget exhausted, throttling...', {
+                    count: this.globalRequestBudget.count,
+                    max: this.globalRequestBudget.maxPerMinute,
+                });
+            }
             return false;
         }
 
         // Check per-endpoint rate limit
-        const rateLimitData = this.requestCounts.get(endpoint);
+        let rateLimitData = this.requestCounts.get(endpoint);
 
+        // FIX v3.6: Atomic initialization - always create entry to prevent race
         if (!rateLimitData) {
-            // First request to this endpoint
-            if (incrementCount) {
-                this.requestCounts.set(endpoint, {
-                    count: 1,
-                    resetTime: now + 60000, // Reset after 1 minute
-                });
-                this.globalRequestBudget.count++;
-            }
-            return true;
+            rateLimitData = {
+                count: 0,
+                resetTime: now + 60000, // Reset after 1 minute
+            };
+            this.requestCounts.set(endpoint, rateLimitData);
         }
 
         // Check if reset time has passed
         if (now > rateLimitData.resetTime) {
-            if (incrementCount) {
-                rateLimitData.count = 1;
-                rateLimitData.resetTime = now + 60000;
-                this.globalRequestBudget.count++;
-            }
-            return true;
+            rateLimitData.count = 0;
+            rateLimitData.resetTime = now + 60000;
         }
 
-        // Check if under limit
-        if (rateLimitData.count < this.maxRequestsPerMinute) {
+        // FIX v3.6: Atomic check-and-increment
+        // Use safety margin when just checking to account for pending concurrent operations
+        const effectiveLimit = this.maxRequestsPerMinute - safetyMargin;
+
+        if (rateLimitData.count < effectiveLimit) {
             if (incrementCount) {
+                // Atomic increment - happens immediately after successful check
                 rateLimitData.count++;
                 this.globalRequestBudget.count++;
             }
@@ -794,6 +809,7 @@ class RPCManager extends EventEmitter {
 
     /**
      * Cleanup resources
+     * FIX v3.6: Properly remove event handlers before destroying providers
      */
     async cleanup() {
         log.info('Cleaning up RPC Manager...');
@@ -810,14 +826,25 @@ class RPCManager extends EventEmitter {
             }
         }
 
-        // Close legacy WebSocket connections if any
-        for (const { provider } of this.wsProviders) {
+        // FIX v3.6: Remove handlers and close legacy WebSocket connections
+        for (const { provider, handlers } of this.wsProviders) {
             try {
+                // Remove event handlers to prevent memory leaks
+                if (handlers) {
+                    if (provider._websocket) {
+                        provider._websocket.off('error', handlers.wsError);
+                        provider._websocket.off('close', handlers.wsClose);
+                    }
+                    provider.off('error', handlers.providerError);
+                }
                 await provider.destroy();
             } catch (error) {
                 log.error('Error closing WebSocket provider', { error: error.message });
             }
         }
+
+        // Clear the providers array
+        this.wsProviders = [];
     }
 }
 

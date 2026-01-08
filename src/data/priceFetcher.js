@@ -28,6 +28,12 @@ class PriceFetcher {
         this.batchSize = parseInt(process.env.MULTICALL_BATCH_SIZE || '50'); // Reduced from 200
         this.interBatchDelayMs = parseInt(process.env.MULTICALL_BATCH_DELAY || '100'); // Add delay between batches
 
+        // FIX v3.6: Configurable sync event freshness tolerance
+        // Sync events from block N are considered fresh up to block N + maxBlockAge
+        // Higher values reduce RPC calls but may use slightly stale data
+        // Default: 2 blocks (suitable for BSC 3s blocks, adjust for slower chains)
+        this.maxBlockAge = parseInt(process.env.SYNC_EVENT_MAX_BLOCK_AGE || '2');
+
         // Statistics for cache-aware fetching
         this.stats = {
             totalFetches: 0,
@@ -46,6 +52,7 @@ class PriceFetcher {
         log.debug(`Price Fetcher initialized for ${this.dexes.length} DEXs`, {
             batchSize: this.batchSize,
             interBatchDelayMs: this.interBatchDelayMs,
+            maxBlockAge: this.maxBlockAge,
         });
     }
 
@@ -193,14 +200,14 @@ class PriceFetcher {
             const cacheKey = cacheManager.getPriceKey(pair.tokenA.address, pair.tokenB.address, pair.dexName);
             const cached = cacheManager.priceCache.get(cacheKey);
 
-            // FIX v3.5: Allow 2-block tolerance for sync event data freshness
-            // Sync events from block N are still valid at block N+1 or N+2
+            // FIX v3.5: Allow configurable block tolerance for sync event data freshness
+            // FIX v3.6: Use configurable maxBlockAge instead of hardcoded value
+            // Sync events from block N are still valid at block N+1 or N+2 (configurable)
             // This reduces unnecessary RPC calls while maintaining data quality
-            const maxBlockAge = 2;
             const isFreshSyncEvent = cached &&
                 cached.data?.source === 'sync-event' &&
                 cached.blockNumber !== undefined &&
-                (blockNumber - cached.blockNumber) <= maxBlockAge;
+                (blockNumber - cached.blockNumber) <= this.maxBlockAge;
 
             if (isFreshSyncEvent) {
                 // Fresh data from Sync event - no need to fetch
@@ -251,6 +258,7 @@ class PriceFetcher {
 
     /**
      * Reset statistics
+     * FIX v3.6: Include batchesExecuted in reset
      */
     resetStats() {
         this.stats = {
@@ -258,6 +266,7 @@ class PriceFetcher {
             cacheHits: 0,
             rpcCalls: 0,
             skippedByPriority: 0,
+            batchesExecuted: 0,
         };
     }
 

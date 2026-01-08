@@ -24,7 +24,8 @@
       "Bash(cat:*)",
       "Bash(ls:*)",
       "Bash(for chain in bsc ethereum polygon arbitrum base avalanche optimism fantom zksync)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(git mv:*)"
     ]
   }
 }

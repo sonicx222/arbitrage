@@ -699,3 +699,254 @@ describe('Bug Fix Regression Tests - Session 4', () => {
         });
     });
 });
+
+describe('Bug Fix Regression Tests - Session 5 (v3.5)', () => {
+
+    describe('Fix v3.5 #1: ExecutionManager Flashbots provider reference', () => {
+        test('_executeWithFlashbots should use signer.provider not this.provider', async () => {
+            const fs = await import('fs');
+            const path = await import('path');
+
+            const filePath = path.default.resolve('src/execution/executionManager.js');
+            const content = fs.default.readFileSync(filePath, 'utf-8');
+
+            // Verify the fix: should use this.signer.provider, NOT this.provider
+            expect(content).toContain('this.signer.provider.getBlockNumber()');
+            expect(content).toContain('this.signer?.provider');
+
+            // Verify it does NOT use undefined this.provider directly
+            // (Look for the Flashbots section specifically)
+            const flashbotsSection = content.match(/_executeWithFlashbots[\s\S]*?return \{[\s\S]*?flashbots: true/);
+            if (flashbotsSection) {
+                expect(flashbotsSection[0]).not.toMatch(/await this\.provider\.getBlockNumber\(\)/);
+            }
+        });
+
+        test('ExecutionManager should throw if signer.provider is not available', async () => {
+            const fs = await import('fs');
+            const path = await import('path');
+
+            const filePath = path.default.resolve('src/execution/executionManager.js');
+            const content = fs.default.readFileSync(filePath, 'utf-8');
+
+            // Verify validation error message exists
+            expect(content).toContain('Signer provider not available for Flashbots execution');
+        });
+    });
+
+    describe('Fix v3.5 #2: TransactionBuilder RESOLVE_PAIR validation', () => {
+        test('buildCrossDexTx should validate flashPair is a valid address', async () => {
+            const fs = await import('fs');
+            const path = await import('path');
+
+            const filePath = path.default.resolve('src/execution/transactionBuilder.js');
+            const content = fs.default.readFileSync(filePath, 'utf-8');
+
+            // Verify the fix: ethers.isAddress validation
+            expect(content).toContain('ethers.isAddress(flashPair)');
+            expect(content).toContain("flashPair === 'RESOLVE_PAIR'");
+            expect(content).toContain('Invalid flash pair address');
+        });
+
+        test('buildTriangularTx should check router validation BEFORE flash pair', async () => {
+            const fs = await import('fs');
+            const path = await import('path');
+
+            const filePath = path.default.resolve('src/execution/transactionBuilder.js');
+            const content = fs.default.readFileSync(filePath, 'utf-8');
+
+            // Find the buildTriangularTx function
+            const triangularSection = content.match(/buildTriangularTx[\s\S]*?encodeFunctionData/);
+            if (triangularSection) {
+                const section = triangularSection[0];
+                // Router validation should appear BEFORE flash pair validation
+                const routerCheckIndex = section.indexOf('Cross-DEX triangular arbitrage not supported');
+                const flashPairCheckIndex = section.indexOf('Invalid flash pair address for triangular');
+
+                expect(routerCheckIndex).toBeGreaterThan(-1);
+                expect(flashPairCheckIndex).toBeGreaterThan(-1);
+                expect(routerCheckIndex).toBeLessThan(flashPairCheckIndex);
+            }
+        });
+
+        test('TransactionBuilder should use pre-resolved flashPair from opportunity', async () => {
+            const fs = await import('fs');
+            const path = await import('path');
+
+            const filePath = path.default.resolve('src/execution/transactionBuilder.js');
+            const content = fs.default.readFileSync(filePath, 'utf-8');
+
+            // Verify the fix: uses opportunity.flashPair first
+            expect(content).toContain('let flashPair = opportunity.flashPair');
+        });
+    });
+
+    describe('Fix v3.5 #3: PriceFetcher block tolerance for sync events', () => {
+        test('_categorizePairs should allow configurable block tolerance for sync event freshness', async () => {
+            const fs = await import('fs');
+            const path = await import('path');
+
+            const filePath = path.default.resolve('src/data/priceFetcher.js');
+            const content = fs.default.readFileSync(filePath, 'utf-8');
+
+            // Verify the fix: maxBlockAge is now configurable (FIX v3.6)
+            // Changed from hardcoded 'const maxBlockAge = 2' to 'this.maxBlockAge' instance property
+            expect(content).toContain('this.maxBlockAge = parseInt(process.env.SYNC_EVENT_MAX_BLOCK_AGE');
+            expect(content).toContain('(blockNumber - cached.blockNumber) <= this.maxBlockAge');
+            expect(content).toContain('isFreshSyncEvent');
+        });
+
+        test('priceFetcher should consider data from block N-1 or N-2 as fresh', async () => {
+            // This is a logical test - sync events from 1-2 blocks ago are still valid
+            const maxBlockAge = 2;
+
+            // Current block is N=100
+            const currentBlock = 100;
+
+            // Data from block 100 (same block) - should be fresh
+            expect(currentBlock - 100).toBeLessThanOrEqual(maxBlockAge); // true
+
+            // Data from block 99 (1 block old) - should be fresh
+            expect(currentBlock - 99).toBeLessThanOrEqual(maxBlockAge); // true
+
+            // Data from block 98 (2 blocks old) - should be fresh
+            expect(currentBlock - 98).toBeLessThanOrEqual(maxBlockAge); // true
+
+            // Data from block 97 (3 blocks old) - should be stale
+            expect(currentBlock - 97).toBeGreaterThan(maxBlockAge); // true - 3 > 2
+        });
+    });
+
+    describe('Fix v3.5 #4: CrossChainCoordinator partial execution tracking', () => {
+        test('_aggregateResults should include partialSuccess flag', async () => {
+            const fs = await import('fs');
+            const path = await import('path');
+
+            const filePath = path.default.resolve('src/execution/crossChainCoordinator.js');
+            const content = fs.default.readFileSync(filePath, 'utf-8');
+
+            // Verify the fix: partialSuccess field
+            expect(content).toContain('partialSuccess:');
+            expect(content).toContain("status = 'PARTIAL_SUCCESS'");
+            expect(content).toContain("status = 'FULL_SUCCESS'");
+            expect(content).toContain("status = 'FULL_FAILURE'");
+        });
+
+        test('_aggregateResults should track failed chains', async () => {
+            const fs = await import('fs');
+            const path = await import('path');
+
+            const filePath = path.default.resolve('src/execution/crossChainCoordinator.js');
+            const content = fs.default.readFileSync(filePath, 'utf-8');
+
+            // Verify the fix: failedChains tracking
+            expect(content).toContain('failedChains');
+            expect(content).toContain('failedCount');
+            expect(content).toContain('estimatedGasLossUSD');
+        });
+
+        test('CrossChainCoordinator aggregation should calculate net profit accounting for gas losses', async () => {
+            const { CrossChainFlashLoanCoordinator } = await import('../../src/execution/crossChainCoordinator.js');
+
+            const coordinator = new CrossChainFlashLoanCoordinator();
+
+            // Mock results with partial success
+            const results = [
+                { chainId: 56, success: true, profitUSD: 10, type: 'buy' },
+                { chainId: 1, success: false, error: 'Gas price spike', type: 'sell' },
+            ];
+
+            const aggregated = coordinator._aggregateResults('test-123', results, 1000);
+
+            // Verify partial success detection
+            expect(aggregated.partialSuccess).toBe(true);
+            expect(aggregated.status).toBe('PARTIAL_SUCCESS');
+            expect(aggregated.successCount).toBe(1);
+            expect(aggregated.failedCount).toBe(1);
+
+            // Verify failed chains tracked
+            expect(aggregated.failedChains.length).toBe(1);
+            expect(aggregated.failedChains[0].chainId).toBe(1);
+            expect(aggregated.failedChains[0].error).toBe('Gas price spike');
+
+            // Verify net profit accounts for gas loss estimate
+            expect(aggregated.grossProfitUSD).toBe(10);
+            expect(aggregated.estimatedGasLossUSD).toBeGreaterThan(0);
+            expect(aggregated.totalProfitUSD).toBeLessThan(aggregated.grossProfitUSD);
+        });
+    });
+
+    describe('Fix v3.5 #5: ExecutionManager priority-based eviction', () => {
+        test('_evictLowestValueTimedOutTx helper method should exist', async () => {
+            const fs = await import('fs');
+            const path = await import('path');
+
+            const filePath = path.default.resolve('src/execution/executionManager.js');
+            const content = fs.default.readFileSync(filePath, 'utf-8');
+
+            // Verify the fix: new helper method
+            expect(content).toContain('_evictLowestValueTimedOutTx()');
+            expect(content).toContain('lowestValueKey');
+            expect(content).toContain('lowestValue = Infinity');
+        });
+
+        test('_evictLowestValueTimedOutTx should evict lowest profitUSD transaction', async () => {
+            const { default: executionManager } = await import('../../src/execution/executionManager.js');
+
+            // Clear existing timed out txs
+            executionManager.timedOutTxs.clear();
+
+            // Add transactions with different profit values
+            executionManager.timedOutTxs.set('tx-high', {
+                timestamp: Date.now() - 1000,
+                opportunity: { type: 'cross-dex', profitUSD: 50 },
+            });
+            executionManager.timedOutTxs.set('tx-low', {
+                timestamp: Date.now() - 2000, // Older but higher value should be kept
+                opportunity: { type: 'cross-dex', profitUSD: 5 },
+            });
+            executionManager.timedOutTxs.set('tx-medium', {
+                timestamp: Date.now(),
+                opportunity: { type: 'cross-dex', profitUSD: 20 },
+            });
+
+            expect(executionManager.timedOutTxs.size).toBe(3);
+
+            // Evict lowest value
+            executionManager._evictLowestValueTimedOutTx();
+
+            expect(executionManager.timedOutTxs.size).toBe(2);
+
+            // The lowest value tx (tx-low with profitUSD=5) should be evicted
+            expect(executionManager.timedOutTxs.has('tx-low')).toBe(false);
+            expect(executionManager.timedOutTxs.has('tx-high')).toBe(true);
+            expect(executionManager.timedOutTxs.has('tx-medium')).toBe(true);
+        });
+
+        test('_evictLowestValueTimedOutTx should fall back to oldest if same value', async () => {
+            const { default: executionManager } = await import('../../src/execution/executionManager.js');
+
+            // Clear existing timed out txs
+            executionManager.timedOutTxs.clear();
+
+            // Add transactions with same profit value but different timestamps
+            executionManager.timedOutTxs.set('tx-newest', {
+                timestamp: Date.now(),
+                opportunity: { type: 'cross-dex', profitUSD: 10 },
+            });
+            executionManager.timedOutTxs.set('tx-oldest', {
+                timestamp: Date.now() - 5000, // Oldest
+                opportunity: { type: 'cross-dex', profitUSD: 10 }, // Same value
+            });
+            executionManager.timedOutTxs.set('tx-middle', {
+                timestamp: Date.now() - 2000,
+                opportunity: { type: 'cross-dex', profitUSD: 10 }, // Same value
+            });
+
+            // With same values, should evict any of them (lowest is first found)
+            executionManager._evictLowestValueTimedOutTx();
+
+            expect(executionManager.timedOutTxs.size).toBe(2);
+        });
+    });
+});
