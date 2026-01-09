@@ -25,7 +25,9 @@
       "Bash(ls:*)",
       "Bash(for chain in bsc ethereum polygon arbitrum base avalanche optimism fantom zksync)",
       "Bash(grep:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(timeout 120 npm start:*)",
+      "Bash(timeout 180 npm start)"
     ]
   }
 }

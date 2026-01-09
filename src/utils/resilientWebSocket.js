@@ -21,6 +21,7 @@ export class ResilientWebSocket extends EventEmitter {
 
         // Configuration
         // FIX v3.8: Increased delays and jitter to prevent thundering herd and rate limit cascades
+        // FIX v3.10: Further increased initial connection timeout and added connection retry
         this.config = {
             heartbeatIntervalMs: options.heartbeatIntervalMs || 15000,     // Check connection every 15s
             heartbeatTimeoutMs: options.heartbeatTimeoutMs || 5000,        // Heartbeat must respond in 5s
@@ -30,6 +31,10 @@ export class ResilientWebSocket extends EventEmitter {
             circuitBreakerCooldownMs: options.circuitBreakerCooldownMs || 300000, // FIX v3.8: Increased from 2 to 5 min cooldown
             proactiveRefreshMs: options.proactiveRefreshMs || 30 * 60 * 1000,     // Refresh every 30 min
             jitterFactor: options.jitterFactor || 0.5,                     // FIX v3.8: Increased from 30% to 50% jitter
+            // FIX v3.10: Initial connection settings
+            initialConnectionTimeoutMs: options.initialConnectionTimeoutMs || 15000, // 15s initial timeout (was 10s)
+            initialConnectionRetries: options.initialConnectionRetries || 3,         // Retry initial connection 3 times
+            initialRetryDelayMs: options.initialRetryDelayMs || 2000,               // 2s between initial retries
         };
 
         // FIX v3.8: Track consecutive 429 errors for adaptive backoff
@@ -71,6 +76,7 @@ export class ResilientWebSocket extends EventEmitter {
 
     /**
      * Connect to the WebSocket endpoint
+     * FIX v3.10: Added retry logic for initial connection with 429 detection
      */
     async connect() {
         if (this.state === 'connected' || this.state === 'connecting') {
@@ -89,41 +95,96 @@ export class ResilientWebSocket extends EventEmitter {
 
         this.state = 'connecting';
 
-        try {
-            // Create new provider
-            this.provider = new ethers.WebSocketProvider(this.url, this.chainId);
+        // FIX v3.10: Retry initial connection with exponential backoff
+        let lastError = null;
+        for (let attempt = 0; attempt < this.config.initialConnectionRetries; attempt++) {
+            try {
+                // Clean up any previous failed provider
+                if (this.provider) {
+                    try {
+                        this.provider.removeAllListeners();
+                        this.provider.destroy();
+                    } catch (e) {
+                        // Ignore cleanup errors
+                    }
+                    this.provider = null;
+                }
 
-            // Wait for ready with timeout
-            await this._waitForReady(10000);
+                // Create new provider
+                this.provider = new ethers.WebSocketProvider(this.url, this.chainId);
 
-            // Set up event handlers
-            this._setupEventHandlers();
+                // Wait for ready with increased timeout
+                await this._waitForReady(this.config.initialConnectionTimeoutMs);
 
-            // Start heartbeat monitoring
-            this._startHeartbeat();
+                // Set up event handlers
+                this._setupEventHandlers();
 
-            // Schedule proactive refresh
-            this._scheduleProactiveRefresh();
+                // Start heartbeat monitoring
+                this._startHeartbeat();
 
-            this.state = 'connected';
-            this.reconnectAttempts = 0;
-            this.connectionStartTime = Date.now();
-            this.lastSuccessfulHeartbeat = Date.now();
-            this.metrics.connectionsEstablished++;
+                // Schedule proactive refresh
+                this._scheduleProactiveRefresh();
 
-            // FIX v3.3: Changed to debug level - manager logs init at info level
-            log.debug(`[${this.chainName}] WebSocket endpoint connected`, {
-                url: this._maskUrl(this.url),
-            });
+                this.state = 'connected';
+                this.reconnectAttempts = 0;
+                this.connectionStartTime = Date.now();
+                this.lastSuccessfulHeartbeat = Date.now();
+                this.metrics.connectionsEstablished++;
 
-            this.emit('connected');
-            return this.provider;
+                // FIX v3.3: Changed to debug level - manager logs init at info level
+                log.debug(`[${this.chainName}] WebSocket endpoint connected`, {
+                    url: this._maskUrl(this.url),
+                    attempt: attempt + 1,
+                });
 
-        } catch (error) {
-            this.state = 'disconnected';
-            log.error('ResilientWebSocket connection failed', { error: error.message });
-            throw error;
+                this.emit('connected');
+                return this.provider;
+
+            } catch (error) {
+                lastError = error;
+                const errorMsg = error?.message || '';
+
+                // FIX v3.10: Detect 429 during handshake and apply longer delay
+                const isRateLimit = errorMsg.includes('429') ||
+                                   errorMsg.includes('Too Many Requests') ||
+                                   errorMsg.includes('rate limit');
+
+                if (isRateLimit) {
+                    this.consecutive429Errors++;
+                    // Exponential backoff for rate limits: 2s, 4s, 8s...
+                    const rateLimitDelay = this.config.initialRetryDelayMs * Math.pow(2, this.consecutive429Errors);
+                    log.warn(`WebSocket handshake rate limited (429), waiting ${rateLimitDelay}ms...`, {
+                        attempt: attempt + 1,
+                        maxAttempts: this.config.initialConnectionRetries,
+                        consecutive429s: this.consecutive429Errors,
+                    });
+                    await this._sleep(rateLimitDelay);
+                } else if (attempt < this.config.initialConnectionRetries - 1) {
+                    // Non-rate-limit error, use standard retry delay
+                    const retryDelay = this.config.initialRetryDelayMs * (attempt + 1);
+                    log.debug(`WebSocket connection attempt ${attempt + 1} failed, retrying in ${retryDelay}ms...`, {
+                        error: errorMsg,
+                    });
+                    await this._sleep(retryDelay);
+                }
+            }
         }
+
+        // All retries exhausted
+        this.state = 'disconnected';
+        log.error('ResilientWebSocket connection failed after retries', {
+            error: lastError?.message,
+            attempts: this.config.initialConnectionRetries,
+        });
+        throw lastError || new Error('Connection failed');
+    }
+
+    /**
+     * Sleep utility
+     * @private
+     */
+    _sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     /**

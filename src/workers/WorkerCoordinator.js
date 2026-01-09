@@ -33,6 +33,11 @@ export default class WorkerCoordinator extends EventEmitter {
         this.restartDelay = config.restartDelay || 5000;
         this.heartbeatInterval = config.heartbeatInterval || 10000;
 
+        // FIX v3.10: Staggered startup to prevent thundering herd on RPC endpoints
+        // Without staggering, all workers hit the same endpoints simultaneously causing 429s
+        this.workerStartupDelayMs = config.workerStartupDelayMs || 3000; // 3s between workers
+        this.workerStartupJitterMs = config.workerStartupJitterMs || 1000; // +0-1s random jitter
+
         // State
         this.isRunning = false;
         this.heartbeatTimer = null;
@@ -327,6 +332,8 @@ export default class WorkerCoordinator extends EventEmitter {
 
     /**
      * Start all workers for enabled chains
+     * FIX v3.10: Staggered startup to prevent 429 cascade on RPC endpoints
+     *
      * @param {Object} chainConfigs - Map of chainId -> config
      */
     async startAll(chainConfigs) {
@@ -342,28 +349,62 @@ export default class WorkerCoordinator extends EventEmitter {
             return;
         }
 
-        log.info(`Starting workers for ${enabledChains.length} chains...`);
+        log.info(`Starting workers for ${enabledChains.length} chains (staggered startup)...`);
 
-        // Spawn all workers
-        for (const [chainId, config] of enabledChains) {
+        // FIX v3.10: Spawn workers with staggered delays to prevent thundering herd
+        // All workers hitting the same RPC endpoints simultaneously causes immediate 429s
+        for (let i = 0; i < enabledChains.length; i++) {
+            const [chainId, config] = enabledChains[i];
+
+            // First worker starts immediately, rest are staggered
+            if (i > 0) {
+                const staggerDelay = this.workerStartupDelayMs + Math.random() * this.workerStartupJitterMs;
+                log.debug(`Waiting ${Math.round(staggerDelay)}ms before spawning worker ${chainId}...`);
+                await this._sleep(staggerDelay);
+            }
+
             this.spawnWorker(parseInt(chainId), config);
+
+            // Wait for this worker to initialize before spawning next
+            // This ensures RPC connections are established sequentially
+            try {
+                await this.waitForWorker(parseInt(chainId), 'initialized', 20000);
+            } catch (e) {
+                log.warn(`Worker ${chainId} slow to initialize, continuing with next...`);
+            }
         }
 
-        // Wait for all workers to initialize
-        await this.waitForAllWorkers('initialized', 30000);
+        // Small delay to let all workers settle
+        await this._sleep(1000);
 
-        // Start all workers
-        for (const chainId of this.workers.keys()) {
+        // FIX v3.10: Start workers with staggered delays too
+        const workerIds = Array.from(this.workers.keys());
+        for (let i = 0; i < workerIds.length; i++) {
+            const chainId = workerIds[i];
+
+            if (i > 0) {
+                // Smaller delay for start messages (workers already initialized)
+                await this._sleep(500 + Math.random() * 500);
+            }
+
             this.sendToWorker(chainId, MessageType.START);
         }
 
-        // Wait for all to start running
-        await this.waitForAllWorkers('running', 10000);
+        // Wait for all to start running (with extended timeout due to staggering)
+        await this.waitForAllWorkers('running', 30000);
 
         // Start heartbeat monitoring
         this.startHeartbeatMonitor();
 
         log.info(`All ${this.workers.size} workers started successfully`);
+    }
+
+    /**
+     * Sleep utility for staggered startup
+     * @private
+     */
+    _sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     /**

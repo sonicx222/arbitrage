@@ -18,6 +18,7 @@ export class ResilientWebSocketManager extends EventEmitter {
 
         // Configuration
         // FIX v3.8: Increased failover delay and added stagger settings
+        // FIX v3.10: Added graceful 429 handling during initialization
         this.config = {
             maxConcurrentConnections: options.maxConcurrentConnections || 2,
             preferredEndpointIndex: options.preferredEndpointIndex || 0,
@@ -26,6 +27,9 @@ export class ResilientWebSocketManager extends EventEmitter {
             // FIX v3.8: Stagger reconnection to prevent thundering herd
             staggerDelayMs: options.staggerDelayMs || 2000,        // Delay between endpoint reconnects
             staggerJitterMs: options.staggerJitterMs || 1000,      // Random jitter added to stagger
+            // FIX v3.10: Initial connection retry settings
+            initRetryDelayMs: options.initRetryDelayMs || 5000,    // 5s wait before retry on init failure
+            maxInitRetries: options.maxInitRetries || 2,           // Max retries for initial primary connection
             // Pass through to ResilientWebSocket
             wsOptions: options.wsOptions || {},
         };
@@ -88,8 +92,53 @@ export class ResilientWebSocketManager extends EventEmitter {
             });
         }
 
-        // Connect to primary endpoint first
-        await this._connectToEndpoint(endpoints[this.config.preferredEndpointIndex] || endpoints[0]);
+        // FIX v3.10: Connect to primary endpoint with retries for 429 resilience
+        const primaryEndpoint = endpoints[this.config.preferredEndpointIndex] || endpoints[0];
+        let primaryConnected = false;
+
+        for (let attempt = 0; attempt < this.config.maxInitRetries && !primaryConnected; attempt++) {
+            try {
+                await this._connectToEndpoint(primaryEndpoint);
+                primaryConnected = true;
+            } catch (error) {
+                const is429 = error?.message?.includes('429') || error?.message?.includes('rate limit');
+
+                if (is429) {
+                    log.warn(`Primary WS endpoint rate-limited (429), waiting before retry...`, {
+                        attempt: attempt + 1,
+                        maxRetries: this.config.maxInitRetries,
+                        delayMs: this.config.initRetryDelayMs,
+                    });
+                } else {
+                    log.warn(`Primary WS endpoint connection failed, trying next...`, {
+                        error: error.message,
+                        attempt: attempt + 1,
+                    });
+                }
+
+                // Wait before retry (longer for rate limits)
+                const delay = is429
+                    ? this.config.initRetryDelayMs * (attempt + 1)
+                    : this.config.initRetryDelayMs;
+                await this._sleep(delay);
+
+                // If all retries failed, try next endpoint in list
+                if (attempt === this.config.maxInitRetries - 1 && endpoints.length > 1) {
+                    log.info('Primary endpoint failed, trying fallback endpoint...');
+                    const fallbackEndpoint = endpoints[1];
+                    try {
+                        await this._connectToEndpoint(fallbackEndpoint);
+                        primaryConnected = true;
+                    } catch (fallbackError) {
+                        log.error('Fallback endpoint also failed', { error: fallbackError.message });
+                    }
+                }
+            }
+        }
+
+        if (!primaryConnected) {
+            throw new Error('Failed to connect to any WebSocket endpoint');
+        }
 
         // FIX v3.8: Stagger backup endpoint connections to prevent thundering herd
         // Connect to backup endpoints (up to maxConcurrentConnections)
@@ -641,6 +690,14 @@ export class ResilientWebSocketManager extends EventEmitter {
         this.isInitialized = false;
 
         log.info('ResilientWebSocketManager disconnected');
+    }
+
+    /**
+     * Sleep utility for staggered operations
+     * @private
+     */
+    _sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     /**
