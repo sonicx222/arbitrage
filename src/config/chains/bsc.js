@@ -33,21 +33,25 @@ export default {
             ws: process.env.ALCHEMY_WS_URL || process.env.BSC_ALCHEMY_WS || '',
         },
 
+        // FIX v3.8: Reorder HTTP endpoints - free public nodes first, Alchemy last
+        // This preserves Alchemy monthly quota by using free endpoints preferentially
         http: [
-            process.env.ALCHEMY_RPC_URL || process.env.BSC_ALCHEMY_HTTP,
-            process.env.BSC_RPC_HTTP_1,
+            'https://bsc-dataseed.binance.org',   // Binance official - fast & free
+            'https://bsc.publicnode.com',          // PublicNode - free
+            'https://bsc-rpc.publicnode.com',      // PublicNode backup - free
+            'https://bsc-dataseed1.defibit.io',    // DeFiBit - free
+            'https://bsc-dataseed1.ninicoin.io',   // NiniCoin - free
+            process.env.BSC_RPC_HTTP_1,            // Custom endpoints if configured
             process.env.BSC_RPC_HTTP_2,
-            'https://bsc-dataseed.binance.org',
-            'https://bsc-dataseed1.defibit.io',
-            'https://bsc-dataseed1.ninicoin.io',
-            'https://bsc.publicnode.com',
-            'https://bsc-rpc.publicnode.com',
+            process.env.ALCHEMY_RPC_URL || process.env.BSC_ALCHEMY_HTTP, // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
+        // FIX v3.8: Reorder WS endpoints - public nodes first, Alchemy last
+        // This preserves Alchemy monthly quota by using free endpoints preferentially
         ws: [
-            process.env.ALCHEMY_WS_URL || process.env.BSC_ALCHEMY_WS,
-            process.env.BSC_RPC_WS_1,
-            'wss://bsc.publicnode.com',
+            'wss://bsc.publicnode.com',           // Free public node first
+            process.env.BSC_RPC_WS_1,             // Custom endpoint if configured
+            process.env.ALCHEMY_WS_URL || process.env.BSC_ALCHEMY_WS, // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
         // Rate limiting

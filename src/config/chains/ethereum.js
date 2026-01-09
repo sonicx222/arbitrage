@@ -28,18 +28,21 @@ export default {
             ws: process.env.ETH_ALCHEMY_WS || '',
         },
 
+        // FIX v3.8: Reorder endpoints - free public nodes first, Alchemy last
+        // This preserves Alchemy monthly quota by using free endpoints preferentially
         http: [
-            process.env.ETH_ALCHEMY_HTTP,
-            process.env.ETH_RPC_HTTP_1,
-            'https://eth.llamarpc.com',
-            'https://ethereum.publicnode.com',
-            'https://rpc.ankr.com/eth',
+            'https://eth.llamarpc.com',           // LlamaRPC - free
+            'https://ethereum.publicnode.com',    // PublicNode - free
+            'https://rpc.ankr.com/eth',           // Ankr - free tier
+            process.env.ETH_RPC_HTTP_1,           // Custom if configured
+            process.env.ETH_ALCHEMY_HTTP,         // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
+        // FIX v3.8: Public WS first, Alchemy last
         ws: [
-            process.env.ETH_ALCHEMY_WS,
-            process.env.ETH_RPC_WS_1,
-            'wss://ethereum.publicnode.com',
+            'wss://ethereum.publicnode.com',      // PublicNode - free
+            process.env.ETH_RPC_WS_1,             // Custom if configured
+            process.env.ETH_ALCHEMY_WS,           // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
         maxRequestsPerMinute: parseInt(process.env.ETH_MAX_RPC_RPM || '300'),

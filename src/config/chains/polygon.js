@@ -28,18 +28,21 @@ export default {
             ws: process.env.POLYGON_ALCHEMY_WS || '',
         },
 
+        // FIX v3.8: Reorder endpoints - free public nodes first, Alchemy last
+        // This preserves Alchemy monthly quota by using free endpoints preferentially
         http: [
-            process.env.POLYGON_ALCHEMY_HTTP,
-            process.env.POLYGON_RPC_HTTP_1,
-            'https://polygon-rpc.com',
-            'https://polygon.llamarpc.com',
-            'https://polygon-mainnet.public.blastapi.io',
+            'https://polygon-rpc.com',            // Polygon official - free
+            'https://polygon.llamarpc.com',       // LlamaRPC - free
+            'https://polygon-mainnet.public.blastapi.io', // BlastAPI - free
+            process.env.POLYGON_RPC_HTTP_1,       // Custom if configured
+            process.env.POLYGON_ALCHEMY_HTTP,     // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
+        // FIX v3.8: Public WS first, Alchemy last
         ws: [
-            process.env.POLYGON_ALCHEMY_WS,
-            process.env.POLYGON_RPC_WS_1,
-            'wss://polygon.publicnode.com',
+            'wss://polygon.publicnode.com',       // PublicNode - free
+            process.env.POLYGON_RPC_WS_1,         // Custom if configured
+            process.env.POLYGON_ALCHEMY_WS,       // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
         maxRequestsPerMinute: parseInt(process.env.POLYGON_MAX_RPC_RPM || '300'),

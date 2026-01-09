@@ -20,16 +20,21 @@ export class ResilientWebSocket extends EventEmitter {
         this.chainName = options.chainName || `Chain ${chainId}`;
 
         // Configuration
+        // FIX v3.8: Increased delays and jitter to prevent thundering herd and rate limit cascades
         this.config = {
             heartbeatIntervalMs: options.heartbeatIntervalMs || 15000,     // Check connection every 15s
             heartbeatTimeoutMs: options.heartbeatTimeoutMs || 5000,        // Heartbeat must respond in 5s
-            reconnectBaseDelayMs: options.reconnectBaseDelayMs || 1000,    // Base delay for reconnect
-            reconnectMaxDelayMs: options.reconnectMaxDelayMs || 60000,     // Max 60s between reconnects
+            reconnectBaseDelayMs: options.reconnectBaseDelayMs || 2000,    // FIX v3.8: Increased from 1000 to 2000
+            reconnectMaxDelayMs: options.reconnectMaxDelayMs || 120000,    // FIX v3.8: Increased from 60s to 120s
             maxReconnectAttempts: options.maxReconnectAttempts || 10,      // Before circuit opens
-            circuitBreakerCooldownMs: options.circuitBreakerCooldownMs || 120000, // 2 min cooldown
+            circuitBreakerCooldownMs: options.circuitBreakerCooldownMs || 300000, // FIX v3.8: Increased from 2 to 5 min cooldown
             proactiveRefreshMs: options.proactiveRefreshMs || 30 * 60 * 1000,     // Refresh every 30 min
-            jitterFactor: options.jitterFactor || 0.3,                     // 30% jitter on delays
+            jitterFactor: options.jitterFactor || 0.5,                     // FIX v3.8: Increased from 30% to 50% jitter
         };
+
+        // FIX v3.8: Track consecutive 429 errors for adaptive backoff
+        this.consecutive429Errors = 0;
+        this.lastErrorType = null;
 
         // State
         this.state = 'disconnected'; // disconnected, connecting, connected, reconnecting, circuit_open
@@ -135,12 +140,30 @@ export class ResilientWebSocket extends EventEmitter {
 
     /**
      * Set up WebSocket event handlers
+     * FIX v3.8: Pass error objects through for better categorization
      */
     _setupEventHandlers() {
         // Provider-level errors
         this.provider.on('error', (error) => {
-            log.warn('WebSocket provider error', { error: error.message });
-            this._handleDisconnect('provider_error');
+            // FIX v3.8: Detect and handle specific error types
+            const errorMsg = error?.message || '';
+
+            // Handle "Invalid WebSocket frame" errors gracefully
+            if (errorMsg.includes('Invalid WebSocket frame') || errorMsg.includes('invalid payload length')) {
+                log.warn('WebSocket frame error (will recover)', { error: errorMsg });
+                this._handleDisconnect('frame_error', error);
+                return;
+            }
+
+            // Handle 429 errors
+            if (errorMsg.includes('429') || errorMsg.includes('Too Many Requests')) {
+                log.warn('WebSocket rate limit error', { error: errorMsg });
+                this._handleDisconnect('rate_limit', error);
+                return;
+            }
+
+            log.warn('WebSocket provider error', { error: errorMsg });
+            this._handleDisconnect('provider_error', error);
         });
 
         // Access underlying WebSocket if available (ethers v6)
@@ -152,14 +175,25 @@ export class ResilientWebSocket extends EventEmitter {
             });
 
             ws.on('error', (error) => {
-                log.warn('WebSocket error', { error: error.message });
-                this._handleDisconnect('ws_error');
+                const errorMsg = error?.message || '';
+
+                // FIX v3.8: Handle frame errors at the raw WebSocket level too
+                if (errorMsg.includes('Invalid WebSocket frame') || errorMsg.includes('invalid payload length')) {
+                    log.warn('WebSocket frame error (raw)', { error: errorMsg });
+                    this._handleDisconnect('frame_error', error);
+                    return;
+                }
+
+                log.warn('WebSocket error', { error: errorMsg });
+                this._handleDisconnect('ws_error', error);
             });
         }
 
         // Forward block events
         this.provider.on('block', (blockNumber) => {
             this.lastSuccessfulHeartbeat = Date.now();
+            // FIX v3.8: Reset 429 counter on successful block receipt
+            this.consecutive429Errors = 0;
             this.emit('block', blockNumber);
         });
     }
@@ -224,14 +258,28 @@ export class ResilientWebSocket extends EventEmitter {
 
     /**
      * Handle disconnection and trigger reconnect
+     * FIX v3.8: Enhanced to track error types for adaptive backoff
      */
-    _handleDisconnect(reason) {
+    _handleDisconnect(reason, error = null) {
         // Prevent re-entry during cleanup, reconnection, or shutdown
         if (this.state === 'reconnecting' || this.state === 'circuit_open' || this.isCleaningUp || this.isShuttingDown) {
             return; // Already handling or shutting down
         }
 
-        log.warn('ResilientWebSocket disconnected', { reason });
+        // FIX v3.8: Track error type for adaptive backoff
+        this.lastErrorType = this._categorizeError(reason, error);
+        if (this.lastErrorType === 'rate_limit') {
+            this.consecutive429Errors++;
+            log.warn('ResilientWebSocket disconnected due to rate limit', {
+                reason,
+                consecutive429s: this.consecutive429Errors,
+            });
+        } else {
+            // Reset 429 counter on non-rate-limit errors
+            this.consecutive429Errors = 0;
+            log.warn('ResilientWebSocket disconnected', { reason });
+        }
+
         this.state = 'reconnecting';
 
         // Clean up current connection
@@ -246,7 +294,39 @@ export class ResilientWebSocket extends EventEmitter {
     }
 
     /**
+     * FIX v3.8: Categorize error for adaptive backoff strategy
+     * @private
+     */
+    _categorizeError(reason, error = null) {
+        const errorMsg = (error?.message || reason || '').toLowerCase();
+
+        // Rate limit / 429 errors
+        if (errorMsg.includes('429') ||
+            errorMsg.includes('rate limit') ||
+            errorMsg.includes('too many requests') ||
+            errorMsg.includes('capacity')) {
+            return 'rate_limit';
+        }
+
+        // Invalid WebSocket frame (Alchemy-specific issue)
+        if (errorMsg.includes('invalid websocket frame') ||
+            errorMsg.includes('invalid payload length')) {
+            return 'frame_error';
+        }
+
+        // Connection errors
+        if (errorMsg.includes('timeout') ||
+            errorMsg.includes('econnreset') ||
+            errorMsg.includes('enotfound')) {
+            return 'connection_error';
+        }
+
+        return 'unknown';
+    }
+
+    /**
      * Schedule reconnection with exponential backoff + jitter
+     * FIX v3.8: Adaptive backoff based on error type - longer delays for rate limits
      */
     _scheduleReconnect() {
         // Don't schedule reconnects during shutdown
@@ -267,18 +347,36 @@ export class ResilientWebSocket extends EventEmitter {
             return;
         }
 
+        // FIX v3.8: Adaptive base delay based on error type
+        let effectiveBaseDelay = this.config.reconnectBaseDelayMs;
+
+        if (this.lastErrorType === 'rate_limit') {
+            // Rate limit errors need much longer delays
+            // Each consecutive 429 doubles the base delay
+            effectiveBaseDelay = this.config.reconnectBaseDelayMs * Math.pow(2, this.consecutive429Errors);
+            // Cap at 5 minutes for rate limit errors
+            effectiveBaseDelay = Math.min(effectiveBaseDelay, 5 * 60 * 1000);
+        } else if (this.lastErrorType === 'frame_error') {
+            // Frame errors (Alchemy-specific) - moderate delay to let server stabilize
+            effectiveBaseDelay = this.config.reconnectBaseDelayMs * 2;
+        }
+
         // Calculate delay with exponential backoff
-        const baseDelay = this.config.reconnectBaseDelayMs * Math.pow(2, this.reconnectAttempts - 1);
+        const baseDelay = effectiveBaseDelay * Math.pow(2, this.reconnectAttempts - 1);
         const cappedDelay = Math.min(baseDelay, this.config.reconnectMaxDelayMs);
 
-        // Add jitter to prevent thundering herd
-        const jitter = cappedDelay * this.config.jitterFactor * (Math.random() - 0.5) * 2;
-        const finalDelay = Math.max(100, cappedDelay + jitter);
+        // FIX v3.8: Increased jitter range to prevent thundering herd
+        // Use random offset between 0 and jitterFactor (not centered around 0)
+        // This ensures all workers don't reconnect at exactly the same time
+        const jitter = cappedDelay * this.config.jitterFactor * Math.random();
+        const finalDelay = Math.max(500, cappedDelay + jitter);
 
         log.info('Scheduling reconnect', {
             attempt: this.reconnectAttempts,
             maxAttempts: this.config.maxReconnectAttempts,
             delayMs: Math.round(finalDelay),
+            errorType: this.lastErrorType,
+            consecutive429s: this.consecutive429Errors,
         });
 
         this.reconnectTimer = setTimeout(async () => {

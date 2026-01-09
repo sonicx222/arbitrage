@@ -74,6 +74,13 @@ class RPCManager extends EventEmitter {
         // v2.1: Cooldown tracking for rate-limited endpoints
         this.endpointCooldowns = new Map(); // endpoint -> cooldownUntil timestamp
 
+        // FIX v3.8: Monthly capacity tracking for Alchemy endpoints
+        // When monthly limit is hit, we need much longer cooldowns (hours, not minutes)
+        this.monthlyLimitEndpoints = new Map(); // endpoint -> timestamp when monthly limit detected
+
+        // FIX v3.8: Alchemy endpoint identification for special handling
+        this.alchemyEndpoints = new Set();
+
         // FIX v3.7: Pending request tracking for atomic rate limiting
         // Tracks requests that are reserved but not yet completed
         this.pendingRequests = new Map(); // endpoint -> count of pending requests
@@ -106,14 +113,31 @@ class RPCManager extends EventEmitter {
 
     /**
      * Initialize HTTP and WebSocket providers
+     * FIX v3.8: Identify Alchemy endpoints for special rate limit handling
      */
     initializeProviders() {
-        // HTTP Providers
-        this.httpEndpoints.forEach((endpoint, index) => {
+        // HTTP Providers - FIX v3.8: Reorder to prioritize free/public nodes
+        // Sort endpoints: public nodes first, Alchemy last (to preserve monthly quota)
+        const sortedEndpoints = [...this.httpEndpoints].sort((a, b) => {
+            const aIsAlchemy = a.includes('alchemy.com');
+            const bIsAlchemy = b.includes('alchemy.com');
+            if (aIsAlchemy && !bIsAlchemy) return 1; // Alchemy goes to end
+            if (!aIsAlchemy && bIsAlchemy) return -1;
+            return 0;
+        });
+
+        sortedEndpoints.forEach((endpoint, index) => {
             try {
                 const provider = new ethers.JsonRpcProvider(endpoint);
                 this.httpProviders.push({ endpoint, provider, index });
                 this.endpointHealth.set(endpoint, { healthy: true, lastCheck: Date.now(), failures: 0 });
+
+                // FIX v3.8: Track Alchemy endpoints for special handling
+                if (endpoint.includes('alchemy.com')) {
+                    this.alchemyEndpoints.add(endpoint);
+                    log.debug(`Alchemy endpoint registered (will be used conservatively): ${this._maskEndpoint(endpoint)}`);
+                }
+
                 log.debug(`HTTP Provider ${index} initialized: ${endpoint}`);
             } catch (error) {
                 log.error(`Failed to initialize HTTP provider ${index}: ${endpoint}`, { error: error.message });
@@ -235,10 +259,16 @@ class RPCManager extends EventEmitter {
      * Strategy: Round-robin across ALL healthy providers to distribute load,
      * instead of always prioritizing Alchemy which causes rate limit hits.
      *
+     * FIX v3.8: Enhanced to:
+     * - Avoid Alchemy endpoints when monthly limit is reached
+     * - Prioritize public/free endpoints over paid Alchemy
+     * - Apply longer cooldowns for Alchemy rate limits
+     *
      * Providers are filtered by:
      * 1. Health status (not marked unhealthy)
      * 2. Not in cooldown (recently rate-limited)
      * 3. Under per-endpoint rate limit
+     * 4. FIX v3.8: Not at monthly capacity limit
      */
     getHttpProvider() {
         const now = Date.now();
@@ -252,17 +282,39 @@ class RPCManager extends EventEmitter {
             if (health?.healthy === false) return false;
             if (now < cooldownUntil) return false;
 
+            // FIX v3.8: Skip Alchemy endpoints that hit monthly capacity
+            // These need to be avoided for much longer (24 hours)
+            const monthlyLimitTime = this.monthlyLimitEndpoints.get(p.endpoint);
+            if (monthlyLimitTime) {
+                const hoursSinceLimitHit = (now - monthlyLimitTime) / (1000 * 60 * 60);
+                if (hoursSinceLimitHit < 24) {
+                    return false; // Skip for 24 hours after monthly limit
+                } else {
+                    // Clear the monthly limit flag after 24 hours
+                    this.monthlyLimitEndpoints.delete(p.endpoint);
+                }
+            }
+
             // Skip if at rate limit (but don't mark unhealthy yet)
             if (!this.canMakeRequest(p.endpoint, false)) return false;
 
             return true;
         });
 
-        if (availableProviders.length === 0) {
+        // FIX v3.8: Prefer non-Alchemy providers when both are available
+        // This helps preserve Alchemy monthly quota
+        const nonAlchemyProviders = availableProviders.filter(p => !this.alchemyEndpoints.has(p.endpoint));
+        const providersToUse = nonAlchemyProviders.length > 0 ? nonAlchemyProviders : availableProviders;
+
+        if (providersToUse.length === 0) {
             // Try to find ANY provider that's at least healthy (ignore rate limits)
-            const healthyProviders = this.httpProviders.filter(p =>
-                this.endpointHealth.get(p.endpoint)?.healthy !== false
-            );
+            // FIX v3.8: But still skip monthly-limited Alchemy endpoints
+            const healthyProviders = this.httpProviders.filter(p => {
+                if (this.endpointHealth.get(p.endpoint)?.healthy === false) return false;
+                // Don't include monthly-limited Alchemy in emergency recovery
+                if (this.monthlyLimitEndpoints.has(p.endpoint)) return false;
+                return true;
+            });
 
             if (healthyProviders.length > 0) {
                 // Clear cooldowns and reset rate limits - emergency recovery
@@ -270,11 +322,12 @@ class RPCManager extends EventEmitter {
                 this.endpointCooldowns.clear();
                 this.requestCounts.clear();
 
-                // Return first healthy, will wait if needed via throttle
-                return healthyProviders[0];
+                // FIX v3.8: Prefer non-Alchemy even in emergency
+                const emergencyNonAlchemy = healthyProviders.filter(p => !this.alchemyEndpoints.has(p.endpoint));
+                return emergencyNonAlchemy.length > 0 ? emergencyNonAlchemy[0] : healthyProviders[0];
             }
 
-            // Last resort: reset all health status
+            // Last resort: reset all health status (but keep monthly limits)
             log.warn('All HTTP providers marked unhealthy, resetting all...');
             this.httpProviders.forEach(p => {
                 const health = this.endpointHealth.get(p.endpoint);
@@ -285,13 +338,16 @@ class RPCManager extends EventEmitter {
             });
             this.endpointCooldowns.clear();
             this.requestCounts.clear();
-            return this.httpProviders[0];
+
+            // FIX v3.8: Still prefer non-monthly-limited providers
+            const resetProviders = this.httpProviders.filter(p => !this.monthlyLimitEndpoints.has(p.endpoint));
+            return resetProviders.length > 0 ? resetProviders[0] : this.httpProviders[0];
         }
 
         // v2.1 FIX: True round-robin across ALL available providers
         // Use global counter modulo available length to handle dynamic provider availability
         // The counter increments globally, but we always select based on current available set
-        const selectedIndex = this.currentHttpIndex % availableProviders.length;
+        const selectedIndex = this.currentHttpIndex % providersToUse.length;
         this.currentHttpIndex++;
 
         // Prevent counter overflow (reset when very large)
@@ -299,7 +355,7 @@ class RPCManager extends EventEmitter {
             this.currentHttpIndex = 0;
         }
 
-        return availableProviders[selectedIndex];
+        return providersToUse[selectedIndex];
     }
 
     /**
@@ -581,13 +637,34 @@ class RPCManager extends EventEmitter {
 
                 // v2.1: Enhanced rate limit detection and handling
                 const isRateLimitError = this._isRateLimitError(error);
+                // FIX v3.8: Detect monthly capacity errors separately
+                const isMonthlyLimit = this._isMonthlyCapacityError(error);
+
+                if (failedEndpoint && isMonthlyLimit) {
+                    // FIX v3.8: Monthly capacity limit - needs very long cooldown
+                    // Mark endpoint as monthly-limited (24 hour exclusion)
+                    this.monthlyLimitEndpoints.set(failedEndpoint, Date.now());
+                    this.setEndpointCooldown(failedEndpoint, 24 * 60 * 60 * 1000); // 24 hours
+                    this.markEndpointUnhealthy(failedEndpoint);
+                    log.error(`⚠️ Monthly capacity limit hit on ${this._maskEndpoint(failedEndpoint)}! Endpoint disabled for 24h`, {
+                        endpoint: this._maskEndpoint(failedEndpoint),
+                        isAlchemy: this.alchemyEndpoints.has(failedEndpoint),
+                        recommendation: 'Consider upgrading Alchemy plan or adding more RPC endpoints',
+                    });
+
+                    // Don't retry on monthly limit - switch to other providers immediately
+                    continue;
+                }
 
                 if (failedEndpoint && isRateLimitError) {
                     // v2.1: Put endpoint in cooldown instead of just marking unhealthy
-                    // This allows recovery without full 5-minute healing cycle
-                    this.setEndpointCooldown(failedEndpoint, 60000); // 1 minute cooldown
+                    // FIX v3.8: Longer cooldown for Alchemy endpoints to preserve quota
+                    const cooldownMs = this.alchemyEndpoints.has(failedEndpoint)
+                        ? 5 * 60 * 1000  // 5 minutes for Alchemy
+                        : 60 * 1000;      // 1 minute for others
+                    this.setEndpointCooldown(failedEndpoint, cooldownMs);
                     this.markEndpointUnhealthy(failedEndpoint);
-                    log.rpc(`Rate limit hit on ${this._maskEndpoint(failedEndpoint)}, cooldown activated`);
+                    log.rpc(`Rate limit hit on ${this._maskEndpoint(failedEndpoint)}, cooldown ${cooldownMs/1000}s activated`);
 
                     // Wait longer on rate limit errors
                     const delay = config.rpc.retryDelay * Math.pow(2, attempt + 1);
@@ -620,7 +697,25 @@ class RPCManager extends EventEmitter {
                msg.includes('rate limit') ||
                msg.includes('too many requests') ||
                msg.includes('quota exceeded') ||
-               msg.includes('capacity exceeded');
+               msg.includes('capacity exceeded') ||
+               msg.includes('monthly capacity');
+    }
+
+    /**
+     * FIX v3.8: Check if an error indicates monthly capacity limit (Alchemy-specific)
+     * Monthly limits require much longer cooldowns than per-minute rate limits
+     * @private
+     */
+    _isMonthlyCapacityError(error) {
+        if (!error) return false;
+
+        const msg = error.message?.toLowerCase() || '';
+        return msg.includes('monthly capacity') ||
+               msg.includes('monthly limit') ||
+               msg.includes('upgrade your scaling policy') ||
+               msg.includes('billing') ||
+               // Alchemy-specific patterns from the error logs
+               (msg.includes('capacity limit exceeded') && msg.includes('dashboard.alchemy.com'));
     }
 
     /**

@@ -17,11 +17,15 @@ export class ResilientWebSocketManager extends EventEmitter {
         super();
 
         // Configuration
+        // FIX v3.8: Increased failover delay and added stagger settings
         this.config = {
             maxConcurrentConnections: options.maxConcurrentConnections || 2,
             preferredEndpointIndex: options.preferredEndpointIndex || 0,
-            failoverDelayMs: options.failoverDelayMs || 1000,
+            failoverDelayMs: options.failoverDelayMs || 3000,      // FIX v3.8: Increased from 1000
             healthCheckIntervalMs: options.healthCheckIntervalMs || 30000,
+            // FIX v3.8: Stagger reconnection to prevent thundering herd
+            staggerDelayMs: options.staggerDelayMs || 2000,        // Delay between endpoint reconnects
+            staggerJitterMs: options.staggerJitterMs || 1000,      // Random jitter added to stagger
             // Pass through to ResilientWebSocket
             wsOptions: options.wsOptions || {},
         };
@@ -87,15 +91,25 @@ export class ResilientWebSocketManager extends EventEmitter {
         // Connect to primary endpoint first
         await this._connectToEndpoint(endpoints[this.config.preferredEndpointIndex] || endpoints[0]);
 
+        // FIX v3.8: Stagger backup endpoint connections to prevent thundering herd
         // Connect to backup endpoints (up to maxConcurrentConnections)
         const backupEndpoints = endpoints.filter((_, i) => i !== this.config.preferredEndpointIndex);
         const backupsToConnect = backupEndpoints.slice(0, this.config.maxConcurrentConnections - 1);
 
-        for (const endpoint of backupsToConnect) {
-            // Connect backups in background (don't await)
-            this._connectToEndpoint(endpoint).catch(e => {
-                log.debug(`Backup endpoint connection deferred: ${this._maskUrl(endpoint)}`);
-            });
+        for (let i = 0; i < backupsToConnect.length; i++) {
+            const endpoint = backupsToConnect[i];
+            // FIX v3.8: Stagger connection attempts with increasing delay
+            const staggerDelay = (i + 1) * this.config.staggerDelayMs +
+                                 Math.random() * this.config.staggerJitterMs;
+
+            // Connect backups in background with stagger (don't await)
+            setTimeout(() => {
+                if (!this.isShuttingDown) {
+                    this._connectToEndpoint(endpoint).catch(e => {
+                        log.debug(`Backup endpoint connection deferred: ${this._maskUrl(endpoint)}`);
+                    });
+                }
+            }, staggerDelay);
         }
 
         // Start health monitoring
@@ -256,7 +270,7 @@ export class ResilientWebSocketManager extends EventEmitter {
             return;
         }
 
-        // FIX v3.6: Use a short debounce to coalesce rapid disconnection events
+        // FIX v3.8: Increased debounce to better coalesce cascade disconnections
         if (this.failoverDebounceTimer) {
             clearTimeout(this.failoverDebounceTimer);
         }
@@ -264,7 +278,7 @@ export class ResilientWebSocketManager extends EventEmitter {
         this.failoverDebounceTimer = setTimeout(() => {
             this.failoverDebounceTimer = null;
             this._executeFailover();
-        }, 100); // 100ms debounce
+        }, 500); // FIX v3.8: Increased from 100ms to 500ms
     }
 
     /**
@@ -301,8 +315,12 @@ export class ResilientWebSocketManager extends EventEmitter {
                     to: this._maskUrl(newPrimary),
                 });
 
-                // Try to reconnect old primary in background for future failback
+                // FIX v3.8: Staggered reconnect of old primary with longer delay
+                // This prevents thundering herd when multiple failovers happen
                 // Track timer for cleanup during shutdown
+                const staggeredDelay = this.config.failoverDelayMs +
+                                       Math.random() * this.config.staggerJitterMs +
+                                       this.stats.failovers * 1000; // Add 1s per failover to spread reconnects
                 const timer = setTimeout(() => {
                     // Remove from pending timers
                     const idx = this.pendingFailoverTimers.indexOf(timer);
@@ -316,7 +334,7 @@ export class ResilientWebSocketManager extends EventEmitter {
                             });
                         });
                     }
-                }, this.config.failoverDelayMs);
+                }, staggeredDelay);
 
                 timer.unref();
                 this.pendingFailoverTimers.push(timer);
