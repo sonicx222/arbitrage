@@ -20,6 +20,9 @@ class V2V3Arbitrage extends EventEmitter {
     constructor(config = {}) {
         super();
 
+        // FIX v3.11: Set max listeners to catch potential memory leaks early
+        this.setMaxListeners(15);
+
         // Minimum spread to consider (after fees)
         this.minSpreadPercent = config.minSpreadPercent || 0.15; // 0.15%
 
@@ -195,6 +198,9 @@ class V2V3Arbitrage extends EventEmitter {
         let bestSellTier = null;
         let bestBuyLiquidity = 0;
         let bestSellLiquidity = 0;
+        // FIX v3.11: Store fees when finding best prices to avoid redundant recalculation
+        let bestBuyFee = 0;
+        let bestSellFee = 0;
 
         for (const [tierKey, priceData] of Object.entries(v3PairPrices)) {
             if (!priceData.isV3) continue;
@@ -210,12 +216,14 @@ class V2V3Arbitrage extends EventEmitter {
                 bestBuyPrice = price;
                 bestBuyTier = tierKey;
                 bestBuyLiquidity = liquidity;
+                bestBuyFee = fee;  // FIX v3.11: Store fee with best price
             }
 
             if (price > bestSellPrice) {
                 bestSellPrice = price;
                 bestSellTier = tierKey;
                 bestSellLiquidity = liquidity;
+                bestSellFee = fee;  // FIX v3.11: Store fee with best price
             }
         }
 
@@ -228,8 +236,8 @@ class V2V3Arbitrage extends EventEmitter {
             sellTier: bestSellTier,
             buyLiquidity: bestBuyLiquidity,
             sellLiquidity: bestSellLiquidity,
-            buyFee: this._getFeeFromTierKey(bestBuyTier),
-            sellFee: this._getFeeFromTierKey(bestSellTier),
+            buyFee: bestBuyFee,   // FIX v3.11: Use stored fee instead of recalculating
+            sellFee: bestSellFee, // FIX v3.11: Use stored fee instead of recalculating
         };
     }
 

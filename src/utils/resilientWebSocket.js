@@ -14,6 +14,9 @@ export class ResilientWebSocket extends EventEmitter {
     constructor(url, chainId, options = {}) {
         super();
 
+        // FIX v3.11: Set max listeners to catch potential memory leaks early
+        this.setMaxListeners(15);
+
         this.url = url;
         this.chainId = chainId;
         // FIX v3.3: Add chain name for clearer logging

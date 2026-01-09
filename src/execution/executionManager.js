@@ -105,7 +105,11 @@ class ExecutionManager {
 
         // Initialize flash loan optimizer with chain ID
         // FIX v3.6: Standardized chainId access path for consistency
-        const chainId = config.network?.chainId || config.chainId || 56; // Default to BSC
+        // FIX v3.11: Add warning when using fallback chain ID
+        const chainId = config.network?.chainId || config.chainId || 56;
+        if (!config.network?.chainId && !config.chainId) {
+            log.warn('No chainId in config, defaulting to BSC (56). Set config.chainId for explicit chain selection.');
+        }
         await flashLoanOptimizer.initialize(chainId);
         log.info('Flash loan optimizer initialized', {
             chainId,

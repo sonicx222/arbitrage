@@ -36,7 +36,8 @@ jest.unstable_mockModule('../../src/utils/rpcManager.js', () => ({
                 getNetwork: jest.fn(() => Promise.resolve({ chainId: 42161n })),
             },
         })),
-        getWebSocketProvider: jest.fn(() => null),
+        // FIX v3.11: Use correct method name to match rpcManager API
+        getWsProvider: jest.fn(() => null),
         on: jest.fn(),
         off: jest.fn(),
     },

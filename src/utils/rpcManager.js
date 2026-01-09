@@ -30,6 +30,9 @@ class RPCManager extends EventEmitter {
     constructor(chainConfig = null) {
         super();
 
+        // FIX v3.11: Set max listeners to catch potential memory leaks early
+        this.setMaxListeners(20);
+
         // FIX v3.3: Use chain-specific config if provided, otherwise default to main config
         const rpcConfig = chainConfig?.rpc || config.rpc;
         const networkConfig = chainConfig || config.network || config;

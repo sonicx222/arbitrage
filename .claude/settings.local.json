@@ -27,7 +27,8 @@
       "Bash(grep:*)",
       "Bash(git mv:*)",
       "Bash(timeout 120 npm start:*)",
-      "Bash(timeout 180 npm start)"
+      "Bash(timeout 180 npm start)",
+      "Bash(tee:*)"
     ]
   }
 }

@@ -28,18 +28,30 @@ export default {
             ws: process.env.ARBITRUM_ALCHEMY_WS || '',
         },
 
+        // FIX v3.10: Expanded free HTTP endpoints for better rate limit resilience
         http: [
-            process.env.ARBITRUM_ALCHEMY_HTTP,
+            // Tier 1: Official & most reliable
+            'https://arb1.arbitrum.io/rpc',           // Arbitrum official - free
+            'https://arbitrum.llamarpc.com',          // LlamaRPC - reliable
+            'https://arbitrum.publicnode.com',        // PublicNode - reliable
+            // Tier 2: Additional free endpoints
+            'https://arbitrum-one.public.blastapi.io', // BlastAPI
+            'https://rpc.ankr.com/arbitrum',          // Ankr - free tier
+            'https://1rpc.io/arb',                    // 1RPC - privacy-focused
+            'https://arbitrum.drpc.org',              // dRPC - free tier
+            'https://arbitrum.meowrpc.com',           // MeowRPC - free
+            'https://arbitrum-one-rpc.publicnode.com', // PublicNode backup
+            // Tier 3: Custom & paid (last resort)
             process.env.ARBITRUM_RPC_HTTP_1,
-            'https://arb1.arbitrum.io/rpc',
-            'https://arbitrum.llamarpc.com',
-            'https://arbitrum-one.public.blastapi.io',
+            process.env.ARBITRUM_ALCHEMY_HTTP,        // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
+        // FIX v3.10: Expanded WS endpoints
         ws: [
-            process.env.ARBITRUM_ALCHEMY_WS,
+            'wss://arbitrum.publicnode.com',          // PublicNode - free
+            'wss://arbitrum-one-rpc.publicnode.com',  // PublicNode backup
             process.env.ARBITRUM_RPC_WS_1,
-            'wss://arbitrum.publicnode.com',
+            process.env.ARBITRUM_ALCHEMY_WS,          // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
         maxRequestsPerMinute: parseInt(process.env.ARBITRUM_MAX_RPC_RPM || '300'),

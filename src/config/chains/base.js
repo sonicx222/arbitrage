@@ -28,18 +28,30 @@ export default {
             ws: process.env.BASE_ALCHEMY_WS || '',
         },
 
+        // FIX v3.10: Expanded free HTTP endpoints for better rate limit resilience
         http: [
-            process.env.BASE_ALCHEMY_HTTP,
+            // Tier 1: Official & most reliable
+            'https://mainnet.base.org',               // Base official - free
+            'https://base.llamarpc.com',              // LlamaRPC - reliable
+            'https://base.publicnode.com',            // PublicNode - reliable
+            // Tier 2: Additional free endpoints
+            'https://base-mainnet.public.blastapi.io', // BlastAPI
+            'https://rpc.ankr.com/base',              // Ankr - free tier
+            'https://1rpc.io/base',                   // 1RPC - privacy-focused
+            'https://base.drpc.org',                  // dRPC - free tier
+            'https://base.meowrpc.com',               // MeowRPC - free
+            'https://base-rpc.publicnode.com',        // PublicNode backup
+            // Tier 3: Custom & paid (last resort)
             process.env.BASE_RPC_HTTP_1,
-            'https://mainnet.base.org',
-            'https://base.llamarpc.com',
-            'https://base-mainnet.public.blastapi.io',
+            process.env.BASE_ALCHEMY_HTTP,            // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
+        // FIX v3.10: Expanded WS endpoints
         ws: [
-            process.env.BASE_ALCHEMY_WS,
+            'wss://base.publicnode.com',              // PublicNode - free
+            'wss://base-rpc.publicnode.com',          // PublicNode backup
             process.env.BASE_RPC_WS_1,
-            'wss://base.publicnode.com',
+            process.env.BASE_ALCHEMY_WS,              // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
         maxRequestsPerMinute: parseInt(process.env.BASE_MAX_RPC_RPM || '300'),

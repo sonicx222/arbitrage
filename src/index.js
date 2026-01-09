@@ -219,7 +219,8 @@ class ArbitrageBot {
         if (config.liquidation?.enabled !== false) {
             try {
                 const chainId = config.chainId || 56;
-                const provider = rpcManager.getProvider();
+                // FIX v3.11: Use correct method - getHttpProvider() returns { endpoint, provider, index }
+                const provider = rpcManager.getHttpProvider().provider;
                 await liquidationMonitor.initialize(provider, chainId);
                 await liquidationMonitor.start();
                 log.info('Liquidation monitor started', {
@@ -257,7 +258,8 @@ class ArbitrageBot {
         if (config.newPairs?.enabled !== false) {
             try {
                 const chainId = config.chainId || 56;
-                const wsProvider = rpcManager.getWebSocketProvider?.() || rpcManager.getProvider();
+                // FIX v3.11: Use correct methods - getWsProvider/getHttpProvider return { provider, ... }
+                const wsProvider = rpcManager.getWsProvider()?.provider || rpcManager.getHttpProvider().provider;
 
                 // Use singleton instance and configure it
                 this.newPairMonitor = newPairMonitorSingleton;

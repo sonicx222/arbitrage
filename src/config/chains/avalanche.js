@@ -28,18 +28,30 @@ export default {
             ws: process.env.AVALANCHE_ALCHEMY_WS || '',
         },
 
+        // FIX v3.10: Expanded free HTTP endpoints for better rate limit resilience
         http: [
-            process.env.AVALANCHE_ALCHEMY_HTTP,
+            // Tier 1: Official & most reliable
+            'https://api.avax.network/ext/bc/C/rpc',  // Avalanche official - free
+            'https://avalanche.llamarpc.com',         // LlamaRPC - reliable
+            'https://avalanche-c-chain.publicnode.com', // PublicNode - reliable
+            // Tier 2: Additional free endpoints
+            'https://avalanche.public-rpc.com',       // Public RPC
+            'https://rpc.ankr.com/avalanche',         // Ankr - free tier
+            'https://1rpc.io/avax/c',                 // 1RPC - privacy-focused
+            'https://avalanche.drpc.org',             // dRPC - free tier
+            'https://avax.meowrpc.com',               // MeowRPC - free
+            'https://avalanche-c-chain-rpc.publicnode.com', // PublicNode backup
+            // Tier 3: Custom & paid (last resort)
             process.env.AVALANCHE_RPC_HTTP_1,
-            'https://api.avax.network/ext/bc/C/rpc',
-            'https://avalanche.public-rpc.com',
-            'https://avalanche-c-chain.publicnode.com',
+            process.env.AVALANCHE_ALCHEMY_HTTP,       // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
+        // FIX v3.10: Expanded WS endpoints
         ws: [
-            process.env.AVALANCHE_ALCHEMY_WS,
+            'wss://avalanche-c-chain.publicnode.com', // PublicNode - free
+            'wss://avalanche-c-chain-rpc.publicnode.com', // PublicNode backup
             process.env.AVALANCHE_RPC_WS_1,
-            'wss://avalanche-c-chain.publicnode.com',
+            process.env.AVALANCHE_ALCHEMY_WS,         // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
         maxRequestsPerMinute: parseInt(process.env.AVALANCHE_MAX_RPC_RPM || '300'),

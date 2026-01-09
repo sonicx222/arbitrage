@@ -22,6 +22,9 @@ export default class WorkerCoordinator extends EventEmitter {
     constructor(config = {}) {
         super();
 
+        // FIX v3.11: Set max listeners to catch potential memory leaks early
+        this.setMaxListeners(25); // Higher limit due to per-worker events
+
         // Worker tracking
         this.workers = new Map(); // chainId -> Worker
         this.workerStatus = new Map(); // chainId -> { status, lastHeartbeat, errors }

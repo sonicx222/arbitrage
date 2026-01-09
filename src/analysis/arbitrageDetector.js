@@ -63,12 +63,23 @@ class ArbitrageDetector {
             return Number(scaledValue) * (10 ** halfDecimals);
         }
 
-        // Still too large - use maximum precision we can get
+        // FIX v3.11: Still too large - use progressive scaling to preserve more precision
         // This means the pool has astronomical liquidity (>$100T at 18 decimals)
-        log.warn('BigInt value exceeds safe conversion range, precision loss possible', {
+        // Instead of losing all lower digits, we progressively scale down
+        log.warn('BigInt value exceeds safe conversion range, using progressive scaling', {
             valueStr: value.toString().slice(0, 20) + '...',
         });
-        return Number(value / BigInt(10 ** decimals)) * (10 ** decimals);
+
+        // Find minimum scale factor needed to bring into safe range
+        let currentScale = BigInt(1);
+        let scaledValue = value;
+        while (scaledValue > this.MAX_SAFE_BIGINT && currentScale < BigInt(10 ** decimals)) {
+            currentScale *= 10n;
+            scaledValue = value / currentScale;
+        }
+
+        // Convert and scale back - this preserves more significant digits
+        return Number(scaledValue) * Number(currentScale);
     }
 
     /**

@@ -1,5 +1,7 @@
 import config from '../config.js';
 import log from '../utils/logger.js';
+// FIX v3.11: Import flash loan fees for accurate profit estimation
+import { FLASH_LOAN_FEES } from '../contracts/abis.js';
 
 /**
  * Triangular Arbitrage Detector
@@ -361,10 +363,16 @@ class TriangularDetector {
         }
 
         // FIX v3.7: Flash loan fee calculation using integer-only math for precision
-        // Flash loan fee (0.25% = 0.0025 = 25/10000) - must be accounted for in profit calculation
-        const flashLoanFee = config.execution?.flashLoanFee || 0.0025;
+        // FIX v3.11: Use most likely flash loan fee based on available providers
+        // Priority: Aave V3 (0.09%) is most common, fall back to PancakeSwap (0.25%)
+        // This matches the behavior of flashLoanOptimizer.selectBestProvider()
+        const flashLoanFee = config.execution?.flashLoanFee
+            || (config.flashLoan?.preferredProvider === 'aave' ? FLASH_LOAN_FEES.AAVE_V3 : null)
+            || (config.flashLoan?.preferredProvider === 'balancer' ? FLASH_LOAN_FEES.BALANCER : null)
+            || FLASH_LOAN_FEES.AAVE_V3  // Default to Aave V3 (most common, 0.09%)
+            || 0.0009;
         // Convert fee to basis points (integer) to avoid float precision issues
-        // e.g., 0.0025 * 1000000 = 2500 (0.25% in parts per million)
+        // e.g., 0.0009 * 1000000 = 900 (0.09% in parts per million)
         const flashFeeBasisPointsPPM = BigInt(Math.round(flashLoanFee * 1000000));
 
         // Golden ratio for optimal convergence
