@@ -72,14 +72,14 @@ class ArbitrageDetector {
 
         // Find minimum scale factor needed to bring into safe range
         let currentScale = BigInt(1);
-        let scaledValue = value;
-        while (scaledValue > this.MAX_SAFE_BIGINT && currentScale < BigInt(10 ** decimals)) {
+        let progressiveScaled = value;
+        while (progressiveScaled > this.MAX_SAFE_BIGINT && currentScale < BigInt(10 ** decimals)) {
             currentScale *= 10n;
-            scaledValue = value / currentScale;
+            progressiveScaled = value / currentScale;
         }
 
         // Convert and scale back - this preserves more significant digits
-        return Number(scaledValue) * Number(currentScale);
+        return Number(progressiveScaled) * Number(currentScale);
     }
 
     /**
