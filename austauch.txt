@@ -1,368 +1,279 @@
+t.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":5}
+2026-01-09 08:13:44 [error] Worker BSC error: Unexpected server response: 429
+2026-01-09 08:13:44 [error] Worker 56 reported error {"chainId":56,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":6}
+2026-01-09 08:13:44 [error] Worker BSC error: Unexpected server response: 429
+[Worker 56] Uncaught exception (6/10): Unexpected server response: 429
+[Worker 250] Uncaught exception (3/10): Unexpected server response: 429
+2026-01-09 08:13:44 [error] Worker 250 reported error {"chainId":250,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
+2026-01-09 08:13:44 [error] Worker 250 error: Unexpected server response: 429
+2026-01-09 08:13:44 [error] Worker 250 reported error {"chainId":250,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
+2026-01-09 08:13:44 [error] Worker 250 error: Unexpected server response: 429
+[Worker 250] Uncaught exception (4/10): Unexpected server response: 429
+[Worker 137] Uncaught exception (5/10): Unexpected server response: 429
+2026-01-09 08:13:44 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":5}
+2026-01-09 08:13:44 [error] Worker Polygon error: Unexpected server response: 429
+2026-01-09 08:13:44 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":6}
+2026-01-09 08:13:44 [error] Worker Polygon error: Unexpected server response: 429
+[Worker 137] Uncaught exception (6/10): Unexpected server response: 429
+[Worker 56] Uncaught exception (7/10): Unexpected server response: 429
+2026-01-09 08:13:44 [error] Worker 56 reported error {"chainId":56,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":7}
+2026-01-09 08:13:44 [error] Worker BSC error: Unexpected server response: 429
+2026-01-09 08:13:44 [error] Worker 56 reported error {"chainId":56,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":8}
+2026-01-09 08:13:44 [error] Worker BSC error: Unexpected server response: 429
+[Worker 56] Uncaught exception (8/10): Unexpected server response: 429
+[Worker 137] Uncaught exception (7/10): Unexpected server response: 429
+2026-01-09 08:13:44 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":7}
+2026-01-09 08:13:44 [error] Worker Polygon error: Unexpected server response: 429
+2026-01-09 08:13:44 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":8}
+2026-01-09 08:13:44 [error] Worker Polygon error: Unexpected server response: 429
+[Worker 137] Uncaught exception (8/10): Unexpected server response: 429
+^C2026-01-09 08:13:46 [info] 
+Received shutdown signal: SIGINT
+2026-01-09 08:13:46 [info] Stopping Arbitrage Bot (graceful shutdown)...
+2026-01-09 08:13:46 [info] Worker 1 stopped
+2026-01-09 08:13:46 [info] Worker 10 stopped
+2026-01-09 08:13:46 [info] Worker 56 stopped
+2026-01-09 08:13:46 [info] Worker 137 stopped
+2026-01-09 08:13:46 [info] Worker 250 stopped
+2026-01-09 08:13:46 [info] Worker 324 stopped
+2026-01-09 08:13:46 [info] 
+Received shutdown signal: SIGINT
+pho@CVDEM053 Arbitrage_Bot_V2 % 
+ *  History restored 
+
 pho@CVDEM053 Arbitrage_Bot_V2 % npm start
 
 > bsc-arbitrage-bot@2.0.0 start
 > node src/index.js
 
-2026-01-08 23:21:32 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
-2026-01-08 23:21:32 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
-2026-01-08 23:21:32 [info] Alert Manager initialized {"channels":["console"]}
-2026-01-08 23:21:32 [info] Performance Tracker initialized
-2026-01-08 23:21:32 [info] Gas Price Manager initialized {"eip1559Chains":[1,137,42161,8453,43114],"legacyChains":[56]}
-2026-01-08 23:21:32 [info] Transaction Builder initialized {"contractAddress":"not configured","eip1559Support":true}
-2026-01-08 23:21:32 [info] Gas Optimizer initialized {"maxGasPrice":"10 Gwei","tiers":{"high":{"minProfit":50,"multiplier":1.2},"medium":{"minProfit":10,"multiplier":1},"low":{"minProfit":0,"multiplier":0.95}}}
-2026-01-08 23:21:32 [info] FlashLoanOptimizer v2.0 initialized {"providers":["dydx (0%)","balancer (0%)","aave_v3 (0.09%)","pancakeswap (0.25%)","uniswap_v2 (0.3%)"],"chainId":56,"zeroFeeProviders":["dydx","balancer"]}
-2026-01-08 23:21:32 [info] FlashbotsProvider created
-2026-01-08 23:21:32 [info] Execution Simulator initialized {"blockTime":"3000ms","avgCompetitors":3}
-2026-01-08 23:21:32 [info] Block Time Predictor initialized {"sampleSize":50,"optimalLeadTime":"400ms"}
-2026-01-08 23:21:32 [info] Execution Manager initialized {"mode":"simulation","contractConfigured":false}
-2026-01-08 23:21:32 [info] EventDrivenDetector initialized (resilient mode) {"enabled":true,"maxPairs":100,"swapEventsEnabled":true,"v3Enabled":true,"maxV3Pools":50}
-2026-01-08 23:21:32 [info] ReserveDifferentialAnalyzer initialized {"significantChangeThreshold":"0.5%","largeChangeThreshold":"2%"}
-2026-01-08 23:21:32 [info] CrossPoolCorrelation initialized {"historyLength":100,"correlationThreshold":0.7}
-2026-01-08 23:21:32 [info] DexAggregator initialized {"chainId":56,"aggregators":["1inch","paraswap"]}
-2026-01-08 23:21:32 [info] WhaleTracker initialized {"minTradeUSD":10000,"minTradesForWhale":5}
-2026-01-08 23:21:32 [info] LiquidationMonitor initialized {"chainId":1,"minLiquidationUSD":1000,"protocols":["aaveV3Pool","aaveV3DataProvider","compoundV3USDC","compoundV3WETH"]}
-2026-01-08 23:21:32 [info] V3LiquidityAnalyzer initialized {"tickWindow":100,"feeTiers":[100,500,3000,10000]}
-2026-01-08 23:21:32 [info] V2/V3 Arbitrage detector initialized {"minSpreadPercent":0.15,"v2Fee":0.003,"v3FeeTiers":[100,500,3000,10000]}
-2026-01-08 23:21:32 [info] Statistical Arbitrage Detector initialized {"windowSize":100,"zScoreThreshold":2,"minSamples":20}
-2026-01-08 23:21:32 [info] New Pair Monitor initialized {"minLiquidityUSD":1000,"minSpreadPercent":"0.5%"}
-2026-01-08 23:21:32 [info] Arbitrage Bot v3.0.0 (Multi-Chain) starting...
-2026-01-08 23:21:32 [info] Starting in multi-chain mode {"chains":["Ethereum Mainnet","Optimism Mainnet","BSC Mainnet","Polygon Mainnet","Fantom Opera","zkSync Era","Base Mainnet","Arbitrum One","Avalanche C-Chain"],"chainCount":9}
-2026-01-08 23:21:32 [info] CrossChainDetector initialized {"tokens":11,"minProfitUSD":10}
-2026-01-08 23:21:32 [info] Dashboard available at http://localhost:8080
-2026-01-08 23:21:32 [info] Starting workers for 6 chains...
-2026-01-08 23:21:32 [info] Spawned worker for chain 1 (Ethereum Mainnet)
-2026-01-08 23:21:32 [info] Spawned worker for chain 10 (Optimism Mainnet)
-2026-01-08 23:21:32 [info] Spawned worker for chain 56 (BSC Mainnet)
-2026-01-08 23:21:32 [info] Spawned worker for chain 137 (Polygon Mainnet)
-2026-01-08 23:21:32 [info] Spawned worker for chain 250 (Fantom Opera)
-2026-01-08 23:21:32 [info] Spawned worker for chain 324 (zkSync Era)
-2026-01-08 23:21:32 [info] Dashboard listening on port 8080
-2026-01-08 23:21:33 [info] Created chain instance: ethereum (ID: 1)
-2026-01-08 23:21:33 [info] Created chain instance: bsc (ID: 56)
-2026-01-08 23:21:33 [info] Created chain instance: fantom (ID: 250)
-2026-01-08 23:21:33 [info] Created chain instance: zksync (ID: 324)
-2026-01-08 23:21:33 [info] Created chain instance: optimism (ID: 10)
-2026-01-08 23:21:33 [info] Created chain instance: polygon (ID: 137)
-2026-01-08 23:21:33 [info] [BSC Mainnet] WebSocket manager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:21:33 [info] Worker 1 initialized
-2026-01-08 23:21:33 [info] [Ethereum Mainnet] Initializing Ethereum chain components... {"chainId":1,"chainName":"Ethereum Mainnet"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
-2026-01-08 23:21:33 [info] [Ethereum Mainnet] RPC Manager initialized with 4 HTTP and 2 WebSocket endpoints {"chainId":1,"chainName":"Ethereum Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"960/min","throttling":"100ms min interval"}
-2026-01-08 23:21:33 [info] [Ethereum Mainnet] Block Monitor initialized (resilient mode)
-2026-01-08 23:21:33 [info] [Ethereum Mainnet] Ethereum chain initialized successfully {"dexes":7,"tokens":28,"chainId":1,"chainName":"Ethereum Mainnet"}
-2026-01-08 23:21:33 [info] Worker 324 initialized
-2026-01-08 23:21:33 [info] [zkSync Era] Initializing zkSync Era chain components... {"chainId":324,"chainName":"zkSync Era"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
-2026-01-08 23:21:33 [info] [zkSync Era] zkSync Era chain initialized successfully {"dexes":7,"tokens":11,"chainId":324,"chainName":"zkSync Era"}
-2026-01-08 23:21:33 [info] Worker 250 initialized
-2026-01-08 23:21:33 [info] Worker 56 initialized
-2026-01-08 23:21:33 [info] [Fantom Opera] Initializing Fantom chain components... {"chainId":250,"chainName":"Fantom Opera"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
-2026-01-08 23:21:33 [info] [Fantom Opera] Fantom chain initialized successfully {"dexes":8,"tokens":14,"chainId":250,"chainName":"Fantom Opera"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] Initializing BSC chain components... {"chainId":56,"chainName":"BSC Mainnet"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
-2026-01-08 23:21:33 [info] Gas Price Manager initialized {"eip1559Chains":[1,137,42161,8453,43114],"legacyChains":[56]}
-2026-01-08 23:21:33 [info] Transaction Builder initialized {"contractAddress":"not configured","eip1559Support":true}
-2026-01-08 23:21:33 [info] Gas Optimizer initialized {"maxGasPrice":"10 Gwei","tiers":{"high":{"minProfit":50,"multiplier":1.2},"medium":{"minProfit":10,"multiplier":1},"low":{"minProfit":0,"multiplier":0.95}}}
-2026-01-08 23:21:33 [info] FlashLoanOptimizer v2.0 initialized {"providers":["dydx (0%)","balancer (0%)","aave_v3 (0.09%)","pancakeswap (0.25%)","uniswap_v2 (0.3%)"],"chainId":56,"zeroFeeProviders":["dydx","balancer"]}
-2026-01-08 23:21:33 [info] FlashbotsProvider created
-2026-01-08 23:21:33 [info] Execution Simulator initialized {"blockTime":"3000ms","avgCompetitors":3}
-2026-01-08 23:21:33 [info] Block Time Predictor initialized {"sampleSize":50,"optimalLeadTime":"400ms"}
-2026-01-08 23:21:33 [info] Execution Manager initialized {"mode":"simulation","contractConfigured":false}
-2026-01-08 23:21:33 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
-2026-01-08 23:21:33 [info] [BSC Mainnet] BSC chain initialized successfully {"dexes":14,"tokens":36,"baseTokens":6,"chainId":56,"chainName":"BSC Mainnet"}
-2026-01-08 23:21:33 [info] Worker 10 initialized
-2026-01-08 23:21:33 [info] [Optimism Mainnet] Initializing Optimism chain components... {"chainId":10,"chainName":"Optimism Mainnet"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
-2026-01-08 23:21:33 [info] [Optimism Mainnet] Optimism chain initialized successfully {"dexes":6,"tokens":14,"chainId":10,"chainName":"Optimism Mainnet"}
-2026-01-08 23:21:33 [info] Worker 137 initialized
-2026-01-08 23:21:33 [info] [Ethereum Mainnet] WebSocket manager initialized {"endpoints":2,"chainId":1,"primaryEndpoint":"wss://eth-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:21:33 [info] [Polygon Mainnet] Initializing Polygon chain components... {"chainId":137,"chainName":"Polygon Mainnet"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
-2026-01-08 23:21:33 [info] [Polygon Mainnet] RPC Manager initialized with 4 HTTP and 2 WebSocket endpoints {"chainId":137,"chainName":"Polygon Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"960/min","throttling":"50ms min interval"}
-2026-01-08 23:21:33 [info] [Polygon Mainnet] Block Monitor initialized (resilient mode)
-2026-01-08 23:21:33 [info] [Polygon Mainnet] Polygon chain initialized successfully {"dexes":11,"tokens":30,"chainId":137,"chainName":"Polygon Mainnet"}
-2026-01-08 23:21:33 [info] [Ethereum Mainnet] Starting Ethereum chain monitoring... {"chainId":1,"chainName":"Ethereum Mainnet"}
-2026-01-08 23:21:33 [info] [zkSync Era] Starting zkSync Era chain monitoring... {"chainId":324,"chainName":"zkSync Era"}
-2026-01-08 23:21:33 [info] [Optimism Mainnet] Starting Optimism chain monitoring... {"chainId":10,"chainName":"Optimism Mainnet"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] Starting BSC chain monitoring... {"chainId":56,"chainName":"BSC Mainnet"}
-2026-01-08 23:21:33 [info] [Fantom Opera] Starting Fantom chain monitoring... {"chainId":250,"chainName":"Fantom Opera"}
-2026-01-08 23:21:33 [info] [Polygon Mainnet] Starting Polygon chain monitoring... {"chainId":137,"chainName":"Polygon Mainnet"}
-2026-01-08 23:21:33 [info] [BSC Mainnet] WebSocket manager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:21:33 [info] [BSC Mainnet] WebSocket manager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:21:33 [info] [BSC Mainnet] WebSocket manager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:21:33 [info] [BSC Mainnet] WebSocket manager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:21:33 [info] [BSC Mainnet] WebSocket manager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:21:33 [info] [BSC Mainnet] WebSocket manager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:21:33 [info] [Polygon Mainnet] WebSocket manager initialized {"endpoints":2,"chainId":137,"primaryEndpoint":"wss://polygon-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:21:34 [info] [BSC Mainnet] WebSocket manager initialized {"endpoints":2,"chainId":56,"primaryEndpoint":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:21:34 [info] [BSC Mainnet] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":74544782}
-2026-01-08 23:21:34 [info] Worker 250 started monitoring
-2026-01-08 23:21:34 [info] [Ethereum Mainnet] Gas price cache pre-warmed (275.14ms) {"chainId":1,"chainName":"Ethereum Mainnet"}
-2026-01-08 23:21:34 [info] [BSC Mainnet] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":74544782}
-2026-01-08 23:21:34 [info] Worker 324 started monitoring
-2026-01-08 23:21:34 [info] [BSC Mainnet] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":74544782}
-2026-01-08 23:21:34 [info] [zkSync Era] zkSync Era chain monitoring started {"chainId":324,"chainName":"zkSync Era"}
-2026-01-08 23:21:34 [info] Worker 10 started monitoring
-2026-01-08 23:21:34 [info] [Optimism Mainnet] Optimism chain monitoring started {"chainId":10,"chainName":"Optimism Mainnet"}
-2026-01-08 23:21:34 [info] [Fantom Opera] Fantom chain monitoring started {"chainId":250,"chainName":"Fantom Opera"}
-2026-01-08 23:21:34 [info] [Polygon Mainnet] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":81395815}
-2026-01-08 23:21:34 [info] Worker 137 started monitoring
-2026-01-08 23:21:34 [info] [Polygon Mainnet] Polygon chain monitoring started {"chainId":137,"chainName":"Polygon Mainnet"}
-2026-01-08 23:21:34 [info] [BSC Mainnet] Gas price cache pre-warmed (504.38ms) {"chainId":56,"chainName":"BSC Mainnet"}
-2026-01-08 23:21:34 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
-2026-01-08 23:21:34 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
-2026-01-08 23:21:34 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
-2026-01-08 23:21:34 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
-2026-01-08 23:21:34 [info] [Ethereum Mainnet] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":24192909}
-2026-01-08 23:21:34 [info] Worker 1 started monitoring
-2026-01-08 23:21:34 [info] [Ethereum Mainnet] Ethereum chain monitoring started {"chainId":1,"chainName":"Ethereum Mainnet"}
-2026-01-08 23:21:34 [info] [BSC Mainnet] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":74544783}
-2026-01-08 23:21:34 [info] Worker 56 started monitoring
-2026-01-08 23:21:34 [info] [BSC Mainnet] BSC chain monitoring started {"chainId":56,"chainName":"BSC Mainnet"}
-2026-01-08 23:21:34 [info] All 6 workers started successfully
-2026-01-08 23:21:34 [info] Multi-chain monitoring started for 9 chains
-2026-01-08 23:21:34 [info] Bot is now running and monitoring for arbitrage opportunities
-2026-01-08 23:21:35 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
-2026-01-08 23:21:37 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
-2026-01-08 23:24:25 [warn] 🔌 RPC: Request failed (attempt 1/5) {"error":"read ETIMEDOUT","endpoint":"https://bsc-dataseed.binance.org/..."}
-2026-01-08 23:26:10 [warn] WebSocket closed {"code":1006,"reason":""}
-2026-01-08 23:26:10 [warn] WebSocket closed {"code":1006,"reason":""}
-2026-01-08 23:26:10 [warn] ResilientWebSocket disconnected {"reason":"ws_close"}
-2026-01-08 23:26:10 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":1294}
-2026-01-08 23:26:10 [warn] WebSocket disconnected: wss://bsc.publicnode.com/ {"reason":"ws_close"}
-2026-01-08 23:26:10 [warn] ResilientWebSocket disconnected {"reason":"ws_close"}
-2026-01-08 23:26:10 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":726}
-2026-01-08 23:26:10 [warn] WebSocket disconnected: wss://bsc.publicnode.com/ {"reason":"ws_close"}
-2026-01-08 23:26:11 [info] WebSocket reconnected: wss://bsc.publicnode.com/
-2026-01-08 23:26:12 [info] WebSocket reconnected: wss://bsc.publicnode.com/
-2026-01-08 23:32:04 [warn] WebSocket error {"error":"Invalid WebSocket frame: invalid payload length 126"}
-2026-01-08 23:32:04 [warn] ResilientWebSocket disconnected {"reason":"ws_error"}
-2026-01-08 23:32:04 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":1130}
-2026-01-08 23:32:04 [warn] WebSocket disconnected: wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... {"reason":"ws_error"}
-2026-01-08 23:32:04 [warn] WebSocket closed {"code":1006,"reason":""}
-2026-01-08 23:32:04 [warn] Primary WebSocket failover {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/","totalFailovers":1}
-2026-01-08 23:32:04 [warn] WebSocket failover occurred {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/"}
-2026-01-08 23:32:05 [info] ResilientWebSocket disconnecting
-[Worker 56] Uncaught exception (1/10): Invalid WebSocket frame: invalid payload length 126
-2026-01-08 23:32:05 [error] Worker 56 reported error {"chainId":56,"error":"Invalid WebSocket frame: invalid payload length 126","stack":"RangeError: Invalid WebSocket frame: invalid payload length 126\n    at Receiver.getInfo (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:299:28)\n    at Receiver.startLoop (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:155:16)\n    at Receiver._write (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:94:10)\n    at writeOrBuffer (node:internal/streams/writable:570:12)\n    at _write (node:internal/streams/writable:499:10)\n    at Writable.write (node:internal/streams/writable:508:10)\n    at TLSSocket.socketOnData (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:1305:35)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)","fatal":false,"errorCount":1}
-2026-01-08 23:32:05 [error] Worker BSC error: Invalid WebSocket frame: invalid payload length 126
-2026-01-08 23:32:05 [error] Worker 56 reported error {"chainId":56,"error":"Invalid WebSocket frame: invalid payload length 126","stack":"RangeError: Invalid WebSocket frame: invalid payload length 126\n    at Receiver.getInfo (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:299:28)\n    at Receiver.startLoop (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:155:16)\n    at Receiver._write (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:94:10)\n    at writeOrBuffer (node:internal/streams/writable:570:12)\n    at _write (node:internal/streams/writable:499:10)\n    at Writable.write (node:internal/streams/writable:508:10)\n    at TLSSocket.socketOnData (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:1305:35)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)","fatal":false,"errorCount":2}
-2026-01-08 23:32:05 [error] Worker BSC error: Invalid WebSocket frame: invalid payload length 126
-[Worker 56] Uncaught exception (2/10): Invalid WebSocket frame: invalid payload length 126
-2026-01-08 23:32:15 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:32:33 [warn] WebSocket error {"error":"Invalid WebSocket frame: invalid payload length 126"}
-2026-01-08 23:32:33 [warn] ResilientWebSocket disconnected {"reason":"ws_error"}
-2026-01-08 23:32:33 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":1128}
-2026-01-08 23:32:33 [warn] WebSocket disconnected: wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... {"reason":"ws_error"}
-2026-01-08 23:32:33 [warn] Primary WebSocket failover {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/","totalFailovers":1}
-2026-01-08 23:32:33 [warn] WebSocket failover occurred {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/"}
-2026-01-08 23:32:33 [warn] WebSocket closed {"code":1006,"reason":""}
-2026-01-08 23:32:33 [warn] WebSocket error {"error":"Invalid WebSocket frame: invalid payload length 126"}
-2026-01-08 23:32:33 [warn] ResilientWebSocket disconnected {"reason":"ws_error"}
-2026-01-08 23:32:33 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":739}
-2026-01-08 23:32:33 [warn] WebSocket disconnected: wss://eth-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... {"reason":"ws_error"}
-2026-01-08 23:32:33 [warn] WebSocket closed {"code":1006,"reason":""}
-2026-01-08 23:32:33 [warn] Primary WebSocket failover {"from":"wss://eth-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://ethereum.publicnode.com/","totalFailovers":1}
-2026-01-08 23:32:33 [warn] WebSocket failover occurred {"from":"wss://eth-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://ethereum.publicnode.com/"}
-2026-01-08 23:32:33 [warn] WebSocket error {"error":"Invalid WebSocket frame: invalid payload length 126"}
-2026-01-08 23:32:33 [warn] ResilientWebSocket disconnected {"reason":"ws_error"}
-2026-01-08 23:32:33 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":907}
-2026-01-08 23:32:33 [warn] WebSocket disconnected: wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... {"reason":"ws_error"}
-2026-01-08 23:32:33 [warn] WebSocket closed {"code":1006,"reason":""}
-2026-01-08 23:32:33 [warn] WebSocket error {"error":"Invalid WebSocket frame: invalid payload length 126"}
-2026-01-08 23:32:33 [warn] ResilientWebSocket disconnected {"reason":"ws_error"}
-2026-01-08 23:32:33 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":1045}
-2026-01-08 23:32:33 [warn] WebSocket disconnected: wss://polygon-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... {"reason":"ws_error"}
-2026-01-08 23:32:33 [warn] Primary WebSocket failover {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/","totalFailovers":1}
-2026-01-08 23:32:33 [warn] WebSocket failover occurred {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/"}
-2026-01-08 23:32:33 [warn] WebSocket closed {"code":1006,"reason":""}
-2026-01-08 23:32:34 [warn] Primary WebSocket failover {"from":"wss://polygon-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://polygon.publicnode.com/","totalFailovers":1}
-2026-01-08 23:32:34 [warn] WebSocket failover occurred {"from":"wss://polygon-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://polygon.publicnode.com/"}
-2026-01-08 23:32:34 [info] ResilientWebSocket disconnecting
-2026-01-08 23:32:34 [warn] Ignored harmless WebSocket handshake error {"error":"Unexpected server response: 429"}
+2026-01-09 10:23:40 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-09 10:23:40 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
+2026-01-09 10:23:40 [info] Alert Manager initialized {"channels":["console"]}
+2026-01-09 10:23:40 [info] Performance Tracker initialized
+2026-01-09 10:23:40 [info] Gas Price Manager initialized {"eip1559Chains":[1,137,42161,8453,43114],"legacyChains":[56]}
+2026-01-09 10:23:40 [info] Transaction Builder initialized {"contractAddress":"not configured","eip1559Support":true}
+2026-01-09 10:23:40 [info] Gas Optimizer initialized {"maxGasPrice":"10 Gwei","tiers":{"high":{"minProfit":50,"multiplier":1.2},"medium":{"minProfit":10,"multiplier":1},"low":{"minProfit":0,"multiplier":0.95}}}
+2026-01-09 10:23:40 [info] FlashLoanOptimizer v2.0 initialized {"providers":["dydx (0%)","balancer (0%)","aave_v3 (0.09%)","pancakeswap (0.25%)","uniswap_v2 (0.3%)"],"chainId":56,"zeroFeeProviders":["dydx","balancer"]}
+2026-01-09 10:23:40 [info] FlashbotsProvider created
+2026-01-09 10:23:40 [info] Execution Simulator initialized {"blockTime":"3000ms","avgCompetitors":3}
+2026-01-09 10:23:40 [info] Block Time Predictor initialized {"sampleSize":50,"optimalLeadTime":"400ms"}
+2026-01-09 10:23:40 [info] Execution Manager initialized {"mode":"simulation","contractConfigured":false}
+2026-01-09 10:23:40 [info] EventDrivenDetector initialized (resilient mode) {"enabled":true,"maxPairs":100,"swapEventsEnabled":true,"v3Enabled":true,"maxV3Pools":50}
+2026-01-09 10:23:40 [info] ReserveDifferentialAnalyzer initialized {"significantChangeThreshold":"0.5%","largeChangeThreshold":"2%"}
+2026-01-09 10:23:40 [info] CrossPoolCorrelation initialized {"historyLength":100,"correlationThreshold":0.7}
+2026-01-09 10:23:40 [info] DexAggregator initialized {"chainId":56,"aggregators":["1inch","paraswap"]}
+2026-01-09 10:23:40 [info] WhaleTracker initialized {"minTradeUSD":10000,"minTradesForWhale":5}
+2026-01-09 10:23:40 [info] LiquidationMonitor initialized {"chainId":1,"minLiquidationUSD":1000,"protocols":["aaveV3Pool","aaveV3DataProvider","compoundV3USDC","compoundV3WETH"]}
+2026-01-09 10:23:40 [info] V3LiquidityAnalyzer initialized {"tickWindow":100,"feeTiers":[100,500,3000,10000]}
+2026-01-09 10:23:40 [info] V2/V3 Arbitrage detector initialized {"minSpreadPercent":0.15,"v2Fee":0.003,"v3FeeTiers":[100,500,3000,10000]}
+2026-01-09 10:23:40 [info] Statistical Arbitrage Detector initialized {"windowSize":100,"zScoreThreshold":2,"minSamples":20}
+2026-01-09 10:23:40 [info] New Pair Monitor initialized {"minLiquidityUSD":1000,"minSpreadPercent":"0.5%"}
+2026-01-09 10:23:41 [info] Arbitrage Bot v3.0.0 (Multi-Chain) starting...
+2026-01-09 10:23:41 [info] Starting in multi-chain mode {"chains":["Ethereum Mainnet","Optimism Mainnet","BSC Mainnet","Polygon Mainnet","Fantom Opera","zkSync Era","Base Mainnet","Arbitrum One","Avalanche C-Chain"],"chainCount":9}
+2026-01-09 10:23:41 [info] CrossChainDetector initialized {"tokens":11,"minProfitUSD":10}
+2026-01-09 10:23:41 [info] Dashboard available at http://localhost:8080
+2026-01-09 10:23:41 [info] Starting workers for 6 chains...
+2026-01-09 10:23:41 [info] Spawned worker for chain 1 (Ethereum Mainnet)
+2026-01-09 10:23:41 [info] Spawned worker for chain 10 (Optimism Mainnet)
+2026-01-09 10:23:41 [info] Spawned worker for chain 56 (BSC Mainnet)
+2026-01-09 10:23:41 [info] Spawned worker for chain 137 (Polygon Mainnet)
+2026-01-09 10:23:41 [info] Spawned worker for chain 250 (Fantom Opera)
+2026-01-09 10:23:41 [info] Spawned worker for chain 324 (zkSync Era)
+2026-01-09 10:23:41 [info] Dashboard listening on port 8080
+2026-01-09 10:23:41 [warn] Ignored harmless WebSocket handshake error {"error":"Unexpected server response: 429"}
+2026-01-09 10:23:41 [info] Created chain instance: ethereum (ID: 1)
+2026-01-09 10:23:41 [info] Created chain instance: bsc (ID: 56)
+2026-01-09 10:23:41 [info] Created chain instance: fantom (ID: 250)
+2026-01-09 10:23:41 [info] Created chain instance: zksync (ID: 324)
+2026-01-09 10:23:41 [info] Created chain instance: polygon (ID: 137)
+2026-01-09 10:23:41 [info] Created chain instance: optimism (ID: 10)
+2026-01-09 10:23:41 [info] Worker 1 initialized
+2026-01-09 10:23:41 [info] [Ethereum Mainnet] Initializing Ethereum chain components... {"chainId":1,"chainName":"Ethereum Mainnet"}
+2026-01-09 10:23:41 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-09 10:23:41 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
+2026-01-09 10:23:41 [info] [Ethereum Mainnet] RPC Manager initialized with 10 HTTP and 3 WebSocket endpoints {"chainId":1,"chainName":"Ethereum Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"100ms min interval"}
+2026-01-09 10:23:41 [info] [Ethereum Mainnet] Block Monitor initialized (resilient mode)
+2026-01-09 10:23:41 [info] [Ethereum Mainnet] Ethereum chain initialized successfully {"dexes":7,"tokens":28,"chainId":1,"chainName":"Ethereum Mainnet"}
 [Worker 1] Uncaught exception (1/10): Unexpected server response: 429
-2026-01-08 23:32:34 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":1}
-2026-01-08 23:32:34 [error] Worker ETH error: Unexpected server response: 429
-2026-01-08 23:32:34 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":2}
-2026-01-08 23:32:34 [error] Worker ETH error: Unexpected server response: 429
+2026-01-09 10:23:42 [info] Worker 324 initialized
+2026-01-09 10:23:42 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":1}
+2026-01-09 10:23:42 [error] Worker ETH error: Unexpected server response: 429
+2026-01-09 10:23:42 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":2}
+2026-01-09 10:23:42 [error] Worker ETH error: Unexpected server response: 429
 [Worker 1] Uncaught exception (2/10): Unexpected server response: 429
-2026-01-08 23:32:34 [info] ResilientWebSocket disconnecting
-[Worker 250] Uncaught exception (1/10): Unexpected server response: 429
-2026-01-08 23:32:34 [error] Worker 250 reported error {"chainId":250,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":1}
-2026-01-08 23:32:34 [error] Worker 250 error: Unexpected server response: 429
-2026-01-08 23:32:34 [error] Worker 250 reported error {"chainId":250,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":2}
-2026-01-08 23:32:34 [error] Worker 250 error: Unexpected server response: 429
-[Worker 250] Uncaught exception (2/10): Unexpected server response: 429
-[Worker 1] Uncaught exception (3/10): Unexpected server response: 429
-2026-01-08 23:32:34 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
-2026-01-08 23:32:34 [error] Worker ETH error: Unexpected server response: 429
-2026-01-08 23:32:34 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
-2026-01-08 23:32:34 [error] Worker ETH error: Unexpected server response: 429
-[Worker 1] Uncaught exception (4/10): Unexpected server response: 429
-2026-01-08 23:32:34 [info] ResilientWebSocket disconnecting
-2026-01-08 23:32:35 [info] ResilientWebSocket disconnecting
-[Worker 250] Uncaught exception (3/10): Unexpected server response: 429
-2026-01-08 23:32:35 [error] Worker 250 reported error {"chainId":250,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
-2026-01-08 23:32:35 [error] Worker 250 error: Unexpected server response: 429
-2026-01-08 23:32:35 [error] Worker 250 reported error {"chainId":250,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
-2026-01-08 23:32:35 [error] Worker 250 error: Unexpected server response: 429
-[Worker 250] Uncaught exception (4/10): Unexpected server response: 429
-[Worker 137] Uncaught exception (1/10): WebSocket was closed before the connection was established
-2026-01-08 23:32:35 [error] Worker 137 reported error {"chainId":137,"error":"WebSocket was closed before the connection was established","stack":"Error: WebSocket was closed before the connection was established\n    at WebSocket.close (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:292:7)\n    at ResilientWebSocket._cleanup (file:///Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/src/utils/resilientWebSocket.js:430:36)\n    at ResilientWebSocket.disconnect (file:///Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/src/utils/resilientWebSocket.js:503:14)\n    at ResilientWebSocketManager._connectToEndpoint (file:///Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/src/utils/resilientWebSocketManager.js:155:36)\n    at Timeout._onTimeout (file:///Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/src/utils/resilientWebSocketManager.js:313:30)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","fatal":false,"errorCount":1}
-2026-01-08 23:32:35 [error] Worker Polygon error: WebSocket was closed before the connection was established
-2026-01-08 23:32:35 [error] Worker 137 reported error {"chainId":137,"error":"WebSocket was closed before the connection was established","stack":"Error: WebSocket was closed before the connection was established\n    at WebSocket.close (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:292:7)\n    at ResilientWebSocket._cleanup (file:///Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/src/utils/resilientWebSocket.js:430:36)\n    at ResilientWebSocket.disconnect (file:///Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/src/utils/resilientWebSocket.js:503:14)\n    at ResilientWebSocketManager._connectToEndpoint (file:///Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/src/utils/resilientWebSocketManager.js:155:36)\n    at Timeout._onTimeout (file:///Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/src/utils/resilientWebSocketManager.js:313:30)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","fatal":false,"errorCount":2}
-2026-01-08 23:32:35 [error] Worker Polygon error: WebSocket was closed before the connection was established
-[Worker 137] Recoverable error detected, continuing operation
-[Worker 137] Recoverable error detected, continuing operation
-[Worker 137] Uncaught exception (2/10): WebSocket was closed before the connection was established
-[Worker 137] Uncaught exception (3/10): Unexpected server response: 429
-2026-01-08 23:32:35 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
-2026-01-08 23:32:35 [error] Worker Polygon error: Unexpected server response: 429
-2026-01-08 23:32:35 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
-2026-01-08 23:32:35 [error] Worker Polygon error: Unexpected server response: 429
-[Worker 137] Uncaught exception (4/10): Unexpected server response: 429
-2026-01-08 23:32:44 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:32:44 [error] Reconnect failed {"error":"Connection timeout"}
-2026-01-08 23:32:44 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:32:44 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:32:44 [error] Reconnect failed {"error":"Connection timeout"}
-2026-01-08 23:32:44 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:32:44 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:32:45 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:32:45 [error] Reconnect failed {"error":"Connection timeout"}
-2026-01-08 23:32:45 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:33:03 [warn] WebSocket error {"error":"Invalid WebSocket frame: invalid payload length 126"}
-2026-01-08 23:33:03 [warn] ResilientWebSocket disconnected {"reason":"ws_error"}
-2026-01-08 23:33:03 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":964}
-2026-01-08 23:33:03 [warn] WebSocket disconnected: wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... {"reason":"ws_error"}
-2026-01-08 23:33:03 [warn] WebSocket closed {"code":1006,"reason":""}
-2026-01-08 23:33:03 [warn] WebSocket error {"error":"Invalid WebSocket frame: invalid payload length 126"}
-2026-01-08 23:33:03 [warn] ResilientWebSocket disconnected {"reason":"ws_error"}
-2026-01-08 23:33:03 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":858}
-2026-01-08 23:33:03 [warn] WebSocket disconnected: wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... {"reason":"ws_error"}
-2026-01-08 23:33:03 [warn] WebSocket closed {"code":1006,"reason":""}
-2026-01-08 23:33:03 [warn] Primary WebSocket failover {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/","totalFailovers":1}
-2026-01-08 23:33:03 [warn] WebSocket failover occurred {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/"}
-2026-01-08 23:33:04 [warn] Primary WebSocket failover {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/","totalFailovers":1}
-2026-01-08 23:33:04 [warn] WebSocket failover occurred {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/"}
-[Worker 137] Uncaught exception (5/10): Unexpected server response: 429
-2026-01-08 23:33:04 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":5}
-2026-01-08 23:33:04 [error] Worker Polygon error: Unexpected server response: 429
-2026-01-08 23:33:04 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":6}
-2026-01-08 23:33:04 [error] Worker Polygon error: Unexpected server response: 429
-[Worker 137] Uncaught exception (6/10): Unexpected server response: 429
-[Worker 56] Uncaught exception (3/10): Invalid WebSocket frame: invalid payload length 126
-2026-01-08 23:33:04 [error] Worker 56 reported error {"chainId":56,"error":"Invalid WebSocket frame: invalid payload length 126","stack":"RangeError: Invalid WebSocket frame: invalid payload length 126\n    at Receiver.getInfo (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:299:28)\n    at Receiver.startLoop (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:155:16)\n    at /Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:531:42\n    at /Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/permessage-deflate.js:309:9\n    at /Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/permessage-deflate.js:392:7\n    at afterWrite (node:internal/streams/writable:708:5)\n    at onwrite (node:internal/streams/writable:686:7)\n    at Zlib.cb (node:internal/streams/transform:191:7)\n    at Zlib.processCallback (node:zlib:600:8)","fatal":false,"errorCount":3}
-2026-01-08 23:33:04 [error] Worker BSC error: Invalid WebSocket frame: invalid payload length 126
-2026-01-08 23:33:04 [error] Worker 56 reported error {"chainId":56,"error":"Invalid WebSocket frame: invalid payload length 126","stack":"RangeError: Invalid WebSocket frame: invalid payload length 126\n    at Receiver.getInfo (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:299:28)\n    at Receiver.startLoop (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:155:16)\n    at /Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/receiver.js:531:42\n    at /Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/permessage-deflate.js:309:9\n    at /Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/permessage-deflate.js:392:7\n    at afterWrite (node:internal/streams/writable:708:5)\n    at onwrite (node:internal/streams/writable:686:7)\n    at Zlib.cb (node:internal/streams/transform:191:7)\n    at Zlib.processCallback (node:zlib:600:8)","fatal":false,"errorCount":4}
-2026-01-08 23:33:04 [error] Worker BSC error: Invalid WebSocket frame: invalid payload length 126
-[Worker 56] Uncaught exception (4/10): Invalid WebSocket frame: invalid payload length 126
-2026-01-08 23:33:04 [info] ResilientWebSocket disconnecting
-2026-01-08 23:33:05 [info] ResilientWebSocket disconnecting
-[Worker 56] Uncaught exception (5/10): Unexpected server response: 429
-2026-01-08 23:33:05 [error] Worker 56 reported error {"chainId":56,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":5}
-2026-01-08 23:33:05 [error] Worker BSC error: Unexpected server response: 429
-2026-01-08 23:33:05 [error] Worker 56 reported error {"chainId":56,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":6}
-2026-01-08 23:33:05 [error] Worker BSC error: Unexpected server response: 429
-[Worker 56] Uncaught exception (6/10): Unexpected server response: 429
-[Worker 137] Uncaught exception (7/10): Unexpected server response: 429
-2026-01-08 23:33:05 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":7}
-2026-01-08 23:33:05 [error] Worker Polygon error: Unexpected server response: 429
-2026-01-08 23:33:05 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":8}
-2026-01-08 23:33:05 [error] Worker Polygon error: Unexpected server response: 429
-[Worker 137] Uncaught exception (8/10): Unexpected server response: 429
-2026-01-08 23:33:14 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:33:14 [error] Reconnect failed {"error":"Connection timeout"}
-2026-01-08 23:33:14 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:33:14 [error] Reconnect failed {"error":"Connection timeout"}
-2026-01-08 23:33:14 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:33:15 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:33:33 [warn] WebSocket error {"error":"Invalid WebSocket frame: invalid payload length 126"}
-2026-01-08 23:33:33 [warn] ResilientWebSocket disconnected {"reason":"ws_error"}
-2026-01-08 23:33:33 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":711}
-2026-01-08 23:33:33 [warn] WebSocket disconnected: wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... {"reason":"ws_error"}
-2026-01-08 23:33:33 [warn] WebSocket closed {"code":1006,"reason":""}
-2026-01-08 23:33:33 [warn] Primary WebSocket failover {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/","totalFailovers":1}
-2026-01-08 23:33:33 [warn] WebSocket failover occurred {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/"}
-2026-01-08 23:33:33 [warn] WebSocket error {"error":"Invalid WebSocket frame: invalid payload length 126"}
-2026-01-08 23:33:33 [warn] ResilientWebSocket disconnected {"reason":"ws_error"}
-2026-01-08 23:33:33 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":948}
-2026-01-08 23:33:33 [warn] WebSocket disconnected: wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... {"reason":"ws_error"}
-2026-01-08 23:33:34 [warn] Primary WebSocket failover {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/","totalFailovers":1}
-2026-01-08 23:33:34 [warn] WebSocket failover occurred {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/"}
-2026-01-08 23:33:34 [warn] WebSocket closed {"code":1006,"reason":""}
-[Worker 10] Uncaught exception (1/10): Unexpected server response: 429
-2026-01-08 23:33:34 [error] Worker 10 reported error {"chainId":10,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":1}
-2026-01-08 23:33:34 [error] Worker 10 error: Unexpected server response: 429
-2026-01-08 23:33:34 [error] Worker 10 reported error {"chainId":10,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":2}
-2026-01-08 23:33:34 [error] Worker 10 error: Unexpected server response: 429
-[Worker 10] Uncaught exception (2/10): Unexpected server response: 429
-2026-01-08 23:33:34 [info] ResilientWebSocket disconnecting
-[Worker 1] Uncaught exception (1/10): Unexpected server response: 429
-2026-01-08 23:33:35 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":1}
-2026-01-08 23:33:35 [error] Worker ETH error: Unexpected server response: 429
-2026-01-08 23:33:35 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":2}
-2026-01-08 23:33:35 [error] Worker ETH error: Unexpected server response: 429
-[Worker 1] Uncaught exception (2/10): Unexpected server response: 429
-[Worker 10] Uncaught exception (3/10): Unexpected server response: 429
-2026-01-08 23:33:35 [error] Worker 10 reported error {"chainId":10,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
-2026-01-08 23:33:35 [error] Worker 10 error: Unexpected server response: 429
-2026-01-08 23:33:35 [error] Worker 10 reported error {"chainId":10,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
-2026-01-08 23:33:35 [error] Worker 10 error: Unexpected server response: 429
-[Worker 10] Uncaught exception (4/10): Unexpected server response: 429
-2026-01-08 23:33:35 [info] ResilientWebSocket disconnecting
-[Worker 1] Uncaught exception (3/10): Unexpected server response: 429
-2026-01-08 23:33:35 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
-2026-01-08 23:33:35 [error] Worker ETH error: Unexpected server response: 429
-2026-01-08 23:33:35 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
-2026-01-08 23:33:35 [error] Worker ETH error: Unexpected server response: 429
-[Worker 1] Uncaught exception (4/10): Unexpected server response: 429
-2026-01-08 23:33:44 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:33:44 [error] Reconnect failed {"error":"Connection timeout"}
-2026-01-08 23:33:44 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:33:44 [error] Reconnect failed {"error":"Connection timeout"}
-2026-01-08 23:33:44 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:33:45 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:34:03 [warn] WebSocket error {"error":"Invalid WebSocket frame: invalid payload length 126"}
-2026-01-08 23:34:03 [warn] ResilientWebSocket disconnected {"reason":"ws_error"}
-2026-01-08 23:34:03 [info] Scheduling reconnect {"attempt":1,"maxAttempts":10,"delayMs":889}
-2026-01-08 23:34:03 [warn] WebSocket disconnected: wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... {"reason":"ws_error"}
-2026-01-08 23:34:03 [warn] WebSocket closed {"code":1006,"reason":""}
-2026-01-08 23:34:03 [warn] Primary WebSocket failover {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/","totalFailovers":1}
-2026-01-08 23:34:03 [warn] WebSocket failover occurred {"from":"wss://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR...","to":"wss://bsc.publicnode.com/"}
+2026-01-09 10:23:41 [info] [zkSync Era] Initializing zkSync Era chain components... {"chainId":324,"chainName":"zkSync Era"}
+2026-01-09 10:23:41 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-09 10:23:41 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
+2026-01-09 10:23:42 [info] [zkSync Era] zkSync Era chain initialized successfully {"dexes":7,"tokens":11,"chainId":324,"chainName":"zkSync Era"}
+2026-01-09 10:23:42 [info] Worker 250 initialized
+2026-01-09 10:23:42 [info] Worker 10 initialized
+2026-01-09 10:23:42 [info] Worker 56 initialized
+2026-01-09 10:23:41 [info] [Fantom Opera] Initializing Fantom chain components... {"chainId":250,"chainName":"Fantom Opera"}
+2026-01-09 10:23:42 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-09 10:23:42 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
+2026-01-09 10:23:42 [info] [Fantom Opera] Fantom chain initialized successfully {"dexes":8,"tokens":14,"chainId":250,"chainName":"Fantom Opera"}
+2026-01-09 10:23:41 [info] [BSC Mainnet] Initializing BSC chain components... {"chainId":56,"chainName":"BSC Mainnet"}
+2026-01-09 10:23:41 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-09 10:23:41 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
+2026-01-09 10:23:42 [info] Gas Price Manager initialized {"eip1559Chains":[1,137,42161,8453,43114],"legacyChains":[56]}
+2026-01-09 10:23:42 [info] Transaction Builder initialized {"contractAddress":"not configured","eip1559Support":true}
+2026-01-09 10:23:42 [info] Gas Optimizer initialized {"maxGasPrice":"10 Gwei","tiers":{"high":{"minProfit":50,"multiplier":1.2},"medium":{"minProfit":10,"multiplier":1},"low":{"minProfit":0,"multiplier":0.95}}}
+2026-01-09 10:23:42 [info] FlashLoanOptimizer v2.0 initialized {"providers":["dydx (0%)","balancer (0%)","aave_v3 (0.09%)","pancakeswap (0.25%)","uniswap_v2 (0.3%)"],"chainId":56,"zeroFeeProviders":["dydx","balancer"]}
+2026-01-09 10:23:42 [info] FlashbotsProvider created
+2026-01-09 10:23:42 [info] Execution Simulator initialized {"blockTime":"3000ms","avgCompetitors":3}
+2026-01-09 10:23:42 [info] Block Time Predictor initialized {"sampleSize":50,"optimalLeadTime":"400ms"}
+2026-01-09 10:23:42 [info] Execution Manager initialized {"mode":"simulation","contractConfigured":false}
+2026-01-09 10:23:42 [info] [BSC Mainnet] RPC Manager initialized with 15 HTTP and 3 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-09 10:23:42 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
+2026-01-09 10:23:42 [info] [BSC Mainnet] BSC chain initialized successfully {"dexes":14,"tokens":36,"baseTokens":6,"chainId":56,"chainName":"BSC Mainnet"}
+2026-01-09 10:23:41 [info] [Optimism Mainnet] Initializing Optimism chain components... {"chainId":10,"chainName":"Optimism Mainnet"}
+2026-01-09 10:23:42 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-09 10:23:42 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
+2026-01-09 10:23:42 [info] [Optimism Mainnet] Optimism chain initialized successfully {"dexes":6,"tokens":14,"chainId":10,"chainName":"Optimism Mainnet"}
+2026-01-09 10:23:42 [info] Worker 137 initialized
+2026-01-09 10:23:41 [info] [Polygon Mainnet] Initializing Polygon chain components... {"chainId":137,"chainName":"Polygon Mainnet"}
+2026-01-09 10:23:42 [info] [BSC Mainnet] RPC Manager initialized with 6 HTTP and 2 WebSocket endpoints {"chainId":56,"chainName":"BSC Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-09 10:23:42 [info] [BSC Mainnet] Block Monitor initialized (resilient mode)
+2026-01-09 10:23:42 [info] [Polygon Mainnet] RPC Manager initialized with 11 HTTP and 3 WebSocket endpoints {"chainId":137,"chainName":"Polygon Mainnet","selfHealing":true,"healingInterval":"5 minutes","resilientWebSocket":true,"globalBudget":"1000/min","throttling":"50ms min interval"}
+2026-01-09 10:23:42 [info] [Polygon Mainnet] Block Monitor initialized (resilient mode)
+2026-01-09 10:23:42 [info] [Polygon Mainnet] Polygon chain initialized successfully {"dexes":11,"tokens":30,"chainId":137,"chainName":"Polygon Mainnet"}
 [Worker 324] Uncaught exception (1/10): Unexpected server response: 429
-2026-01-08 23:34:04 [error] Worker 324 reported error {"chainId":324,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":1}
-2026-01-08 23:34:04 [error] Worker 324 error: Unexpected server response: 429
-2026-01-08 23:34:04 [error] Worker 324 reported error {"chainId":324,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":2}
-2026-01-08 23:34:04 [error] Worker 324 error: Unexpected server response: 429
+2026-01-09 10:23:42 [info] [Ethereum Mainnet] Starting Ethereum chain monitoring... {"chainId":1,"chainName":"Ethereum Mainnet"}
+2026-01-09 10:23:42 [info] [Optimism Mainnet] Starting Optimism chain monitoring... {"chainId":10,"chainName":"Optimism Mainnet"}
+2026-01-09 10:23:42 [info] [Polygon Mainnet] Starting Polygon chain monitoring... {"chainId":137,"chainName":"Polygon Mainnet"}
+2026-01-09 10:23:42 [info] [BSC Mainnet] Starting BSC chain monitoring... {"chainId":56,"chainName":"BSC Mainnet"}
+2026-01-09 10:23:42 [info] [Fantom Opera] Starting Fantom chain monitoring... {"chainId":250,"chainName":"Fantom Opera"}
+2026-01-09 10:23:42 [error] Worker 324 reported error {"chainId":324,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":1}
+2026-01-09 10:23:42 [error] Worker 324 error: Unexpected server response: 429
+2026-01-09 10:23:42 [error] Worker 324 reported error {"chainId":324,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":2}
+2026-01-09 10:23:42 [error] Worker 324 error: Unexpected server response: 429
 [Worker 324] Uncaught exception (2/10): Unexpected server response: 429
-2026-01-08 23:34:04 [info] ResilientWebSocket disconnecting
+2026-01-09 10:23:42 [info] [zkSync Era] Starting zkSync Era chain monitoring... {"chainId":324,"chainName":"zkSync Era"}
+2026-01-09 10:23:42 [info] [Ethereum Mainnet] WebSocket manager initialized {"endpoints":3,"chainId":1,"primaryEndpoint":"wss://ethereum.publicnode.com/"}
+[Worker 56] Uncaught exception (1/10): Unexpected server response: 429
+2026-01-09 10:23:42 [error] Worker 56 reported error {"chainId":56,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":1}
+2026-01-09 10:23:42 [error] Worker BSC error: Unexpected server response: 429
+2026-01-09 10:23:42 [error] Worker 56 reported error {"chainId":56,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":2}
+2026-01-09 10:23:42 [error] Worker BSC error: Unexpected server response: 429
+[Worker 56] Uncaught exception (2/10): Unexpected server response: 429
+[Worker 250] Uncaught exception (1/10): Unexpected server response: 429
+2026-01-09 10:23:42 [error] Worker 250 reported error {"chainId":250,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":1}
+2026-01-09 10:23:42 [error] Worker 250 error: Unexpected server response: 429
+2026-01-09 10:23:42 [error] Worker 250 reported error {"chainId":250,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":2}
+2026-01-09 10:23:42 [error] Worker 250 error: Unexpected server response: 429
+[Worker 10] Uncaught exception (1/10): Unexpected server response: 429
+2026-01-09 10:23:42 [error] Worker 10 reported error {"chainId":10,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":1}
+2026-01-09 10:23:42 [error] Worker 10 error: Unexpected server response: 429
+2026-01-09 10:23:42 [error] Worker 10 reported error {"chainId":10,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":2}
+2026-01-09 10:23:42 [error] Worker 10 error: Unexpected server response: 429
+[Worker 250] Uncaught exception (2/10): Unexpected server response: 429
+[Worker 10] Uncaught exception (2/10): Unexpected server response: 429
+[Worker 137] Uncaught exception (1/10): Unexpected server response: 429
+2026-01-09 10:23:42 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":1}
+2026-01-09 10:23:42 [error] Worker Polygon error: Unexpected server response: 429
+2026-01-09 10:23:42 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":2}
+2026-01-09 10:23:42 [error] Worker Polygon error: Unexpected server response: 429
+[Worker 137] Uncaught exception (2/10): Unexpected server response: 429
+2026-01-09 10:23:42 [info] [BSC Mainnet] WebSocket manager initialized {"endpoints":3,"chainId":56,"primaryEndpoint":"wss://bsc.publicnode.com/"}
+2026-01-09 10:23:42 [info] [Polygon Mainnet] WebSocket manager initialized {"endpoints":3,"chainId":137,"primaryEndpoint":"wss://polygon.publicnode.com/"}
+2026-01-09 10:23:42 [info] [BSC Mainnet] Gas price cache pre-warmed (354.31ms) {"chainId":56,"chainName":"BSC Mainnet"}
+2026-01-09 10:23:42 [info] [Polygon Mainnet] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":81415679}
+2026-01-09 10:23:42 [info] Worker 137 started monitoring
+2026-01-09 10:23:42 [info] [Polygon Mainnet] Polygon chain monitoring started {"chainId":137,"chainName":"Polygon Mainnet"}
+2026-01-09 10:23:42 [info] [Ethereum Mainnet] Gas price cache pre-warmed (528.21ms) {"chainId":1,"chainName":"Ethereum Mainnet"}
+2026-01-09 10:23:42 [info] [BSC Mainnet] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":74597732}
+2026-01-09 10:23:42 [info] Worker 56 started monitoring
+2026-01-09 10:23:42 [info] [BSC Mainnet] BSC chain monitoring started {"chainId":56,"chainName":"BSC Mainnet"}
+2026-01-09 10:23:42 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
+2026-01-09 10:23:44 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
+2026-01-09 10:23:44 [info] [Ethereum Mainnet] ✅ Block Monitor started (resilient WebSocket mode) {"initialBlock":24196204}
+2026-01-09 10:23:44 [info] Worker 1 started monitoring
+2026-01-09 10:23:44 [info] [Ethereum Mainnet] Ethereum chain monitoring started {"chainId":1,"chainName":"Ethereum Mainnet"}
+2026-01-09 10:23:49 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
+2026-01-09 10:23:50 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
+2026-01-09 10:23:50 [error] Failed to initialize ResilientWebSocketManager {"error":"Connection timeout"}
+2026-01-09 10:23:50 [warn] [BSC Mainnet] Using legacy WebSocket initialization
+2026-01-09 10:23:51 [warn] Ignored harmless WebSocket handshake error {"error":"Unexpected server response: 429"}
+2026-01-09 10:23:51 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
+2026-01-09 10:23:51 [error] Failed to initialize ResilientWebSocketManager {"error":"Connection timeout"}
+2026-01-09 10:23:51 [warn] [BSC Mainnet] Using legacy WebSocket initialization
+2026-01-09 10:23:51 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
+2026-01-09 10:23:51 [error] Failed to initialize ResilientWebSocketManager {"error":"Connection timeout"}
+2026-01-09 10:23:51 [warn] [BSC Mainnet] Using legacy WebSocket initialization
+2026-01-09 10:23:51 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
+[Worker 1] Uncaught exception (3/10): Unexpected server response: 429
+2026-01-09 10:23:51 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
+2026-01-09 10:23:51 [error] Worker ETH error: Unexpected server response: 429
+2026-01-09 10:23:51 [error] Worker 1 reported error {"chainId":1,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
+2026-01-09 10:23:51 [error] Worker ETH error: Unexpected server response: 429
+2026-01-09 10:23:51 [error] Failed to initialize ResilientWebSocketManager {"error":"Connection timeout"}
+2026-01-09 10:23:51 [warn] [BSC Mainnet] Using legacy WebSocket initialization
+[Worker 1] Uncaught exception (4/10): Unexpected server response: 429
+2026-01-09 10:23:52 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
+2026-01-09 10:23:52 [error] Failed to initialize ResilientWebSocketManager {"error":"Connection timeout"}
+2026-01-09 10:23:52 [warn] [BSC Mainnet] Using legacy WebSocket initialization
+2026-01-09 10:23:52 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
+2026-01-09 10:23:52 [error] Failed to initialize ResilientWebSocketManager {"error":"Connection timeout"}
+2026-01-09 10:23:52 [warn] [BSC Mainnet] Using legacy WebSocket initialization
+2026-01-09 10:23:52 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
+2026-01-09 10:23:52 [error] Failed to initialize ResilientWebSocketManager {"error":"Connection timeout"}
+2026-01-09 10:23:52 [warn] [BSC Mainnet] Using legacy WebSocket initialization
+[Worker 56] Uncaught exception (3/10): Unexpected server response: 429
+2026-01-09 10:23:52 [error] Worker 56 reported error {"chainId":56,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
+2026-01-09 10:23:52 [error] Worker BSC error: Unexpected server response: 429
+2026-01-09 10:23:52 [error] Worker 56 reported error {"chainId":56,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
+2026-01-09 10:23:52 [error] Worker BSC error: Unexpected server response: 429
+[Worker 56] Uncaught exception (4/10): Unexpected server response: 429
 [Worker 324] Uncaught exception (3/10): Unexpected server response: 429
-2026-01-08 23:34:05 [error] Worker 324 reported error {"chainId":324,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
-2026-01-08 23:34:05 [error] Worker 324 error: Unexpected server response: 429
-2026-01-08 23:34:05 [error] Worker 324 reported error {"chainId":324,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
-2026-01-08 23:34:05 [error] Worker 324 error: Unexpected server response: 429
+2026-01-09 10:23:52 [error] Worker 324 reported error {"chainId":324,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
+2026-01-09 10:23:52 [error] Worker 324 error: Unexpected server response: 429
+2026-01-09 10:23:52 [error] Worker 324 reported error {"chainId":324,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
+2026-01-09 10:23:52 [error] Worker 324 error: Unexpected server response: 429
 [Worker 324] Uncaught exception (4/10): Unexpected server response: 429
-2026-01-08 23:34:14 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:34:14 [error] Reconnect failed {"error":"Connection timeout"}
-2026-01-08 23:34:14 [error] ResilientWebSocket connection failed {"error":"Connection timeout"}
-2026-01-08 23:34:17 [warn] 🔌 RPC: Request failed (attempt 1/5) {"error":"exceeded maximum retry limit (request={  }, response={  }, error=null, info={ \"requestUrl\": \"https://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uRMp125MKTl8\", \"responseBody\": null, \"responseStatus\": \"599 CLIENT ESCALATED SERVER ERROR (429 Too Many Requests; exceeded maximum retry limit)\" }, code=SERVER_ERROR, version=6.16.0)","endpoint":"https://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:34:17 [warn] 🔌 RPC: Endpoint https://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... in cooldown for 60s
-2026-01-08 23:34:17 [warn] 🔌 RPC: Rate limit hit on https://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..., cooldown activated
-2026-01-08 23:34:23 [warn] 🔌 RPC: Request failed (attempt 1/5) {"error":"exceeded maximum retry limit (request={  }, response={  }, error=null, info={ \"requestUrl\": \"https://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uRMp125MKTl8\", \"responseBody\": \"[{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":61,\\\"error\\\":{\\\"code\\\":429,\\\"message\\\":\\\"Monthly capacity limit exceeded. Visit https://dashboard.alchemy.com/settings/billing to upgrade your scaling policy for continued service.\\\"}},{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":62,\\\"error\\\":{\\\"code\\\":429,\\\"message\\\":\\\"Monthly capacity limit exceeded. Visit https://dashboard.alchemy.com/settings/billing to upgrade your scaling policy for continued service.\\\"}}]\", \"responseStatus\": \"599 CLIENT ESCALATED SERVER ERROR (429 Too Many Requests; exceeded maximum retry limit)\" }, code=SERVER_ERROR, version=6.16.0)","endpoint":"https://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..."}
-2026-01-08 23:34:23 [warn] 🔌 RPC: Endpoint https://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR... in cooldown for 60s
-2026-01-08 23:34:23 [warn] 🔌 RPC: Rate limit hit on https://bnb-mainnet.g.alchemy.com/v2/ujdKAq3F5uR..., cooldown activated
-^C2026-01-08 23:34:26 [info] 
+[Worker 250] Uncaught exception (3/10): Unexpected server response: 429
+2026-01-09 10:23:52 [error] Worker 250 reported error {"chainId":250,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
+2026-01-09 10:23:52 [error] Worker 250 error: Unexpected server response: 429
+2026-01-09 10:23:52 [error] Worker 250 reported error {"chainId":250,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
+2026-01-09 10:23:52 [error] Worker 250 error: Unexpected server response: 429
+[Worker 250] Uncaught exception (4/10): Unexpected server response: 429
+[Worker 10] Uncaught exception (3/10): Unexpected server response: 429
+2026-01-09 10:23:52 [error] Worker 10 reported error {"chainId":10,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
+2026-01-09 10:23:52 [error] Worker 10 error: Unexpected server response: 429
+2026-01-09 10:23:52 [error] Worker 10 reported error {"chainId":10,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
+2026-01-09 10:23:52 [error] Worker 10 error: Unexpected server response: 429
+[Worker 10] Uncaught exception (4/10): Unexpected server response: 429
+[Worker 137] Uncaught exception (3/10): Unexpected server response: 429
+2026-01-09 10:23:52 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":3}
+2026-01-09 10:23:52 [error] Worker Polygon error: Unexpected server response: 429
+2026-01-09 10:23:52 [error] Worker 137 reported error {"chainId":137,"error":"Unexpected server response: 429","stack":"Error: Unexpected server response: 429\n    at ClientRequest.<anonymous> (/Users/pho/DEV/Arbitrage_Bot/Antigravity_Version/Arbitrage_Bot_V2/node_modules/ws/lib/websocket.js:912:7)\n    at ClientRequest.emit (node:events:508:28)\n    at HTTPParser.parserOnIncomingClient (node:_http_client:780:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:123:17)\n    at TLSSocket.socketOnData (node:_http_client:615:22)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:559:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)\n    at Readable.push (node:internal/streams/readable:390:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","fatal":false,"errorCount":4}
+2026-01-09 10:23:52 [error] Worker Polygon error: Unexpected server response: 429
+[Worker 137] Uncaught exception (4/10): Unexpected server response: 429
+2026-01-09 10:23:52 [warn] Worker 10 did not reach running, current: initialized
+2026-01-09 10:23:52 [warn] Worker 250 did not reach running, current: initialized
+2026-01-09 10:23:52 [warn] Worker 324 did not reach running, current: initialized
+2026-01-09 10:23:52 [info] All 6 workers started successfully
+2026-01-09 10:23:52 [info] Multi-chain monitoring started for 9 chains
+2026-01-09 10:23:52 [info] Bot is now running and monitoring for arbitrage opportunities
+2026-01-09 10:23:52 [warn] WebSocket not available, using HTTP polling mode
+2026-01-09 10:23:52 [info] [BSC Mainnet] Starting HTTP polling mode (polling every 3 seconds)
+2026-01-09 10:23:52 [warn] WebSocket not available, using HTTP polling mode
+2026-01-09 10:23:52 [info] [BSC Mainnet] Starting HTTP polling mode (polling every 3 seconds)
+2026-01-09 10:23:52 [warn] WebSocket not available, using HTTP polling mode
+2026-01-09 10:23:52 [info] [BSC Mainnet] Starting HTTP polling mode (polling every 3 seconds)
+2026-01-09 10:23:52 [info] [Fantom Opera] Fantom chain monitoring started {"chainId":250,"chainName":"Fantom Opera"}
+2026-01-09 10:23:52 [info] Worker 250 started monitoring
+2026-01-09 10:23:52 [info] [zkSync Era] zkSync Era chain monitoring started {"chainId":324,"chainName":"zkSync Era"}
+2026-01-09 10:23:52 [info] Worker 324 started monitoring
+2026-01-09 10:23:52 [info] [Optimism Mainnet] Optimism chain monitoring started {"chainId":10,"chainName":"Optimism Mainnet"}
+2026-01-09 10:23:52 [info] Worker 10 started monitoring
+2026-01-09 10:23:55 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
+2026-01-09 10:23:55 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
+2026-01-09 10:23:55 [info] AdaptivePrioritizer started {"tiers":4,"decayInterval":60000}
+^C2026-01-09 10:24:01 [info] 
 Received shutdown signal: SIGINT
-2026-01-08 23:34:26 [info] Stopping Arbitrage Bot (graceful shutdown)...
-2026-01-08 23:34:26 [info] 
+2026-01-09 10:24:01 [info] Stopping Arbitrage Bot (graceful shutdown)...
+2026-01-09 10:24:01 [info] [Ethereum Mainnet] Stopping Ethereum chain monitoring... {"chainId":1,"chainName":"Ethereum Mainnet"}
+2026-01-09 10:24:01 [info] 
 Received shutdown signal: SIGINT
-pho@CVDEM053 Arbitrage_Bot_V2 %  
+pho@CVDEM053 Arbitrage_Bot_V2 % 
+pho@CVDEM053 Arbitrage_Bot_V2 % 
