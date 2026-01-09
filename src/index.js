@@ -315,8 +315,8 @@ class ArbitrageBot {
         });
 
         // Initialize WorkerCoordinator
+        // FIX v3.11: Removed maxWorkers - workers spawn for each enabled chain automatically
         this.workerCoordinator = new WorkerCoordinator({
-            maxWorkers: globalConfig?.maxWorkers || 6,
             workerTimeout: globalConfig?.workerTimeout || 30000,
             restartDelay: globalConfig?.restartDelay || 5000,
         });
@@ -2140,13 +2140,33 @@ async function main() {
 
     // Handle uncaught exceptions
     process.on('uncaughtException', (error) => {
-        // Ignore WebSocket handshake 301/404 errors (they are just connection failures)
-        if (error.message && error.message.includes('Unexpected server response')) {
-            log.warn('Ignored harmless WebSocket handshake error', { error: error.message });
-            return;
+        const msg = error.message || '';
+
+        // FIX v3.11: List of recoverable WebSocket/network errors that shouldn't crash the bot
+        const recoverableErrors = [
+            'Unexpected server response',           // WebSocket handshake 301/404
+            'WebSocket was closed before',          // Cleanup race condition
+            'read ECONNRESET',                      // Network reset
+            'read ETIMEDOUT',                       // Network timeout
+            'getaddrinfo ENOTFOUND',                // DNS failure
+            'connect ECONNREFUSED',                 // Connection refused
+            'socket hang up',                       // Connection dropped
+            'EPIPE',                                // Broken pipe
+            'EHOSTUNREACH',                         // Host unreachable
+            'EAI_AGAIN',                            // DNS temporary failure
+        ];
+
+        const isRecoverable = recoverableErrors.some(pattern => msg.includes(pattern));
+
+        if (isRecoverable) {
+            log.warn('Recoverable exception (continuing)', {
+                error: msg,
+                type: 'recoverable_network_error'
+            });
+            return; // Don't shutdown for recoverable errors
         }
 
-        log.error('Uncaught Exception', { error: error.message, stack: error.stack });
+        log.error('Uncaught Exception', { error: msg, stack: error.stack });
         gracefulShutdown('Uncaught Exception', 1);
     });
 

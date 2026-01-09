@@ -288,14 +288,20 @@ process.on('uncaughtException', (error) => {
         console.error('Failed to send error message:', sendError);
     }
 
-    // FIX v3.6: Check if this is a known recoverable error
+    // FIX v3.11: Comprehensive list of recoverable network/WebSocket errors
     const isRecoverable = [
-        'WebSocket was closed before the connection was established',
-        'Connection timeout',
-        'ECONNRESET',
-        'ENOTFOUND',
-        'ETIMEDOUT',
-        'socket hang up',
+        'WebSocket was closed before',      // Cleanup race condition
+        'Unexpected server response',       // WebSocket handshake 301/404
+        'Connection timeout',               // Connection timeout
+        'ECONNRESET',                        // Network reset
+        'ETIMEDOUT',                         // Network timeout
+        'ENOTFOUND',                         // DNS failure
+        'ECONNREFUSED',                      // Connection refused
+        'socket hang up',                    // Connection dropped
+        'EPIPE',                             // Broken pipe
+        'EHOSTUNREACH',                      // Host unreachable
+        'EAI_AGAIN',                         // DNS temporary failure
+        'certificate has expired',          // SSL cert issue (transient)
     ].some(pattern => errorMessage.includes(pattern));
 
     if (isRecoverable && uncaughtErrorCount < MAX_ERRORS_PER_INTERVAL) {

@@ -29,7 +29,10 @@
       "Bash(timeout 120 npm start:*)",
       "Bash(timeout 180 npm start)",
       "Bash(tee:*)",
-      "Bash(timeout 1200 npm start)"
+      "Bash(timeout 1200 npm start)",
+      "Bash(timeout 60 node:*)",
+      "Bash(timeout 90 node:*)",
+      "Bash(timeout 120 node:*)"
     ]
   }
 }

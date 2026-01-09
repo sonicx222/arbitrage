@@ -31,7 +31,7 @@ export default class WorkerCoordinator extends EventEmitter {
         this.workerConfigs = new Map(); // chainId -> config
 
         // Configuration
-        this.maxWorkers = config.maxWorkers || 6;
+        // FIX v3.11: Removed maxWorkers limit - spawn one worker per enabled chain
         this.workerTimeout = config.workerTimeout || 30000;
         this.restartDelay = config.restartDelay || 5000;
         this.heartbeatInterval = config.heartbeatInterval || 10000;
@@ -342,10 +342,9 @@ export default class WorkerCoordinator extends EventEmitter {
     async startAll(chainConfigs) {
         this.isRunning = true;
 
-        // Spawn workers for all enabled chains
+        // FIX v3.11: Spawn workers for ALL enabled chains (removed maxWorkers limit)
         const enabledChains = Object.entries(chainConfigs)
-            .filter(([, config]) => config.enabled)
-            .slice(0, this.maxWorkers);
+            .filter(([, config]) => config.enabled);
 
         if (enabledChains.length === 0) {
             log.warn('No chains enabled for worker monitoring');
@@ -399,7 +398,19 @@ export default class WorkerCoordinator extends EventEmitter {
         // Start heartbeat monitoring
         this.startHeartbeatMonitor();
 
-        log.info(`All ${this.workers.size} workers started successfully`);
+        // FIX v3.11: Report accurate count of workers that actually reached 'running' state
+        const runningWorkers = Array.from(this.workerStatus.values())
+            .filter(s => s?.status === 'running').length;
+        const totalSpawned = this.workers.size;
+        const configuredChains = enabledChains.length;
+
+        if (runningWorkers === configuredChains) {
+            log.info(`All ${runningWorkers} workers started successfully`);
+        } else if (runningWorkers > 0) {
+            log.warn(`${runningWorkers}/${configuredChains} workers started successfully (${totalSpawned} spawned, ${configuredChains - runningWorkers} failed to reach running state)`);
+        } else {
+            log.error(`No workers reached running state (${totalSpawned} spawned from ${configuredChains} configured)`);
+        }
     }
 
     /**

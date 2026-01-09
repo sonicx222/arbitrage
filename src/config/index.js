@@ -116,9 +116,9 @@ export const globalConfig = {
     },
 
     // Worker thread configuration
+    // FIX v3.11: Removed maxWorkers - workers spawn automatically for each enabled chain
     workers: {
         enabled: process.env.WORKERS_ENABLED !== 'false',
-        maxWorkers: parseInt(process.env.MAX_WORKERS || '9'), // 9 chains supported
         workerTimeout: parseInt(process.env.WORKER_TIMEOUT || '30000'),
         restartDelay: parseInt(process.env.WORKER_RESTART_DELAY || '5000'),
     },

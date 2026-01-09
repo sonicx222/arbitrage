@@ -511,26 +511,61 @@ export class ResilientWebSocket extends EventEmitter {
         }
 
         this.refreshTimer = setTimeout(async () => {
-            // Don't refresh if shutting down or not connected
-            if (this.isShuttingDown || this.state !== 'connected') return;
+            // FIX v3.11: Comprehensive defensive checks before proactive refresh
+            try {
+                // Don't refresh if shutting down or not connected
+                if (this.isShuttingDown || this.state !== 'connected') {
+                    log.debug('Proactive refresh skipped', {
+                        reason: this.isShuttingDown ? 'shutting_down' : 'not_connected',
+                        state: this.state
+                    });
+                    return;
+                }
 
-            log.info('Proactive connection refresh', {
-                connectionAgeMs: Date.now() - this.connectionStartTime,
-            });
+                // FIX v3.11: Check actual WebSocket state - don't refresh if CONNECTING
+                const ws = this.provider?.websocket || this.provider?._websocket;
+                const wsState = ws?.readyState;
+                if (wsState !== 1) { // 1 = OPEN
+                    log.debug('Proactive refresh skipped - WebSocket not OPEN', {
+                        readyState: wsState,
+                        stateLabel: ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][wsState] || 'unknown'
+                    });
+                    // Reschedule for later instead of crashing
+                    this._scheduleProactiveRefresh();
+                    return;
+                }
 
-            this.metrics.proactiveRefreshes++;
+                log.info('Proactive connection refresh', {
+                    connectionAgeMs: Date.now() - this.connectionStartTime,
+                });
 
-            // Gracefully close and reconnect
-            this._cleanup();
-            this.state = 'disconnected';
+                this.metrics.proactiveRefreshes++;
 
-            // Only reconnect if not shutting down
-            if (!this.isShuttingDown) {
-                try {
+                // Gracefully close and reconnect
+                this._cleanup();
+                this.state = 'disconnected';
+
+                // Only reconnect if not shutting down
+                if (!this.isShuttingDown) {
                     await this.connect();
                     this.emit('refreshed');
-                } catch (error) {
-                    log.error('Proactive refresh failed', { error: error.message });
+                }
+            } catch (error) {
+                // FIX v3.11: Catch ALL errors during proactive refresh to prevent crashes
+                log.error('Proactive refresh failed (non-fatal)', {
+                    error: error.message,
+                    url: this.url
+                });
+                // Try to reconnect anyway if not shutting down
+                if (!this.isShuttingDown && this.state !== 'connected') {
+                    this.state = 'disconnected';
+                    try {
+                        await this.connect();
+                    } catch (reconnectError) {
+                        log.warn('Proactive refresh reconnect also failed', {
+                            error: reconnectError.message
+                        });
+                    }
                 }
             }
         }, this.config.proactiveRefreshMs);
@@ -575,22 +610,26 @@ export class ResilientWebSocket extends EventEmitter {
                 const ws = this.provider.websocket || this.provider._websocket;
                 const readyState = ws?.readyState;
 
-                // FIX v3.6: Handle each state explicitly with proper error handling
+                // FIX v3.11: Handle each state explicitly with proper error handling
                 if (readyState === 0) {
                     // CONNECTING state - WebSocket handshake not complete
-                    // DON'T call terminate() - it throws "WebSocket was closed before connection established"
-                    // which propagates through the socket stream as an uncaught exception.
-                    // Instead: remove listeners and try close() which is gentler
+                    // CRITICAL FIX v3.11: DO NOT call ws.close() on CONNECTING WebSocket!
+                    // The ws library throws "WebSocket was closed before connection established"
+                    // AND emits an 'error' event that propagates as uncaught exception.
+                    //
+                    // Solution: Remove ALL listeners to prevent error propagation,
+                    // then let the socket timeout/close on its own.
                     try {
                         if (ws) {
-                            // Remove all listeners first to prevent callback issues
+                            // Remove error listener FIRST to prevent error event propagation
                             if (typeof ws.removeAllListeners === 'function') {
                                 ws.removeAllListeners();
                             }
-                            // Try close() - may fail but won't throw uncaught exception
-                            if (typeof ws.close === 'function') {
-                                ws.close();
-                            }
+                            // DON'T call close() - it throws and emits error
+                            // Just log and let it die naturally
+                            log.debug('WebSocket in CONNECTING state, abandoning (will timeout)', {
+                                url: this.url
+                            });
                         }
                     } catch (connectingCleanupError) {
                         // Ignore - socket will timeout/close on its own
