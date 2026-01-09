@@ -28,21 +28,31 @@ export default {
             ws: process.env.POLYGON_ALCHEMY_WS || '',
         },
 
-        // FIX v3.8: Reorder endpoints - free public nodes first, Alchemy last
-        // This preserves Alchemy monthly quota by using free endpoints preferentially
+        // FIX v3.8/v3.9: Expanded free HTTP endpoints for instant rollover on rate limits
         http: [
-            'https://polygon-rpc.com',            // Polygon official - free
-            'https://polygon.llamarpc.com',       // LlamaRPC - free
-            'https://polygon-mainnet.public.blastapi.io', // BlastAPI - free
-            process.env.POLYGON_RPC_HTTP_1,       // Custom if configured
-            process.env.POLYGON_ALCHEMY_HTTP,     // Alchemy last (paid)
+            // Tier 1: Official & most reliable
+            'https://polygon-rpc.com',                // Polygon official - fast & free
+            'https://polygon.llamarpc.com',           // LlamaRPC - reliable
+            'https://polygon.publicnode.com',         // PublicNode - reliable
+            // Tier 2: Additional free endpoints
+            'https://polygon-mainnet.public.blastapi.io', // BlastAPI
+            'https://rpc.ankr.com/polygon',           // Ankr - free tier
+            'https://1rpc.io/matic',                  // 1RPC - privacy-focused
+            'https://polygon.drpc.org',               // dRPC - free tier
+            'https://polygon.meowrpc.com',            // MeowRPC - free
+            'https://polygon-bor-rpc.publicnode.com', // PublicNode Bor
+            'https://matic-mainnet.chainstacklabs.com', // Chainstack free
+            // Tier 3: Custom & paid (last resort)
+            process.env.POLYGON_RPC_HTTP_1,
+            process.env.POLYGON_ALCHEMY_HTTP,         // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
-        // FIX v3.8: Public WS first, Alchemy last
+        // FIX v3.8/v3.9: Expanded WS endpoints
         ws: [
-            'wss://polygon.publicnode.com',       // PublicNode - free
-            process.env.POLYGON_RPC_WS_1,         // Custom if configured
-            process.env.POLYGON_ALCHEMY_WS,       // Alchemy last (paid)
+            'wss://polygon.publicnode.com',           // PublicNode - free
+            'wss://polygon-bor-rpc.publicnode.com',   // PublicNode Bor
+            process.env.POLYGON_RPC_WS_1,
+            process.env.POLYGON_ALCHEMY_WS,           // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
         maxRequestsPerMinute: parseInt(process.env.POLYGON_MAX_RPC_RPM || '300'),

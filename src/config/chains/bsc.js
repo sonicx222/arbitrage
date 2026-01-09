@@ -33,24 +33,37 @@ export default {
             ws: process.env.ALCHEMY_WS_URL || process.env.BSC_ALCHEMY_WS || '',
         },
 
-        // FIX v3.8: Reorder HTTP endpoints - free public nodes first, Alchemy last
-        // This preserves Alchemy monthly quota by using free endpoints preferentially
+        // FIX v3.8/v3.9: Expanded free HTTP endpoints for better rate limit resilience
+        // Strategy: Many free providers for instant rollover when rate limited
         http: [
-            'https://bsc-dataseed.binance.org',   // Binance official - fast & free
-            'https://bsc.publicnode.com',          // PublicNode - free
-            'https://bsc-rpc.publicnode.com',      // PublicNode backup - free
-            'https://bsc-dataseed1.defibit.io',    // DeFiBit - free
-            'https://bsc-dataseed1.ninicoin.io',   // NiniCoin - free
-            process.env.BSC_RPC_HTTP_1,            // Custom endpoints if configured
+            // Tier 1: Official & highly reliable
+            'https://bsc-dataseed.binance.org',       // Binance official - fast & free
+            'https://bsc-dataseed1.binance.org',      // Binance backup 1
+            'https://bsc-dataseed2.binance.org',      // Binance backup 2
+            'https://bsc-dataseed3.binance.org',      // Binance backup 3
+            'https://bsc-dataseed4.binance.org',      // Binance backup 4
+            // Tier 2: PublicNode (very reliable)
+            'https://bsc.publicnode.com',             // PublicNode main
+            'https://bsc-rpc.publicnode.com',         // PublicNode backup
+            // Tier 3: Third-party free endpoints
+            'https://bsc-dataseed1.defibit.io',       // DeFiBit
+            'https://bsc-dataseed1.ninicoin.io',      // NiniCoin
+            'https://bsc.meowrpc.com',                // MeowRPC - free
+            'https://bsc.drpc.org',                   // dRPC - free tier
+            'https://binance.llamarpc.com',           // LlamaRPC BSC
+            'https://rpc.ankr.com/bsc',               // Ankr - free tier
+            'https://1rpc.io/bnb',                    // 1RPC - privacy-focused
+            // Tier 4: Custom & paid (last resort)
+            process.env.BSC_RPC_HTTP_1,
             process.env.BSC_RPC_HTTP_2,
             process.env.ALCHEMY_RPC_URL || process.env.BSC_ALCHEMY_HTTP, // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
-        // FIX v3.8: Reorder WS endpoints - public nodes first, Alchemy last
-        // This preserves Alchemy monthly quota by using free endpoints preferentially
+        // FIX v3.8/v3.9: Expanded WS endpoints
         ws: [
-            'wss://bsc.publicnode.com',           // Free public node first
-            process.env.BSC_RPC_WS_1,             // Custom endpoint if configured
+            'wss://bsc.publicnode.com',               // PublicNode - free & reliable
+            'wss://bsc-rpc.publicnode.com',           // PublicNode backup
+            process.env.BSC_RPC_WS_1,
             process.env.ALCHEMY_WS_URL || process.env.BSC_ALCHEMY_WS, // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 

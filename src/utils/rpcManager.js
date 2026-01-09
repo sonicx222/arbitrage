@@ -576,11 +576,13 @@ class RPCManager extends EventEmitter {
      * Execute a function with retry logic and automatic failover
      * v2.1: Enhanced with throttling and smarter rate limit handling
      * FIX v3.7: Uses atomic request reservation system
+     * FIX v3.9: Immediate rollover on rate limits - don't waste retries on 429s
      */
     async withRetry(fn, maxRetries = config.rpc.retryAttempts) {
         let lastError = new Error('No successful RPC attempts');
         let currentProviderData = null; // Track provider for error handling
         let reservedEndpoint = null; // FIX v3.7: Track reserved endpoint for cleanup
+        let rateLimitRollovers = 0; // FIX v3.9: Track consecutive rate limit rollovers
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
@@ -616,6 +618,9 @@ class RPCManager extends EventEmitter {
                     health.failures = 0;
                 }
 
+                // FIX v3.9: Reset rollover counter on success
+                rateLimitRollovers = 0;
+
                 return result;
 
             } catch (error) {
@@ -629,11 +634,6 @@ class RPCManager extends EventEmitter {
                     this.completeRequest(reservedEndpoint, false);
                     reservedEndpoint = null;
                 }
-
-                log.rpc(`Request failed (attempt ${attempt + 1}/${maxRetries})`, {
-                    error: error.message,
-                    endpoint: failedEndpoint ? this._maskEndpoint(failedEndpoint) : 'unknown',
-                });
 
                 // v2.1: Enhanced rate limit detection and handling
                 const isRateLimitError = this._isRateLimitError(error);
@@ -652,25 +652,53 @@ class RPCManager extends EventEmitter {
                         recommendation: 'Consider upgrading Alchemy plan or adding more RPC endpoints',
                     });
 
-                    // Don't retry on monthly limit - switch to other providers immediately
+                    // FIX v3.9: Don't count monthly limits against retry attempts
+                    // Immediately roll to next provider without penalty
+                    attempt--;
                     continue;
                 }
 
                 if (failedEndpoint && isRateLimitError) {
-                    // v2.1: Put endpoint in cooldown instead of just marking unhealthy
-                    // FIX v3.8: Longer cooldown for Alchemy endpoints to preserve quota
+                    // FIX v3.9: IMMEDIATE ROLLOVER - put in cooldown and switch instantly
+                    // Don't waste retry attempts on rate-limited endpoints
                     const cooldownMs = this.alchemyEndpoints.has(failedEndpoint)
                         ? 5 * 60 * 1000  // 5 minutes for Alchemy
-                        : 60 * 1000;      // 1 minute for others
+                        : 30 * 1000;      // FIX v3.9: Reduced to 30s for faster recovery
                     this.setEndpointCooldown(failedEndpoint, cooldownMs);
-                    this.markEndpointUnhealthy(failedEndpoint);
-                    log.rpc(`Rate limit hit on ${this._maskEndpoint(failedEndpoint)}, cooldown ${cooldownMs/1000}s activated`);
 
-                    // Wait longer on rate limit errors
-                    const delay = config.rpc.retryDelay * Math.pow(2, attempt + 1);
-                    await this.sleep(delay);
+                    rateLimitRollovers++;
+
+                    log.rpc(`🔄 Rate limit rollover ${rateLimitRollovers}: ${this._maskEndpoint(failedEndpoint)} → next provider (${cooldownMs/1000}s cooldown)`);
+
+                    // FIX v3.9: Don't count rate limit rollovers against retry attempts
+                    // as long as we have other providers available
+                    const availableProviders = this.httpProviders.filter(p => {
+                        const cooldownUntil = this.endpointCooldowns.get(p.endpoint) || 0;
+                        return Date.now() >= cooldownUntil;
+                    }).length;
+
+                    if (availableProviders > 0 && rateLimitRollovers < this.httpProviders.length) {
+                        // Still have providers available - don't count this as a retry
+                        attempt--;
+                        // Minimal delay - just switch to next provider
+                        await this.sleep(50);
+                    } else {
+                        // All providers rate-limited or too many rollovers
+                        // Wait before actual retry
+                        log.warn(`All providers rate-limited, waiting before retry...`, {
+                            rateLimitRollovers,
+                            availableProviders,
+                        });
+                        const delay = config.rpc.retryDelay * Math.pow(2, attempt);
+                        await this.sleep(delay);
+                    }
                     continue;
                 }
+
+                log.rpc(`Request failed (attempt ${attempt + 1}/${maxRetries})`, {
+                    error: error.message,
+                    endpoint: failedEndpoint ? this._maskEndpoint(failedEndpoint) : 'unknown',
+                });
 
                 // Exponential backoff for other errors
                 const delay = config.rpc.retryDelay * Math.pow(2, attempt);

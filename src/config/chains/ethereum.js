@@ -28,21 +28,30 @@ export default {
             ws: process.env.ETH_ALCHEMY_WS || '',
         },
 
-        // FIX v3.8: Reorder endpoints - free public nodes first, Alchemy last
-        // This preserves Alchemy monthly quota by using free endpoints preferentially
+        // FIX v3.8/v3.9: Expanded free HTTP endpoints for instant rollover on rate limits
         http: [
-            'https://eth.llamarpc.com',           // LlamaRPC - free
-            'https://ethereum.publicnode.com',    // PublicNode - free
-            'https://rpc.ankr.com/eth',           // Ankr - free tier
-            process.env.ETH_RPC_HTTP_1,           // Custom if configured
-            process.env.ETH_ALCHEMY_HTTP,         // Alchemy last (paid)
+            // Tier 1: Most reliable free endpoints
+            'https://eth.llamarpc.com',               // LlamaRPC - fast & free
+            'https://ethereum.publicnode.com',        // PublicNode - reliable
+            'https://rpc.ankr.com/eth',               // Ankr - free tier
+            // Tier 2: Additional free endpoints
+            'https://1rpc.io/eth',                    // 1RPC - privacy-focused
+            'https://eth.drpc.org',                   // dRPC - free tier
+            'https://rpc.mevblocker.io',              // MEV Blocker - free
+            'https://eth.meowrpc.com',                // MeowRPC - free
+            'https://ethereum-rpc.publicnode.com',    // PublicNode backup
+            'https://cloudflare-eth.com',             // Cloudflare - reliable
+            // Tier 3: Custom & paid (last resort)
+            process.env.ETH_RPC_HTTP_1,
+            process.env.ETH_ALCHEMY_HTTP,             // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
-        // FIX v3.8: Public WS first, Alchemy last
+        // FIX v3.8/v3.9: Expanded WS endpoints
         ws: [
-            'wss://ethereum.publicnode.com',      // PublicNode - free
-            process.env.ETH_RPC_WS_1,             // Custom if configured
-            process.env.ETH_ALCHEMY_WS,           // Alchemy last (paid)
+            'wss://ethereum.publicnode.com',          // PublicNode - free
+            'wss://ethereum-rpc.publicnode.com',      // PublicNode backup
+            process.env.ETH_RPC_WS_1,
+            process.env.ETH_ALCHEMY_WS,               // Alchemy last (paid)
         ].filter(Boolean).map(url => url.trim()),
 
         maxRequestsPerMinute: parseInt(process.env.ETH_MAX_RPC_RPM || '300'),
